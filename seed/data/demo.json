@@ -1,0 +1,64 @@
+{
+  "body": {
+    "id": "harbor-city-council",
+    "name": "Harbor City Council",
+    "jurisdiction": "Harbor City (fictional)",
+    "description": "A made-up council with made-up people, here to show every state the tracker can display. Nothing in it is real."
+  },
+  "next_election_on": "2027-05-04",
+  "seats": [
+    { "label": "Ward 1", "incumbent": ["Odalys Brennan", "Harbor Forward"], "challengers": [["Tomas Whitlock", "Independent", "general"]] },
+    { "label": "Ward 2", "incumbent": ["Ikenna Vasquez", "Harbor Forward"], "challengers": [] },
+    { "label": "Ward 3", "incumbent": ["Marguerite Oyelaran", "Dockside Alliance"], "challengers": [["Suvi Castellanos", "Dockside Alliance", "primary"], ["Renzo Achterberg", "Harbor Forward", "general"]] },
+    { "label": "Ward 4", "incumbent": ["Desmond Kowalczyk", "Dockside Alliance"], "challengers": [] },
+    { "label": "Ward 5", "incumbent": ["Priyanka Lindqvist", "Independent"], "challengers": [["Calloway Nduka", "Harbor Forward", "general"]] },
+    { "label": "Ward 6", "incumbent": ["Bartholomew Sato", "Dockside Alliance"], "challengers": [] },
+    { "label": "At-large", "incumbent": ["Nadezhda Okafor", "Harbor Forward"], "challengers": [] }
+  ],
+  "questions": [
+    {
+      "id": "free-ferry",
+      "kind": "position",
+      "title": "Should the harbor ferry be free to ride?",
+      "short_title": "Fare-free ferry",
+      "description": "Whether the city should drop fares on the cross-harbor ferry and fund it from the general budget.",
+      "is_hot": true
+    },
+    {
+      "id": "free-ferry-ord-26-114",
+      "parent": "free-ferry",
+      "kind": "formal_act",
+      "title": "Have they signed on to Ordinance 26-114?",
+      "short_title": "Ordinance 26-114",
+      "description": "The specific measure on the table: a two-year fare-free pilot paid for by a berth fee on cruise ships."
+    }
+  ],
+  "stances": [
+    ["free-ferry", "Odalys Brennan", "support", "Has campaigned on it since 2025 and sponsors the ordinance."],
+    ["free-ferry-ord-26-114", "Odalys Brennan", "support", "Lead sponsor."],
+    ["free-ferry", "Ikenna Vasquez", "lean_support", "Likes the idea, has not committed to the funding source."],
+    ["free-ferry", "Marguerite Oyelaran", "oppose", "Objects to the berth fee."],
+    ["free-ferry", "Desmond Kowalczyk", "mixed", "Supported a pilot years ago, silent since."],
+    ["free-ferry", "Priyanka Lindqvist", "support", "One remark at a town hall."],
+    ["free-ferry", "Nadezhda Okafor", "support", "Co-signed the ordinance."],
+    ["free-ferry-ord-26-114", "Nadezhda Okafor", "support", "Co-signer."],
+    ["free-ferry", "Suvi Castellanos", "support", "Running against the incumbent on this issue."],
+    ["free-ferry", "Calloway Nduka", "oppose", "Calls it a giveaway to commuters from outside the city."]
+  ],
+  "evidence": [
+    ["free-ferry", "Odalys Brennan", "statement", "support", "2025-03-18", "The ferry is a bridge we forgot to build. Nobody pays a toll to cross a bridge in this city.", "Harbor Ledger: Brennan opens campaign on the ferry dock"],
+    ["free-ferry", "Odalys Brennan", "interview", "support", "2026-10-02", "We have the votes to try this for two years and I intend to use them.", "Tideline Radio: Morning interview"],
+    ["free-ferry-ord-26-114", "Odalys Brennan", "formal_act", "support", "2026-09-14", "Introduced Ordinance 26-114 as lead sponsor.", "Council docket: Ordinance 26-114"],
+    ["free-ferry", "Ikenna Vasquez", "statement", "lean_support", "2026-08-21", "I want free boats. I also want to know who is paying for them in year three.", "Harbor Ledger: Council splits on ferry funding"],
+    ["free-ferry", "Ikenna Vasquez", "social", "lean_support", "2026-10-28", "Still a yes on the goal. Still waiting on the fiscal note.", "Post from @cm_vasquez"],
+    ["free-ferry", "Marguerite Oyelaran", "statement", "oppose", "2025-11-05", "A berth fee is a tax on the one industry still hiring in Ward 3.", "Dockside Dispatch: Oyelaran on the berth fee"],
+    ["free-ferry", "Marguerite Oyelaran", "vote", "oppose", "2026-06-09", "Voted no on advancing the fare study out of committee (3 to 2).", "Council minutes: Transportation Committee"],
+    ["free-ferry", "Desmond Kowalczyk", "statement", "lean_support", "2023-04-12", "A summer pilot seems harmless enough. Let us see the numbers.", "Harbor Ledger: Council mulls summer ferry pilot"],
+    ["free-ferry", "Priyanka Lindqvist", "statement", "support", "2026-02-07", "Yes. Next question.", "Ward 5 town hall recording"],
+    ["free-ferry-ord-26-114", "Nadezhda Okafor", "formal_act", "support", "2026-09-14", "Signed on to Ordinance 26-114 as a co-sponsor at introduction.", "Council docket: Ordinance 26-114"],
+    ["free-ferry", "Suvi Castellanos", "platform", "support", "2026-09-30", "Fare-free ferry, funded by the ships that crowd our harbor. Day one.", "Castellanos for Ward 3: Platform"],
+    ["free-ferry", "Suvi Castellanos", "interview", "support", "2026-10-19", "The incumbent has had four years to fix the commute and chose the cruise lines.", "Tideline Radio: Ward 3 primary forum"],
+    ["free-ferry", "Calloway Nduka", "statement", "oppose", "2025-01-22", "Half the riders do not live here. Why are we buying their tickets?", "Harbor Ledger: Letters"],
+    ["free-ferry", "Calloway Nduka", "statement", "oppose", "2025-07-30", "I would rather fix the buses people in Ward 5 actually ride.", "Dockside Dispatch: Candidate questionnaire"]
+  ]
+}

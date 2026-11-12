@@ -1,0 +1,93 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/fraunces';
+@import '@fontsource-variable/instrument-sans';
+
+@theme {
+  --font-sans: 'Instrument Sans Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Fraunces Variable', ui-serif, Georgia, serif;
+
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-support: var(--support);
+  --color-lean-support: var(--lean-support);
+  --color-mixed: var(--mixed);
+  --color-lean-oppose: var(--lean-oppose);
+  --color-oppose: var(--oppose);
+  --color-unknown: var(--unknown);
+}
+
+:root {
+  color-scheme: light dark;
+  --paper: #f5efe3;
+  --surface: #fffcf5;
+  --ink: #211c15;
+  --muted: #6d6253;
+  --line: #ddd2bf;
+  --accent: #a8620c;
+  --support: #1d7355;
+  --lean-support: #74ad94;
+  --mixed: #c9951a;
+  --lean-oppose: #ae83bb;
+  --oppose: #71358a;
+  --unknown: #b3a794;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #17140f;
+    --surface: #211d16;
+    --ink: #efe7d8;
+    --muted: #a39780;
+    --line: #3a3327;
+    --accent: #e0a044;
+    --support: #3fae86;
+    --lean-support: #2f6f58;
+    --mixed: #d8a833;
+    --lean-oppose: #77518a;
+    --oppose: #b06fcc;
+    --unknown: #5d5446;
+  }
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@layer components {
+  .field {
+    @apply w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md border border-line bg-surface px-3 py-2 text-sm font-medium text-ink transition-colors hover:border-ink disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply border-ink bg-ink text-paper hover:opacity-90;
+  }
+  .label {
+    @apply mb-1 block text-xs font-semibold tracking-wide text-muted uppercase;
+  }
+  .kbd {
+    @apply rounded border border-line bg-paper px-1.5 py-0.5 font-mono text-[11px] text-muted;
+  }
+}

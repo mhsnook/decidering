@@ -1,0 +1,4 @@
+# Copy to .dev.vars for local development. In production set these with `wrangler secret put`.
+EDITOR_TOKEN=change-me
+# Optional: enables the scheduled news search.
+ANTHROPIC_API_KEY=

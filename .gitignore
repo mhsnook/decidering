@@ -1,0 +1,7 @@
+node_modules
+dist
+.wrangler
+.dev.vars
+seed/out
+*.tsbuildinfo
+worker-configuration.d.ts
