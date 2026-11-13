@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "deicdering",
+  "name": "decidering",
   "main": "worker/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -11,8 +11,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "deicdering",
-      // replace after `wrangler d1 create deicdering`
+      "database_name": "decidering",
+      // replace after `wrangler d1 create decidering`
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
     }
@@ -21,6 +21,7 @@
     "bindings": [{ "name": "Tracker", "class_name": "Tracker" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Tracker"] }],
+  "ai": { "binding": "AI" },
   "triggers": { "crons": ["17 */6 * * *"] },
   "observability": { "enabled": true }
 }

@@ -1,4 +1,4 @@
-# Deicdering
+# Decidering
 
 A tracker for open questions in front of the people who decide them. For each person and each question it shows where they stand, the statements and acts that position rests on, and how solid that footing is.
 
@@ -9,13 +9,14 @@ The first data set is the United States Congress and Medicare for All. Nothing i
 - **Bodies, seats, roles.** A body (a legislature, a council, a board) has seats. A person holds a seat or is running for it, so challengers sit beside the incumbent they want to replace.
 - **Questions and measures.** A question asks where someone stands ("Do they support Medicare for All?"). A measure is a sub-question about one recordable act ("Have they cosponsored H.R. 3069?"). Evidence on a measure also counts toward its parent question.
 - **Evidence and footing.** Every position links to dated evidence. Footing is derived from it: on the record (a vote or formal act), fresh, established, sparse, stale, or unknown. The rules live in `shared/standing.ts`.
-- **Review queue.** Readers send in evidence from any person's page. A scheduled news search does the same for questions marked as in the news. Nothing is published until an editor approves it at `/editor`.
+- **Review queue.** Readers send in evidence from any person's page. A scheduled news search adds leads for questions marked as in the news. Nothing is published until an editor approves it at `/editor`.
 
 ## Stack
 
 - Cloudflare Worker + D1, with a React SPA served as static assets
 - [party-db](https://github.com/mhsnook/party-db) syncs every public table to the browser over one Durable Object room; pages are live queries over the local copy
-- TanStack Router, TanStack DB, Tailwind
+- TanStack Router (file-based routes in `src/routes`), TanStack DB, Tailwind
+- Cloudflare [Web Search API](https://developers.cloudflare.com/web-search/) with Exa, through AI Gateway, for the news search
 
 Editors write through the same collections with optimistic transactions. Readers get read-only access, and unreviewed submissions are only sent to editor connections.
 
@@ -30,6 +31,8 @@ pnpm dev
 
 Sign in at `/editor` with the `EDITOR_TOKEN` from `.dev.vars`.
 
+The news search needs the remote AI binding, which plain `pnpm dev` leaves off. Run `pnpm dev:remote` (after `wrangler login`) to use it locally; searches bill the logged-in account.
+
 `pnpm test` runs the unit tests and `pnpm typecheck` checks all three TypeScript projects.
 
 ## Data
@@ -43,10 +46,15 @@ Seeding writes rows directly and skips the sync log, so seed before readers are 
 ## Deploy
 
 ```sh
-wrangler d1 create deicdering          # put the id in wrangler.jsonc
+wrangler d1 create decidering          # put the id in wrangler.jsonc
 wrangler d1 migrations apply DB --remote
 pnpm seed:build && wrangler d1 execute DB --remote --file seed/out/seed.sql
 wrangler secret put EDITOR_TOKEN
-wrangler secret put ANTHROPIC_API_KEY  # optional, enables the news search
 pnpm run deploy
 ```
+
+The news search routes through the AI Gateway named `default` and pays from its credits, or from an Exa key stored on the gateway.
+
+## News search
+
+Every six hours the Worker runs a few searches for each question marked as in the news. A result becomes a lead when its title or excerpt names someone on that body's roster. Leads carry the search excerpt and no position; the editor reads the source, fixes the quote, and chooses what it shows before anything is published.

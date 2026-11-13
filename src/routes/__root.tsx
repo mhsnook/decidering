@@ -10,7 +10,7 @@ function Root() {
       <div className="mx-auto flex min-h-dvh max-w-6xl flex-col px-4 sm:px-6">
         <header className="flex items-baseline justify-between border-b border-line py-4">
           <Link to="/" className="font-display text-xl font-semibold tracking-tight">
-            Deicdering
+            Decidering
           </Link>
           <nav className="flex gap-4 text-sm text-muted">
             <Link to="/" className="hover:text-ink [&.active]:text-ink">

@@ -1,5 +1,5 @@
 import { PartyDbServer, D1Adapter, getTokenFromRequest, type PersistenceAdapter } from 'party-db/server'
-import { allCollections, type Submission, type SubmissionInput } from '../shared/schema.ts'
+import { allCollections, type Submission, type SubmissionDraft } from '../shared/schema.ts'
 import { isEditorToken } from './editor.ts'
 
 const MAX_PENDING = 500
@@ -20,7 +20,7 @@ export class Tracker extends PartyDbServer<Env> {
 
   // Unreviewed evidence enters here rather than through CRUD so anonymous
   // readers never need write access to the room.
-  async submit(input: SubmissionInput, origin: Submission['origin']): Promise<SubmitResult> {
+  async submit(input: SubmissionDraft, origin: Submission['origin']): Promise<SubmitResult> {
     const pending = await this.env.DB.prepare(`SELECT COUNT(*) AS n FROM submissions WHERE status = 'pending'`).first<{
       n: number
     }>()

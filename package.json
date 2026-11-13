@@ -1,10 +1,11 @@
 {
-  "name": "deicdering",
+  "name": "decidering",
   "private": true,
   "version": "0.0.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:remote": "REMOTE_BINDINGS=1 vite",
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "vite build && wrangler deploy",
@@ -24,7 +25,6 @@
     ]
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^1.8.0",
     "@fontsource-variable/fraunces": "^5.3.0",
     "@fontsource-variable/instrument-sans": "^5.3.0",
     "@tanstack/db": "^0.6.17",

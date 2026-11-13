@@ -9,6 +9,8 @@ export default defineConfig({
     tanstackRouter({ target: 'react', autoCodeSplitting: true }),
     react(),
     tailwindcss(),
-    cloudflare(),
+    // The AI binding (web search) only exists remotely and needs a Cloudflare login,
+    // so plain `pnpm dev` runs without it. `pnpm dev:remote` turns it on.
+    cloudflare({ remoteBindings: process.env.REMOTE_BINDINGS === '1' }),
   ],
 })

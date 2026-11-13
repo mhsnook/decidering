@@ -1,4 +1,4 @@
-const KEY = 'deicdering.editor-token'
+const KEY = 'decidering.editor-token'
 
 export function editorToken(): string | undefined {
   try {

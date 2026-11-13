@@ -101,7 +101,8 @@ export const submissionSchema = z.object({
   decider_id: z.string(),
   origin: z.enum(['public', 'news_search']),
   kind: evidenceKindSchema,
-  signals: positionSchema,
+  // null on a news-search lead: a search hit names a person, not a position.
+  signals: positionSchema.nullable(),
   quote: z.string(),
   source_url: z.string(),
   source_title: z.string().nullable(),
@@ -114,7 +115,7 @@ export const submissionSchema = z.object({
 })
 export type Submission = z.infer<typeof submissionSchema>
 
-// What the public form (and the news search) may send. The server fills in the rest.
+// What the public form may send. The server fills in the rest.
 export const submissionInputSchema = z.object({
   question_id: z.string().min(1),
   decider_id: z.string().min(1),
@@ -127,6 +128,7 @@ export const submissionInputSchema = z.object({
   submitter_note: z.string().trim().max(1000).nullable(),
 })
 export type SubmissionInput = z.infer<typeof submissionInputSchema>
+export type SubmissionDraft = Omit<SubmissionInput, 'signals'> & { signals: Position | null }
 
 // The only identity this room's `auth` hook ever verifies is an editor, so
 // 'authed' here means "editor". Don't hand reader accounts a uid in this room.

@@ -86,7 +86,7 @@ CREATE TABLE submissions (
   decider_id TEXT NOT NULL REFERENCES deciders(id),
   origin TEXT NOT NULL CHECK (origin IN ('public', 'news_search')),
   kind TEXT NOT NULL,
-  signals TEXT NOT NULL,
+  signals TEXT,
   quote TEXT NOT NULL,
   source_url TEXT NOT NULL,
   source_title TEXT,

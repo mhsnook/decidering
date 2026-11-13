@@ -225,7 +225,10 @@ function Review({ submission }: { submission: Submission }) {
             <label className="label" htmlFor="signals">
               This item shows
             </label>
-            <select id="signals" name="signals" defaultValue={submission.signals} className="field">
+            <select id="signals" name="signals" required defaultValue={submission.signals ?? ''} className="field">
+              <option value="" disabled>
+                Choose…
+              </option>
               {POSITIONS.map((p) => (
                 <option key={p} value={p}>
                   {SIGNAL_LABEL[p]}
@@ -245,7 +248,10 @@ function Review({ submission }: { submission: Submission }) {
               <label className="label" htmlFor="position">
                 Position after approving
               </label>
-              <select id="position" name="position" defaultValue={stance?.position ?? submission.signals} className="field">
+              <select id="position" name="position" required defaultValue={stance?.position ?? submission.signals ?? ''} className="field">
+                <option value="" disabled>
+                  Choose…
+                </option>
                 {POSITIONS.map((p) => (
                   <option key={p} value={p}>
                     {standingLabel(p, question)}
@@ -302,8 +308,8 @@ function NewsSearchButton() {
     setState('running')
     try {
       const res = await editorFetch('/api/editor/news-search', { method: 'POST' })
-      const report = (await res.json()) as { skipped?: string; questions: { queued: number }[] }
-      setState(report.skipped ?? `${report.questions.reduce((n, q) => n + q.queued, 0)} new items queued`)
+      const report = (await res.json()) as { error?: string; questions: { queued: number }[] }
+      setState(report.error ?? `${report.questions.reduce((n, q) => n + q.queued, 0)} new leads queued`)
     } catch {
       setState('News search failed')
     }
