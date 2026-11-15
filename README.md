@@ -46,13 +46,18 @@ Seeding writes rows directly and skips the sync log, so seed before readers are 
 
 ## Deploy
 
+Production deploys from git. Cloudflare Workers Builds watches the `main` branch of this repo, runs the Vite build, and deploys the Worker. Migrations do not run in that build, so apply them by hand before pushing a schema change.
+
+One-time setup, from a machine with `wrangler login`:
+
 ```sh
 wrangler d1 create decidering          # put the id in wrangler.jsonc
 wrangler d1 migrations apply DB --remote
 pnpm seed:build && wrangler d1 execute DB --remote --file seed/out/seed.sql
 wrangler secret put EDITOR_TOKEN
-pnpm run deploy
 ```
+
+Then connect the repo in the Cloudflare dashboard and push to `main`. Secrets persist across deploys.
 
 The news search routes through the AI Gateway named `default` and pays from its credits, or from an Exa key stored on the gateway.
 
