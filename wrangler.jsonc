@@ -12,8 +12,7 @@
     {
       "binding": "DB",
       "database_name": "decidering",
-      // replace after `wrangler d1 create decidering`
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "196b0b5b-2356-49fe-8915-4d49f3710260",
       "migrations_dir": "migrations"
     }
   ],
