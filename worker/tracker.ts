@@ -1,5 +1,5 @@
 import { PartyDbServer, D1Adapter, getTokenFromRequest, type PersistenceAdapter } from 'party-db/server'
-import { allCollections, type Submission, type SubmissionDraft } from '../shared/schema.ts'
+import { allCollections, stanceId, type Comment, type CommentInput, type Submission, type SubmissionDraft } from '../shared/schema.ts'
 import { isEditorToken } from './editor.ts'
 
 const MAX_PENDING = 500
@@ -45,5 +45,23 @@ export class Tracker extends PartyDbServer<Env> {
       if (message.includes('FOREIGN KEY')) return { ok: false, status: 400, error: 'Unknown question or decider.' }
       throw e
     }
+  }
+
+  async comment(input: CommentInput): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+    const known = await this.env.DB.prepare(
+      `SELECT 1 FROM questions q, deciders d WHERE q.id = ? AND d.id = ?`,
+    )
+      .bind(input.question_id, input.decider_id)
+      .first()
+    if (!known) return { ok: false, status: 400, error: 'Unknown question or decider.' }
+    const row: Comment = {
+      id: crypto.randomUUID(),
+      thread_id: stanceId(input.question_id, input.decider_id),
+      author_name: input.author_name,
+      body: input.body,
+      created_at: new Date().toISOString(),
+    }
+    await this.commit([{ channel: 'comments', ops: [{ type: 'insert', value: row }] }])
+    return { ok: true }
   }
 }

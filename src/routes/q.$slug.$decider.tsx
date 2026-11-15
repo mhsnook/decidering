@@ -6,6 +6,7 @@ import { FootingTag, NotFound, StandingPill, Syncing } from '../components/bits.
 import { QuestionHeader } from '../components/QuestionHeader.tsx'
 import { EvidenceItem } from '../components/EvidenceList.tsx'
 import { SubmitEvidence } from '../components/SubmitEvidence.tsx'
+import { Discussion } from '../components/Discussion.tsx'
 import { formatDate } from '../lib/position.ts'
 
 export const Route = createFileRoute('/q/$slug/$decider')({ component: DeciderOnQuestion })
@@ -90,6 +91,10 @@ function DeciderOnQuestion() {
           <h2 className="mt-10 mb-1 text-xl font-semibold">Add to the record</h2>
           <p className="mb-4 text-sm text-muted">An editor reads every submission against its source before it appears here.</p>
           <SubmitEvidence question={question} decider={decider} />
+
+          <div className="mt-10">
+            <Discussion question={question} decider={decider} />
+          </div>
         </section>
 
         <aside className="space-y-6">

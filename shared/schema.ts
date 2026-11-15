@@ -130,6 +130,23 @@ export const submissionInputSchema = z.object({
 export type SubmissionInput = z.infer<typeof submissionInputSchema>
 export type SubmissionDraft = Omit<SubmissionInput, 'signals'> & { signals: Position | null }
 
+export const commentSchema = z.object({
+  id: z.string(),
+  thread_id: z.string(),
+  author_name: z.string(),
+  body: z.string(),
+  created_at: z.string(),
+})
+export type Comment = z.infer<typeof commentSchema>
+
+export const commentInputSchema = z.object({
+  question_id: z.string().min(1),
+  decider_id: z.string().min(1),
+  author_name: z.string().trim().min(1).max(60),
+  body: z.string().trim().min(1).max(2000),
+})
+export type CommentInput = z.infer<typeof commentInputSchema>
+
 // The only identity this room's `auth` hook ever verifies is an editor, so
 // 'authed' here means "editor". Don't hand reader accounts a uid in this room.
 const editorWrites = { read: 'public', insert: 'authed', update: 'authed', delete: 'authed' } as const
@@ -151,6 +168,17 @@ export const submissionsCollection = definePartyCollection({
   access: 'authed',
 })
 
-export const allCollections = [...publicCollections, submissionsCollection] as const
+// Sliced by thread, so a reader loads and hears only the threads they have open.
+// Readers post through the Worker, which stamps and validates the row; editors
+// may delete.
+export const commentsCollection = definePartyCollection({
+  name: 'comments',
+  key: 'id',
+  schema: commentSchema,
+  sliceBy: 'thread_id',
+  access: { read: 'public', delete: 'authed' },
+})
+
+export const allCollections = [...publicCollections, submissionsCollection, commentsCollection] as const
 
 export const stanceId = (questionId: string, deciderId: string) => `${questionId}:${deciderId}`
