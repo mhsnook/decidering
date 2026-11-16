@@ -13,9 +13,9 @@ const LABEL: Record<Position, string> = {
 }
 
 // On a formal-act question a stance records the act, so its absence is a known "no".
-export function standingLabel(standing: Standing, question: Pick<Question, 'kind'>): string {
+export function standingLabel(standing: Standing, question: Pick<Question, 'kind' | 'act_label'>): string {
   if (standing === 'unknown') return question.kind === 'formal_act' ? 'Has not' : 'Unknown'
-  if (question.kind === 'formal_act' && standing === 'support') return 'Signed on'
+  if (question.kind === 'formal_act' && standing === 'support') return question.act_label ?? 'Signed on'
   return LABEL[standing]
 }
 
@@ -35,6 +35,18 @@ export const STANDING_BG: Record<Standing, string> = {
   oppose: 'bg-oppose',
   unknown: 'bg-unknown',
 }
+
+export const STANDING_COLOR: Record<Standing, string> = {
+  support: 'var(--support)',
+  lean_support: 'var(--lean-support)',
+  mixed: 'var(--mixed)',
+  lean_oppose: 'var(--lean-oppose)',
+  oppose: 'var(--oppose)',
+  unknown: 'var(--unknown)',
+}
+
+// Left to right across a chamber: the yes side, the undecided middle, the no side.
+export const SPECTRUM: Standing[] = ['support', 'lean_support', 'mixed', 'unknown', 'lean_oppose', 'oppose']
 
 export const KIND_LABEL: Record<EvidenceKind, string> = {
   statement: 'Statement',

@@ -2,10 +2,14 @@ import { Link, createFileRoute } from '@tanstack/react-router'
 import { useMemo } from 'react'
 import type { Question } from '../../shared/schema.ts'
 import { NEEDS_ATTENTION } from '../../shared/standing.ts'
-import { useTracker, type SeatRow } from '../lib/tracker.tsx'
-import { STANDINGS, STANDING_BG, standingLabel, type Standing } from '../lib/position.ts'
-import { FootingTag, NotFound, Syncing, TallyBar, tally } from '../components/bits.tsx'
+import { isHeld, useTracker, type HeldSeat } from '../lib/tracker.tsx'
+import { SPECTRUM, STANDINGS, STANDING_BG, standingLabel, type Standing } from '../lib/position.ts'
+import { FootingTag, NotFound, StandingDot, Syncing, tally } from '../components/bits.tsx'
+import { Hemicycle } from '../components/Hemicycle.tsx'
 import { QuestionHeader } from '../components/QuestionHeader.tsx'
+
+// How many of a group to list before a reader has to ask for the rest.
+const PREVIEW = 12
 
 type BoardSearch = { q?: string; chamber?: string; standing?: Standing; thin?: boolean; contested?: boolean }
 
@@ -26,19 +30,22 @@ function Board() {
   const navigate = Route.useNavigate()
   const { tracker, isReady } = useTracker()
   const question = tracker.questionBySlug.get(slug)
-  const rows = useMemo(() => (question ? tracker.board(question).filter((r) => r.incumbent) : []), [tracker, question])
+  const rows = useMemo(() => (question ? tracker.board(question).filter(isHeld) : []), [tracker, question])
 
   if (!isReady) return <Syncing />
   if (!question) return <NotFound what="question" />
 
   const set = (patch: BoardSearch) => navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true })
+  const body = tracker.bodies.find((b) => b.id === question.body_id)
   const chambers = [...new Set(rows.map((r) => r.seat.chamber).filter((c) => c !== null))].sort()
+  const chamber = chambers.includes(search.chamber ?? '') ? search.chamber : undefined
   const hasChallengers = rows.some((r) => r.challengers.length > 0)
   const needle = search.q?.toLowerCase()
 
-  const visible = rows.filter((r) => {
-    const inc = r.incumbent!
-    if (search.chamber && r.seat.chamber !== search.chamber) return false
+  // Everything but the chamber, which decides which charts are drawn rather
+  // than which seats in them are lit.
+  const matches = (r: HeldSeat) => {
+    const inc = r.incumbent
     if (search.standing && inc.standing !== search.standing) return false
     if (search.thin && !NEEDS_ATTENTION.has(inc.footing)) return false
     if (search.contested && !r.challengers.some((c) => c.stance)) return false
@@ -47,20 +54,53 @@ function Board() {
       if (!haystack.includes(needle)) return false
     }
     return true
-  })
+  }
 
-  const scoped = search.chamber ? rows.filter((r) => r.seat.chamber === search.chamber) : rows
+  const scoped = chamber ? rows.filter((r) => r.seat.chamber === chamber) : rows
+  const visible = scoped.filter(matches)
+  const counts = tally(scoped.map((r) => r.incumbent.standing))
+  const charts = chambers.length > 0 ? chambers.filter((c) => !chamber || c === chamber) : [null]
   const groups = STANDINGS.map((standing) => ({
     standing,
-    rows: visible
-      .filter((r) => r.incumbent!.standing === standing)
-      .sort((a, b) => a.incumbent!.decider.sort_name.localeCompare(b.incumbent!.decider.sort_name)),
+    rows: visible.filter((r) => r.incumbent.standing === standing).sort((a, b) => a.incumbent.decider.sort_name.localeCompare(b.incumbent.decider.sort_name)),
   })).filter((g) => g.rows.length > 0)
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <QuestionHeader question={question} />
-      <TallyBar counts={tally(scoped.map((r) => r.incumbent!.standing))} question={question} />
+
+      <div className={`grid gap-4 ${charts.length > 1 ? 'lg:grid-cols-2' : ''}`}>
+        {charts.map((c) => (
+          <Hemicycle
+            key={c ?? 'all'}
+            title={c ?? body?.name ?? 'Seats'}
+            rows={c ? rows.filter((r) => r.seat.chamber === c) : rows}
+            question={question}
+            isLit={matches}
+          />
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {SPECTRUM.filter((s) => counts[s] > 0).map((s) => {
+          const on = search.standing === s
+          return (
+            <button
+              key={s}
+              type="button"
+              aria-pressed={on}
+              onClick={() => set({ standing: on ? undefined : s })}
+              className={`min-w-32 flex-1 rounded-lg border px-4 py-3 text-left transition-colors ${on ? 'border-ink bg-surface' : 'border-line hover:border-ink'}`}
+            >
+              <span className="flex items-center gap-1.5 text-sm text-muted">
+                <StandingDot standing={s} />
+                {standingLabel(s, question)}
+              </span>
+              <span className="mt-1 block font-display text-3xl leading-none font-semibold tabular-nums">{counts[s]}</span>
+            </button>
+          )
+        })}
+      </div>
 
       <div className="flex flex-wrap items-center gap-2 border-y border-line py-3">
         <input
@@ -72,26 +112,20 @@ function Board() {
           onChange={(e) => set({ q: e.target.value || undefined })}
         />
         {chambers.length > 1 && (
-          <select className="field w-auto" aria-label="Chamber" value={search.chamber ?? ''} onChange={(e) => set({ chamber: e.target.value || undefined })}>
-            <option value="">All chambers</option>
-            {chambers.map((c) => (
-              <option key={c}>{c}</option>
+          <div className="flex" role="group" aria-label="Chamber">
+            {[undefined, ...chambers].map((c) => (
+              <button
+                key={c ?? 'all'}
+                type="button"
+                aria-pressed={chamber === c}
+                onClick={() => set({ chamber: c })}
+                className={`btn -ml-px rounded-none first:ml-0 first:rounded-l-md last:rounded-r-md ${chamber === c ? 'btn-primary relative' : ''}`}
+              >
+                {c ?? 'Both'}
+              </button>
             ))}
-          </select>
+          </div>
         )}
-        <select
-          className="field w-auto"
-          aria-label="Position"
-          value={search.standing ?? ''}
-          onChange={(e) => set({ standing: (e.target.value || undefined) as Standing | undefined })}
-        >
-          <option value="">Any position</option>
-          {STANDINGS.map((s) => (
-            <option key={s} value={s}>
-              {standingLabel(s, question)}
-            </option>
-          ))}
-        </select>
         <Toggle on={!!search.thin} onChange={(thin) => set({ thin: thin || undefined })}>
           Thin evidence
         </Toggle>
@@ -101,25 +135,33 @@ function Board() {
           </Toggle>
         )}
         <span className="ml-auto text-sm text-muted tabular-nums">
-          {visible.length} of {rows.length}
+          {visible.length} of {scoped.length}
         </span>
       </div>
 
       {groups.length === 0 && <p className="py-8 text-center text-muted">Nobody matches those filters.</p>}
-      {groups.map((group) => (
-        <section key={group.standing}>
-          <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold">
-            <span className={`size-3 rounded-full ${STANDING_BG[group.standing]}`} />
-            {standingLabel(group.standing, question)}
-            <span className="font-sans text-sm font-normal text-muted tabular-nums">{group.rows.length}</span>
-          </h2>
-          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {group.rows.map((row) => (
-              <SeatCard key={row.seat.id} row={row} question={question} />
-            ))}
-          </ul>
-        </section>
-      ))}
+      {groups.map((group) => {
+        const shown = search.standing || needle ? group.rows : group.rows.slice(0, PREVIEW)
+        return (
+          <section key={group.standing}>
+            <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold">
+              <StandingDot standing={group.standing} />
+              {standingLabel(group.standing, question)}
+              <span className="font-sans text-sm font-normal text-muted tabular-nums">{group.rows.length}</span>
+            </h2>
+            <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {shown.map((row) => (
+                <SeatCard key={row.seat.id} row={row} question={question} />
+              ))}
+            </ul>
+            {shown.length < group.rows.length && (
+              <button type="button" className="mt-3 text-sm text-accent underline underline-offset-2" onClick={() => set({ standing: group.standing })}>
+                Show all {group.rows.length}
+              </button>
+            )}
+          </section>
+        )
+      })}
     </div>
   )
 }
@@ -132,8 +174,8 @@ function Toggle({ on, onChange, children }: { on: boolean; onChange: (on: boolea
   )
 }
 
-function SeatCard({ row, question }: { row: SeatRow; question: Question }) {
-  const inc = row.incumbent!
+function SeatCard({ row, question }: { row: HeldSeat; question: Question }) {
+  const inc = row.incumbent
   return (
     <li className="relative overflow-hidden rounded-lg border border-line bg-surface">
       <span className={`absolute inset-y-0 left-0 w-1.5 ${STANDING_BG[inc.standing]}`} />
