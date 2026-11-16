@@ -67,6 +67,9 @@ export const questionSchema = z.object({
   chamber: z.string().nullable(),
   is_hot: z.boolean(),
   sort: z.number(),
+  // Seats needed to carry the question. null means a simple majority.
+  threshold: z.number().int().positive().nullable(),
+  act_label: z.string().nullable(),
 })
 export type Question = z.infer<typeof questionSchema>
 

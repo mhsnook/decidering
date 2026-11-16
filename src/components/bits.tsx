@@ -3,13 +3,18 @@ import type { Question } from '../../shared/schema.ts'
 import { FOOTING_HINT, FOOTING_LABEL, type Footing } from '../../shared/standing.ts'
 import { STANDINGS, STANDING_BG, standingLabel, type Standing } from '../lib/position.ts'
 
-export function StandingPill({ standing, question }: { standing: Standing; question: Pick<Question, 'kind'> }) {
+export function StandingPill({ standing, question }: { standing: Standing; question: Pick<Question, 'kind' | 'act_label'> }) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface py-0.5 pr-2.5 pl-1.5 text-xs font-medium whitespace-nowrap">
       <span className={`size-2.5 rounded-full ${STANDING_BG[standing]}`} />
       {standingLabel(standing, question)}
     </span>
   )
+}
+
+// "Nothing on file" is drawn as an empty ring, here and in the seat charts.
+export function StandingDot({ standing }: { standing: Standing }) {
+  return <span className={`size-2.5 shrink-0 rounded-full ${standing === 'unknown' ? 'border-2 border-unknown' : STANDING_BG[standing]}`} />
 }
 
 const FOOTING_STYLE: Record<Footing, string> = {
@@ -29,7 +34,7 @@ export function FootingTag({ footing }: { footing: Footing }) {
   )
 }
 
-export function TallyBar({ counts, question }: { counts: Record<Standing, number>; question: Pick<Question, 'kind'> }) {
+export function TallyBar({ counts, question }: { counts: Record<Standing, number>; question: Pick<Question, 'kind' | 'act_label'> }) {
   const total = STANDINGS.reduce((n, s) => n + counts[s], 0)
   const shown = STANDINGS.filter((s) => counts[s] > 0)
   return (

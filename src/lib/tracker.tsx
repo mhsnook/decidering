@@ -34,6 +34,9 @@ export type SeatRow = {
   challengers: Contender[]
 }
 
+export type HeldSeat = SeatRow & { incumbent: Contender }
+export const isHeld = (row: SeatRow): row is HeldSeat => row.incumbent !== undefined
+
 function buildTracker(c: {
   bodies: Body[]
   deciders: Decider[]
