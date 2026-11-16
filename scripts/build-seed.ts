@@ -1,13 +1,21 @@
-// Turns seed/data/*.json into seed/out/seed.sql. Seeding writes rows directly,
-// which skips the sync log: run it before anyone is connected (a page reload
-// picks the rows up from the snapshot).
+// Turns seed/data/*.json into seed/out/seed.sql, plus one file per data set so a
+// new one can be added to a live database without replaying the others over
+// rows editors have since changed. Seeding writes rows directly, which skips the
+// sync log: run it before anyone is connected (a page reload picks the rows up
+// from the snapshot).
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 
 const read = (name: string) => JSON.parse(readFileSync(new URL(`../seed/data/${name}`, import.meta.url), 'utf8'))
 const congress = read('us-congress.json')
+const era = read('us-states-era.json')
 const demo = read('demo.json')
 
-const lines: string[] = []
+const dataSets = new Map<string, string[]>()
+let lines: string[] = []
+function dataSet(name: string) {
+  lines = []
+  dataSets.set(name, lines)
+}
 const sql = (v: unknown) =>
   v === null || v === undefined ? 'NULL' : typeof v === 'number' ? String(v) : typeof v === 'boolean' ? (v ? '1' : '0') : `'${String(v).replaceAll("'", "''")}'`
 function insert(table: string, row: Record<string, unknown>) {
@@ -30,6 +38,7 @@ function slugify(name: string): string {
 
 // ---- US Congress: real roster, real cosponsor records ----------------------
 
+dataSet('us-congress')
 const US = 'us-congress'
 insert('bodies', {
   id: US,
@@ -126,8 +135,84 @@ congress.bills.forEach((bill: any, i: number) => {
   }
 })
 
+// ---- The states and the Equal Rights Amendment: the National Archives' list --
+
+dataSet('us-states')
+const STATES = 'us-states'
+insert('bodies', {
+  id: STATES,
+  slug: STATES,
+  name: 'State legislatures',
+  jurisdiction: 'United States',
+  description: `The 50 state legislatures, which ratify amendments to the U.S. Constitution. Ratification records from the National Archives as of ${era.as_of}.`,
+  is_demo: false,
+  sort: 1,
+})
+
+const ratified = era.states.filter((s: any) => s.ratified_on)
+const late = ratified.filter((s: any) => s.ratified_on > era.deadline)
+const rescinded = ratified.filter((s: any) => s.rescinded_on)
+const longDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
+insert('questions', {
+  id: 'era',
+  slug: 'equal-rights-amendment',
+  body_id: STATES,
+  parent_id: null,
+  kind: 'formal_act',
+  title: 'Has the state ratified the Equal Rights Amendment?',
+  short_title: 'Equal Rights Amendment',
+  description: `Congress sent the amendment to the states in 1972. It needs ${era.threshold} of the ${era.states.length} to ratify. By the deadline, which Congress extended to ${longDate(era.deadline)}, ${ratified.length - late.length} had. Another ${late.length} ratified after it, and ${rescinded.length} of the first ${ratified.length - late.length} have voted to rescind. Whether a late ratification counts, and whether a state can take one back, are unsettled.`,
+  reference_url: null,
+  chamber: null,
+  is_hot: false,
+  sort: 0,
+  threshold: era.threshold,
+  act_label: 'Ratified',
+})
+
+for (const state of era.states) {
+  const id = `us-state-${state.code}`
+  const seatId = `${STATES}:${state.code}`
+  insert('deciders', { id, slug: slugify(state.name), name: state.name, sort_name: state.name, external_id: state.code, url: null })
+  insert('seats', { id: seatId, body_id: STATES, chamber: null, region: state.code, label: state.code, is_voting: true, next_election_on: null })
+  insert('roles', { id: `${seatId}:${id}`, seat_id: seatId, decider_id: id, kind: 'incumbent', contest: null, affiliation: null })
+  if (!state.ratified_on) continue
+
+  const isLate = state.ratified_on > era.deadline
+  const year = (iso: string) => iso.slice(0, 4)
+  const act = (suffix: string, on: string, signals: string, quote: string) =>
+    insert('evidence', {
+      id: `era:${state.code}:${suffix}`,
+      question_id: 'era',
+      decider_id: id,
+      kind: 'formal_act',
+      signals,
+      quote,
+      source_url: era.source.url,
+      source_title: era.source.title,
+      occurred_on: on,
+      submission_id: null,
+      created_at: `${on}T00:00:00.000Z`,
+    })
+  act('ratified', state.ratified_on, 'support', `Ratified the Equal Rights Amendment${isLate ? ', after the deadline set by Congress had passed' : ''}.`)
+  if (state.rescinded_on) {
+    act('rescinded', state.rescinded_on, 'oppose', 'Voted to rescind its ratification of the Equal Rights Amendment. The National Archives records this as a purported rescission.')
+  }
+  insert('stances', {
+    id: `era:${id}`,
+    question_id: 'era',
+    decider_id: id,
+    position: state.rescinded_on ? 'mixed' : 'support',
+    summary: state.rescinded_on
+      ? `Ratified in ${year(state.ratified_on)} and voted to rescind in ${year(state.rescinded_on)}. Whether a state can take back a ratification is unsettled.`
+      : `Ratified in ${year(state.ratified_on)}${isLate ? `, after the ${year(era.deadline)} deadline` : ''}.`,
+    updated_at: `${era.as_of}T00:00:00.000Z`,
+  })
+}
+
 // ---- Demo body: fictional, exercises challengers and every footing ---------
 
+dataSet('demo')
 const D = demo.body.id
 insert('bodies', { ...demo.body, slug: D, is_demo: true, sort: 1 })
 const demoIds = new Map<string, string>()
@@ -185,5 +270,9 @@ demo.evidence.forEach(([q, name, kind, signals, on, quote, title]: string[], i: 
 })
 
 mkdirSync(new URL('../seed/out/', import.meta.url), { recursive: true })
-writeFileSync(new URL('../seed/out/seed.sql', import.meta.url), lines.join('\n') + '\n')
-console.log(`${lines.length} rows written to seed/out/seed.sql${skipped ? ` (${skipped} signers no longer in the roster were skipped)` : ''}`)
+const write = (name: string, rows: string[]) => writeFileSync(new URL(`../seed/out/${name}.sql`, import.meta.url), rows.join('\n') + '\n')
+for (const [name, rows] of dataSets) write(name, rows)
+const all = [...dataSets.values()].flat()
+write('seed', all)
+console.log(`${all.length} rows written to seed/out/seed.sql${skipped ? ` (${skipped} signers no longer in the roster were skipped)` : ''}`)
+for (const [name, rows] of dataSets) console.log(`  ${rows.length} of them also in seed/out/${name}.sql`)

@@ -41,9 +41,17 @@ The news search needs the remote AI binding, which plain `pnpm dev` leaves off. 
 
 `seed/data/us-congress.json` holds the current roster (from [congress-legislators](https://github.com/unitedstates/congress-legislators)) and the sponsor and cosponsor records for H.R. 3069 and S. 1506 (from the Congress.gov API). `pnpm seed:fetch` refreshes it; set `CONGRESS_API_KEY` to avoid the shared rate limit.
 
+`seed/data/us-states-era.json` holds each state's action on the Equal Rights Amendment, transcribed from the National Archives' [list of state ratification actions](https://www.archives.gov/files/foia/pdf/era-list-of-state-ratification-actions-03-24-2020.pdf) of March 24, 2020. A state that ratified and later voted to rescind is recorded as mixed, with both acts on its record.
+
 `seed/data/demo.json` is a fictional city council that shows challengers and every kind of footing. It is labelled as demo data wherever it appears.
 
 Seeding writes rows directly and skips the sync log, so seed before readers are connected.
+
+`pnpm seed:build` also writes one file per data set (`seed/out/us-congress.sql`, `us-states.sql`, `demo.sql`). Seeding replaces rows, so to add a data set to a database editors have been working in, run only its file:
+
+```sh
+pnpm seed:build && wrangler d1 execute DB --remote --file seed/out/us-states.sql
+```
 
 ## Deploy
 
