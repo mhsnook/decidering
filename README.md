@@ -10,7 +10,7 @@ The first data set is the United States Congress and Medicare for All. Nothing i
 - **Questions and measures.** A question asks where someone stands ("Do they support Medicare for All?"). A measure is a sub-question about one recordable act ("Have they cosponsored H.R. 3069?"). Evidence on a measure also counts toward its parent question.
 - **Evidence and footing.** Every position links to dated evidence. Footing is derived from it: on the record (a vote or formal act), fresh, established, sparse, stale, or unknown. The rules live in `shared/standing.ts`.
 - **Review queue.** Readers send in evidence from any person's page. A scheduled news search adds leads for questions marked as in the news. Nothing is published until an editor approves it at `/editor`.
-- **Discussion.** Each person-and-question page has a comment thread. A reader loads and hears only the threads they have open. Editors can remove comments.
+- **Discussion.** Each person-and-question page has a comment thread. A reader loads and hears only the threads they have open. Comments post under a username the reader picks the first time they post. Editors can remove comments.
 
 ## Stack
 
