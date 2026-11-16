@@ -1,0 +1,14 @@
+// Only for `wrangler d1` commands against the database Previews share (see the
+// `previews` block in wrangler.jsonc). Nothing deploys from this file.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "decidering",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "decidering-preview",
+      "database_id": "08ea785b-bbd6-45c2-925b-3bf403e597df",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

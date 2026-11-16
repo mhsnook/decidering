@@ -55,7 +55,7 @@ pnpm seed:build && wrangler d1 execute DB --remote --file seed/out/us-states.sql
 
 ## Deploy
 
-Production deploys from git. Cloudflare Workers Builds watches the `main` branch of this repo, runs the Vite build, and deploys the Worker. Migrations do not run in that build, so apply them by hand before pushing a schema change.
+Production deploys from git. Cloudflare Workers Builds watches the `main` branch of this repo, runs the Vite build, and deploys the Worker. Every other branch gets a [Preview](https://developers.cloudflare.com/workers/previews/) from `wrangler preview`. Migrations do not run in either build, so apply them by hand before pushing a schema change.
 
 One-time setup, from a machine with `wrangler login`:
 
@@ -67,6 +67,20 @@ wrangler secret put EDITOR_TOKEN
 ```
 
 Then connect the repo in the Cloudflare dashboard and push to `main`. Secrets persist across deploys.
+
+### Previews
+
+A Preview takes only the bindings in the `previews` block of `wrangler.jsonc`. All Previews share one database, `decidering-preview`, so nothing posted or approved on a preview URL reaches production. Each Preview gets its own sync room.
+
+Set the preview database up once, and migrate it again whenever the schema changes:
+
+```sh
+pnpm db:migrate:preview
+pnpm db:seed:preview
+wrangler preview base-config secret put EDITOR_TOKEN
+```
+
+Without the secret a Preview still runs, but nobody can sign in at `/editor`. Cron Triggers only fire in production, so the news search runs on a Preview only when an editor starts it.
 
 The news search routes through the AI Gateway named `default` and pays from its credits, or from an Exa key stored on the gateway.
 

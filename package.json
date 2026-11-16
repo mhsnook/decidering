@@ -15,6 +15,8 @@
     "seed:build": "node scripts/build-seed.ts",
     "db:seed": "pnpm seed:build && wrangler d1 execute DB --local --file seed/out/seed.sql",
     "db:reset": "rm -rf .wrangler/state && pnpm db:migrate && pnpm db:seed",
+    "db:migrate:preview": "wrangler d1 migrations apply DB --remote --config wrangler.preview-migrations.jsonc",
+    "db:seed:preview": "pnpm seed:build && wrangler d1 execute DB --remote --config wrangler.preview-migrations.jsonc --file seed/out/seed.sql",
     "seed:fetch": "node scripts/fetch-congress.ts"
   },
   "pnpm": {

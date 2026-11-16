@@ -23,5 +23,21 @@
   "ai": { "binding": "AI" },
   "ratelimits": [{ "name": "POST_LIMITER", "namespace_id": "1001", "simple": { "limit": 6, "period": 60 } }],
   "triggers": { "crons": ["17 */6 * * *"] },
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+  // Previews inherit none of the bindings above. One the Worker reads from `env`
+  // and that is missing here is undefined at runtime, not a build error.
+  "previews": {
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_name": "decidering-preview",
+        "database_id": "08ea785b-bbd6-45c2-925b-3bf403e597df"
+      }
+    ],
+    "durable_objects": {
+      "bindings": [{ "name": "Tracker", "class_name": "Tracker" }]
+    },
+    "ai": { "binding": "AI" },
+    "ratelimits": [{ "name": "POST_LIMITER", "namespace_id": "1002", "simple": { "limit": 6, "period": 60 } }]
+  }
 }
