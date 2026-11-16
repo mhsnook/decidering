@@ -8,7 +8,7 @@ export const Route = createFileRoute('/')({ component: Home })
 function Home() {
   const { tracker, isReady } = useTracker()
   if (!isReady) return <Syncing />
-  const bodies = [...tracker.bodies].sort((a, b) => a.sort - b.sort)
+  const bodies = [...tracker.bodies].sort((a, b) => Number(a.is_demo) - Number(b.is_demo) || a.sort - b.sort)
 
   return (
     <div className="space-y-12">

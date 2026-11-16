@@ -42,7 +42,8 @@ function DeciderOnQuestion() {
           <div>
             <h2 className="text-2xl font-semibold">{decider.name}</h2>
             <p className="text-sm text-muted">
-              {me.role.kind === 'incumbent' ? 'Holds' : `Running in the ${me.role.contest ?? ''} for`} {seat.label}
+              {me.role.kind === 'challenger' && `Running in the ${me.role.contest ?? ''} for `}
+              {seat.label}
               {seat.chamber && `, ${seat.chamber}`}
               {me.role.affiliation && ` · ${me.role.affiliation}`}
               {seat.next_election_on && ` · next election ${formatDate(seat.next_election_on)}`}
