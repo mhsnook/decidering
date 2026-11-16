@@ -4,7 +4,7 @@ import { KIND_LABEL, SIGNAL_LABEL } from '../lib/position.ts'
 
 type State = { status: 'idle' | 'sending' } | { status: 'sent'; duplicate: boolean } | { status: 'error'; message: string }
 
-export function SubmitEvidence({ question, decider }: { question: Question; decider: Decider }) {
+export function SubmitEvidence({ question, decider, onDone }: { question: Question; decider: Decider; onDone: () => void }) {
   const [state, setState] = useState<State>({ status: 'idle' })
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
@@ -43,9 +43,21 @@ export function SubmitEvidence({ question, decider }: { question: Question; deci
     return (
       <div className="rounded-lg border border-support/50 bg-support/10 p-4 text-sm">
         <p className="font-semibold">{state.duplicate ? 'We already have that source in the queue.' : 'Thanks. An editor will check it against the source.'}</p>
-        <button type="button" className="mt-2 text-accent underline underline-offset-2" onClick={() => setState({ status: 'idle' })}>
-          Send another
-        </button>
+        <div className="mt-3 flex gap-2">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              setState({ status: 'idle' })
+              onDone()
+            }}
+          >
+            Done
+          </button>
+          <button type="button" className="btn" onClick={() => setState({ status: 'idle' })}>
+            Send another
+          </button>
+        </div>
       </div>
     )
   }
@@ -115,9 +127,14 @@ export function SubmitEvidence({ question, decider }: { question: Question; deci
         </label>
       </div>
       {state.status === 'error' && <p className="text-sm text-oppose">{state.message}</p>}
-      <button type="submit" className="btn btn-primary" disabled={state.status === 'sending'}>
-        {state.status === 'sending' ? 'Sending…' : 'Send for review'}
-      </button>
+      <div className="flex gap-2">
+        <button type="submit" className="btn btn-primary" disabled={state.status === 'sending'}>
+          {state.status === 'sending' ? 'Sending…' : 'Send for review'}
+        </button>
+        <button type="button" className="btn" onClick={onDone}>
+          Cancel
+        </button>
+      </div>
     </form>
   )
 }

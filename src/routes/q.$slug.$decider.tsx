@@ -1,4 +1,5 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
+import { useState } from 'react'
 import { FOOTING_HINT } from '../../shared/standing.ts'
 import { stanceId } from '../../shared/schema.ts'
 import { useTracker } from '../lib/tracker.tsx'
@@ -7,6 +8,7 @@ import { QuestionHeader } from '../components/QuestionHeader.tsx'
 import { EvidenceItem } from '../components/EvidenceList.tsx'
 import { SubmitEvidence } from '../components/SubmitEvidence.tsx'
 import { Discussion } from '../components/Discussion.tsx'
+import { Modal } from '../components/Modal.tsx'
 import { formatDate } from '../lib/position.ts'
 
 export const Route = createFileRoute('/q/$slug/$decider')({ component: DeciderOnQuestion })
@@ -14,6 +16,7 @@ export const Route = createFileRoute('/q/$slug/$decider')({ component: DeciderOn
 function DeciderOnQuestion() {
   const { slug, decider: deciderSlug } = Route.useParams()
   const { tracker, isReady } = useTracker()
+  const [adding, setAdding] = useState(false)
   if (!isReady) return <Syncing />
 
   const question = tracker.questionBySlug.get(slug)
@@ -75,10 +78,15 @@ function DeciderOnQuestion() {
 
       <div className="grid gap-8 lg:grid-cols-[1fr_20rem]">
         <section>
-          <h2 className="mb-3 text-xl font-semibold">The record</h2>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xl font-semibold">The record</h2>
+            <button type="button" className="btn" onClick={() => setAdding(true)}>
+              Add to the record
+            </button>
+          </div>
           {me.evidence.length === 0 ? (
             <p className="rounded-lg border border-dashed border-line p-6 text-center text-muted">
-              Nothing on file. If {decider.name} has spoken about this, send it in below.
+              Nothing on file. If {decider.name} has spoken about this, add it to the record.
             </p>
           ) : (
             <ol className="space-y-3">
@@ -87,10 +95,15 @@ function DeciderOnQuestion() {
               ))}
             </ol>
           )}
-
-          <h2 className="mt-10 mb-1 text-xl font-semibold">Add to the record</h2>
-          <p className="mb-4 text-sm text-muted">An editor reads every submission against its source before it appears here.</p>
-          <SubmitEvidence question={question} decider={decider} />
+          <Modal
+            open={adding}
+            onClose={() => setAdding(false)}
+            title="Add to the record"
+            description="An editor reads every submission against its source before it appears here."
+            keepMounted
+          >
+            <SubmitEvidence question={question} decider={decider} onDone={() => setAdding(false)} />
+          </Modal>
 
           <div className="mt-10">
             <Discussion question={question} decider={decider} />
