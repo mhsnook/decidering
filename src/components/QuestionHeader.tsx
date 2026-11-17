@@ -9,7 +9,7 @@ export function QuestionHeader({ question, deciderSlug }: { question: Question; 
   const { tracker } = useTracker()
   const body = tracker.bodies.find((b) => b.id === question.body_id)
   const root = question.parent_id ? (tracker.questionById.get(question.parent_id) ?? question) : question
-  const family = [root, ...(tracker.childrenOf.get(root.id) ?? [])]
+  const family = [root, ...(tracker.measuresOf.get(root.id) ?? [])]
 
   return (
     <header className="space-y-3">

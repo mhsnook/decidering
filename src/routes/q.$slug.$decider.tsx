@@ -5,7 +5,7 @@ import { stanceId } from '../../shared/schema.ts'
 import { useTracker } from '../lib/tracker.tsx'
 import { FootingTag, NotFound, StandingPill, Syncing } from '../components/bits.tsx'
 import { QuestionHeader } from '../components/QuestionHeader.tsx'
-import { EvidenceItem } from '../components/EvidenceList.tsx'
+import { RecordItem } from '../components/RecordItem.tsx'
 import { SubmitEvidence } from '../components/SubmitEvidence.tsx'
 import { Discussion } from '../components/Discussion.tsx'
 import { Modal } from '../components/Modal.tsx'
@@ -21,12 +21,12 @@ function DeciderOnQuestion() {
 
   const question = tracker.questionBySlug.get(slug)
   const decider = tracker.deciderBySlug.get(deciderSlug)
-  const role = decider && question && (tracker.rolesByDecider.get(decider.id) ?? []).find((r) => tracker.seatById.get(r.seat_id)?.body_id === question.body_id)
+  const role = decider && question && tracker.roleIn(question, decider.id)
   const seat = role && tracker.seatById.get(role.seat_id)
   const me = question && role && tracker.contender(question, role)
   if (!question || !decider || !seat || !me) return <NotFound what="record" />
 
-  const measures = (tracker.childrenOf.get(question.id) ?? []).filter((m) => !m.chamber || m.chamber === seat.chamber)
+  const measures = (tracker.measuresOf.get(question.id) ?? []).filter((m) => !m.chamber || m.chamber === seat.chamber)
   const rivals = (tracker.rolesBySeat.get(seat.id) ?? [])
     .filter((r) => r.decider_id !== decider.id)
     .map((r) => tracker.contender(question, r))
@@ -85,14 +85,14 @@ function DeciderOnQuestion() {
               Add to the record
             </button>
           </div>
-          {me.evidence.length === 0 ? (
+          {me.record.length === 0 ? (
             <p className="rounded-lg border border-dashed border-line p-6 text-center text-muted">
               Nothing on file. If {decider.name} has spoken about this, add it to the record.
             </p>
           ) : (
             <ol className="space-y-3">
-              {me.evidence.map((e) => (
-                <EvidenceItem key={e.id} evidence={e} question={question} />
+              {me.record.map((entry) => (
+                <RecordItem key={entry.reading.id} entry={entry} question={question} />
               ))}
             </ol>
           )}

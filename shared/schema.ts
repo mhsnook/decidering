@@ -5,9 +5,11 @@ export const POSITIONS = ['support', 'lean_support', 'mixed', 'lean_oppose', 'op
 export const positionSchema = z.enum(POSITIONS)
 export type Position = z.infer<typeof positionSchema>
 
-export const EVIDENCE_KINDS = ['statement', 'formal_act', 'vote', 'platform', 'interview', 'social'] as const
-export const evidenceKindSchema = z.enum(EVIDENCE_KINDS)
-export type EvidenceKind = z.infer<typeof evidenceKindSchema>
+export const ACT_KINDS = ['statement', 'formal_act', 'vote', 'platform', 'interview', 'social'] as const
+export const actKindSchema = z.enum(ACT_KINDS)
+export type ActKind = z.infer<typeof actKindSchema>
+
+export const SOURCE_KINDS = ['article', 'press_release', 'official_record', 'transcript', 'social_post'] as const
 
 export const bodySchema = z.object({
   id: z.string(),
@@ -70,8 +72,25 @@ export const questionSchema = z.object({
   // Seats needed to carry the question. null means a simple majority.
   threshold: z.number().int().positive().nullable(),
   act_label: z.string().nullable(),
+  status: z.enum(['open', 'resolved', 'lapsed']),
+  closed_on: z.string().nullable(),
+  closed_note: z.string().nullable(),
+  // A supporting reading here also writes a supporting reading on the parent,
+  // as cosponsoring a bill is support for its policy. Without it, a reading on
+  // a sub-question says nothing about the parent.
+  implies_parent_support: z.boolean(),
 })
 export type Question = z.infer<typeof questionSchema>
+
+// A question with rows here is an ask of those people only. One without
+// applies to every seat in its body or chamber.
+export const questionDeciderSchema = z.object({
+  id: z.string(),
+  question_id: z.string(),
+  decider_id: z.string(),
+  role_label: z.string().nullable(),
+})
+export type QuestionDecider = z.infer<typeof questionDeciderSchema>
 
 export const stanceSchema = z.object({
   id: z.string(),
@@ -83,55 +102,122 @@ export const stanceSchema = z.object({
 })
 export type Stance = z.infer<typeof stanceSchema>
 
-export const evidenceSchema = z.object({
+export const sourceSchema = z.object({
   id: z.string(),
-  question_id: z.string(),
-  decider_id: z.string(),
-  kind: evidenceKindSchema,
-  signals: positionSchema,
-  quote: z.string(),
-  source_url: z.string(),
-  source_title: z.string().nullable(),
-  occurred_on: z.string(),
-  submission_id: z.string().nullable(),
+  // null for a document that reached us without a public address
+  url: z.string().nullable(),
+  title: z.string().nullable(),
+  publisher: z.string().nullable(),
+  published_on: z.string().nullable(),
+  kind: z.enum(SOURCE_KINDS).nullable(),
+  archive_url: z.string().nullable(),
+  stored_copy: z.string().nullable(),
   created_at: z.string(),
 })
-export type Evidence = z.infer<typeof evidenceSchema>
+export type Source = z.infer<typeof sourceSchema>
 
-export const submissionSchema = z.object({
+export const actSchema = z.object({
   id: z.string(),
-  question_id: z.string(),
   decider_id: z.string(),
-  origin: z.enum(['public', 'news_search']),
-  kind: evidenceKindSchema,
-  // null on a news-search lead: a search hit names a person, not a position.
-  signals: positionSchema.nullable(),
-  quote: z.string(),
-  source_url: z.string(),
-  source_title: z.string().nullable(),
-  occurred_on: z.string().nullable(),
-  submitter_note: z.string().nullable(),
-  status: z.enum(['pending', 'approved', 'rejected']),
-  review_note: z.string().nullable(),
+  kind: actKindSchema,
+  occurred_on: z.string(),
+  body: z.string(),
+  // The record of the act itself, as opposed to a source that reports it.
+  primary_source_id: z.string().nullable(),
+  created_at: z.string(),
+})
+export type Act = z.infer<typeof actSchema>
+
+export const reportSchema = z.object({
+  id: z.string(),
+  source_id: z.string(),
+  act_id: z.string(),
+  excerpt: z.string().nullable(),
+  created_at: z.string(),
+})
+export type Report = z.infer<typeof reportSchema>
+
+export const readingSchema = z.object({
+  id: z.string(),
+  act_id: z.string(),
+  question_id: z.string(),
+  position: positionSchema,
+  // Set on a reading written because a sub-question implies support on this one.
+  via_question_id: z.string().nullable(),
+  created_at: z.string(),
+})
+export type Reading = z.infer<typeof readingSchema>
+
+export const PROPOSAL_ORIGINS = ['reader', 'news_search', 'partner', 'model'] as const
+
+export const proposalSchema = z.object({
+  id: z.string(),
+  source_id: z.string(),
+  origin: z.enum(PROPOSAL_ORIGINS),
+  submitted_by: z.string().nullable(),
+  status: z.enum(['pending', 'reviewed']),
   created_at: z.string(),
   reviewed_at: z.string().nullable(),
 })
-export type Submission = z.infer<typeof submissionSchema>
+export type Proposal = z.infer<typeof proposalSchema>
 
-// What the public form may send. The server fills in the rest.
-export const submissionInputSchema = z.object({
+export const proposalItemSchema = z.object({
+  id: z.string(),
+  proposal_id: z.string(),
+  sort: z.number(),
+  decider_id: z.string(),
+  question_id: z.string(),
+  // Names an act already on file, or the id a new act will take if the item is
+  // accepted, so it may match no row in `acts`. Items that share it describe
+  // one act.
+  act_id: z.string(),
+  kind: actKindSchema,
+  occurred_on: z.string().nullable(),
+  quote: z.string(),
+  // null on a news-search lead: a search hit names a person, not a position.
+  reading: positionSchema.nullable(),
+  position: positionSchema.nullable(),
+  summary: z.string().nullable(),
+  status: z.enum(['pending', 'accepted', 'rejected']),
+})
+export type ProposalItem = z.infer<typeof proposalItemSchema>
+
+export const proposalNoteSchema = z.object({
+  id: z.string(),
+  proposal_id: z.string(),
+  proposal_item_id: z.string().nullable(),
+  kind: z.enum(['submitter', 'review']),
+  body: z.string(),
+  created_at: z.string(),
+})
+export type ProposalNote = z.infer<typeof proposalNoteSchema>
+
+// What the public form may send: one act by one person, read on one question.
+export const proposalInputSchema = z.object({
   question_id: z.string().min(1),
   decider_id: z.string().min(1),
-  kind: evidenceKindSchema,
-  signals: positionSchema,
+  kind: actKindSchema,
+  reading: positionSchema,
   quote: z.string().trim().min(10).max(2000),
   source_url: z.url({ protocol: /^https?$/ }).max(2000),
   source_title: z.string().trim().max(300).nullable(),
   occurred_on: z.iso.date().nullable(),
   submitter_note: z.string().trim().max(1000).nullable(),
 })
-export type SubmissionInput = z.infer<typeof submissionInputSchema>
-export type SubmissionDraft = Omit<SubmissionInput, 'signals'> & { signals: Position | null }
+export type ProposalInput = z.infer<typeof proposalInputSchema>
+
+// What the Worker turns into a proposal. Each item is a separate act.
+export type ProposalDraft = {
+  source: { url: string; title: string | null }
+  note: string | null
+  items: Pick<ProposalItem, 'question_id' | 'decider_id' | 'kind' | 'occurred_on' | 'quote' | 'reading'>[]
+}
+
+// Two links to one page should find one source, so the part after # is dropped.
+export function sourceUrl(url: string): string {
+  const hash = url.indexOf('#')
+  return (hash === -1 ? url : url.slice(0, hash)).trim()
+}
 
 export const commentSchema = z.object({
   id: z.string(),
@@ -160,14 +246,22 @@ export const publicCollections = [
   definePartyCollection({ name: 'seats', key: 'id', schema: seatSchema, access: editorWrites }),
   definePartyCollection({ name: 'roles', key: 'id', schema: roleSchema, access: editorWrites }),
   definePartyCollection({ name: 'questions', key: 'id', schema: questionSchema, access: editorWrites }),
+  definePartyCollection({ name: 'question_deciders', key: 'id', schema: questionDeciderSchema, access: editorWrites }),
   definePartyCollection({ name: 'stances', key: 'id', schema: stanceSchema, access: editorWrites }),
-  definePartyCollection({ name: 'evidence', key: 'id', schema: evidenceSchema, access: editorWrites }),
+  definePartyCollection({ name: 'sources', key: 'id', schema: sourceSchema, access: editorWrites }),
+  definePartyCollection({ name: 'acts', key: 'id', schema: actSchema, access: editorWrites }),
+  definePartyCollection({ name: 'reports', key: 'id', schema: reportSchema, access: editorWrites }),
+  definePartyCollection({ name: 'readings', key: 'id', schema: readingSchema, access: editorWrites }),
+  // Unreviewed proposals are public. Add no column here that only an editor
+  // should read; that belongs in proposal_notes.
+  definePartyCollection({ name: 'proposals', key: 'id', schema: proposalSchema, access: editorWrites }),
+  definePartyCollection({ name: 'proposal_items', key: 'id', schema: proposalItemSchema, access: editorWrites }),
 ] as const
 
-export const submissionsCollection = definePartyCollection({
-  name: 'submissions',
+export const proposalNotesCollection = definePartyCollection({
+  name: 'proposal_notes',
   key: 'id',
-  schema: submissionSchema,
+  schema: proposalNoteSchema,
   access: 'authed',
 })
 
@@ -182,6 +276,6 @@ export const commentsCollection = definePartyCollection({
   access: { read: 'public', delete: 'authed' },
 })
 
-export const allCollections = [...publicCollections, submissionsCollection, commentsCollection] as const
+export const allCollections = [...publicCollections, proposalNotesCollection, commentsCollection] as const
 
 export const stanceId = (questionId: string, deciderId: string) => `${questionId}:${deciderId}`

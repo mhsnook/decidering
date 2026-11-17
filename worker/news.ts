@@ -1,5 +1,5 @@
-import { leadsFromHit, rosterMatcher, type RosterEntry, type SearchHit } from './leads.ts'
-import type { SubmissionDraft } from '../shared/schema.ts'
+import { leadFromHit, rosterMatcher, type RosterEntry, type SearchHit } from './leads.ts'
+import type { ProposalDraft } from '../shared/schema.ts'
 import type { SubmitResult } from './tracker.ts'
 
 const GATEWAY = 'default'
@@ -10,7 +10,7 @@ type HotQuestion = { id: string; short_title: string; body_id: string; body_name
 
 export type NewsReport = { error?: string; questions: { question: string; hits: number; queued: number }[] }
 
-type Submitter = { submit(input: SubmissionDraft, origin: 'news_search'): Promise<SubmitResult> }
+type Submitter = { propose(draft: ProposalDraft, origin: 'news_search'): Promise<SubmitResult> }
 
 function queriesFor(question: HotQuestion, now: Date): string[] {
   const month = now.toLocaleString('en', { month: 'long', year: 'numeric', timeZone: 'UTC' })
@@ -52,9 +52,11 @@ export async function searchNews(env: Env, tracker: Submitter, now: Date = new D
       }
       const { items } = (await response.json()) as { items: SearchHit[] }
       hits += items.length
-      for (const lead of items.flatMap((hit) => leadsFromHit(hit, question.id, query, match))) {
-        const result = await tracker.submit(lead, 'news_search')
-        if (result.ok && !result.duplicate) queued++
+      for (const hit of items) {
+        const lead = leadFromHit(hit, question.id, query, match)
+        if (!lead) continue
+        const result = await tracker.propose(lead, 'news_search')
+        if (result.ok) queued += result.queued
         if (!result.ok && result.status === 429) {
           report.error = result.error
           report.questions.push({ question: question.short_title, hits, queued })

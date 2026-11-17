@@ -33,7 +33,7 @@ function Home() {
               {questions.map((question) => {
                 const rows = tracker.board(question).filter((r) => r.incumbent)
                 const thin = rows.filter((r) => NEEDS_ATTENTION.has(r.incumbent!.footing)).length
-                const measures = tracker.childrenOf.get(question.id) ?? []
+                const measures = tracker.measuresOf.get(question.id) ?? []
                 return (
                   <li key={question.id}>
                     <Link

@@ -1,4 +1,4 @@
-import type { Position, Question, EvidenceKind } from '../../shared/schema.ts'
+import type { Position, Question, ActKind } from '../../shared/schema.ts'
 
 export type Standing = Position | 'unknown'
 
@@ -48,7 +48,7 @@ export const STANDING_COLOR: Record<Standing, string> = {
 // Left to right across a chamber: the yes side, the undecided middle, the no side.
 export const SPECTRUM: Standing[] = ['support', 'lean_support', 'mixed', 'unknown', 'lean_oppose', 'oppose']
 
-export const KIND_LABEL: Record<EvidenceKind, string> = {
+export const KIND_LABEL: Record<ActKind, string> = {
   statement: 'Statement',
   formal_act: 'Formal act',
   vote: 'Vote',
