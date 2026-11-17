@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as EditorRouteImport } from './routes/editor'
+import { Route as QuestionsRouteImport } from './routes/questions'
 import { Route as QSlugIndexRouteImport } from './routes/q.$slug.index'
 import { Route as QSlugDeciderRouteImport } from './routes/q.$slug.$decider'
 
@@ -22,6 +23,11 @@ const IndexRoute = IndexRouteImport.update({
 const EditorRoute = EditorRouteImport.update({
   id: '/editor',
   path: '/editor',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QuestionsRoute = QuestionsRouteImport.update({
+  id: '/questions',
+  path: '/questions',
   getParentRoute: () => rootRouteImport,
 } as any)
 const QSlugIndexRoute = QSlugIndexRouteImport.update({
@@ -38,12 +44,14 @@ const QSlugDeciderRoute = QSlugDeciderRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/editor': typeof EditorRoute
+  '/questions': typeof QuestionsRoute
   '/q/$slug/$decider': typeof QSlugDeciderRoute
   '/q/$slug/': typeof QSlugIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/editor': typeof EditorRoute
+  '/questions': typeof QuestionsRoute
   '/q/$slug/$decider': typeof QSlugDeciderRoute
   '/q/$slug': typeof QSlugIndexRoute
 }
@@ -51,20 +59,28 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/editor': typeof EditorRoute
+  '/questions': typeof QuestionsRoute
   '/q/$slug/$decider': typeof QSlugDeciderRoute
   '/q/$slug/': typeof QSlugIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/editor' | '/q/$slug/$decider' | '/q/$slug/'
+  fullPaths: '/' | '/editor' | '/questions' | '/q/$slug/$decider' | '/q/$slug/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/editor' | '/q/$slug/$decider' | '/q/$slug'
-  id: '__root__' | '/' | '/editor' | '/q/$slug/$decider' | '/q/$slug/'
+  to: '/' | '/editor' | '/questions' | '/q/$slug/$decider' | '/q/$slug'
+  id:
+    | '__root__'
+    | '/'
+    | '/editor'
+    | '/questions'
+    | '/q/$slug/$decider'
+    | '/q/$slug/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   EditorRoute: typeof EditorRoute
+  QuestionsRoute: typeof QuestionsRoute
   QSlugDeciderRoute: typeof QSlugDeciderRoute
   QSlugIndexRoute: typeof QSlugIndexRoute
 }
@@ -83,6 +99,13 @@ declare module '@tanstack/react-router' {
       path: '/editor'
       fullPath: '/editor'
       preLoaderRoute: typeof EditorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/questions': {
+      id: '/questions'
+      path: '/questions'
+      fullPath: '/questions'
+      preLoaderRoute: typeof QuestionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/q/$slug/': {
@@ -105,6 +128,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   EditorRoute: EditorRoute,
+  QuestionsRoute: QuestionsRoute,
   QSlugDeciderRoute: QSlugDeciderRoute,
   QSlugIndexRoute: QSlugIndexRoute,
 }

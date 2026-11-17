@@ -8,7 +8,7 @@ export function EvidenceItem({ evidence, question }: { evidence: Evidence; quest
   const { tracker } = useTracker()
   const from = question && evidence.question_id !== question.id ? tracker.questionById.get(evidence.question_id) : undefined
   return (
-    <li className="rounded-lg border border-line bg-surface p-4">
+    <li className="rounded-xl border-2 border-ink bg-surface p-4">
       <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
         <time dateTime={evidence.occurred_on} className="font-semibold text-ink">
           {formatDate(evidence.occurred_on)}
@@ -26,7 +26,7 @@ export function EvidenceItem({ evidence, question }: { evidence: Evidence; quest
       ) : (
         <blockquote className="border-l-2 border-accent pl-3 font-display text-lg leading-snug">“{evidence.quote}”</blockquote>
       )}
-      <a href={evidence.source_url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm text-accent underline underline-offset-2">
+      <a href={evidence.source_url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm link">
         {evidence.source_title ?? new URL(evidence.source_url).hostname} ↗
       </a>
     </li>

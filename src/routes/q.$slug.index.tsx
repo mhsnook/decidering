@@ -155,7 +155,7 @@ function Board() {
               ))}
             </ul>
             {shown.length < group.rows.length && (
-              <button type="button" className="mt-3 text-sm text-accent underline underline-offset-2" onClick={() => set({ standing: group.standing })}>
+              <button type="button" className="mt-3 text-sm link" onClick={() => set({ standing: group.standing })}>
                 Show all {group.rows.length}
               </button>
             )}
@@ -177,7 +177,7 @@ function Toggle({ on, onChange, children }: { on: boolean; onChange: (on: boolea
 function SeatCard({ row, question }: { row: HeldSeat; question: Question }) {
   const inc = row.incumbent
   return (
-    <li className="relative overflow-hidden rounded-lg border border-line bg-surface">
+    <li className="relative overflow-hidden rounded-xl border-2 border-ink bg-surface">
       <span className={`absolute inset-y-0 left-0 w-1.5 ${STANDING_BG[inc.standing]}`} />
       <Link to="/q/$slug/$decider" params={{ slug: question.slug, decider: inc.decider.slug }} className="block py-2 pr-3 pl-4 hover:bg-paper">
         <span className="flex items-start justify-between gap-2">
