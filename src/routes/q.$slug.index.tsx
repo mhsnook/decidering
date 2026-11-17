@@ -2,7 +2,7 @@ import { Link, createFileRoute } from '@tanstack/react-router'
 import { useMemo } from 'react'
 import type { Question } from '../../shared/schema.ts'
 import { NEEDS_ATTENTION } from '../../shared/standing.ts'
-import { isHeld, useTracker, type HeldSeat } from '../lib/tracker.tsx'
+import { isHeld, useTracker, useViewedBody, type HeldSeat } from '../lib/tracker.tsx'
 import { SPECTRUM, STANDINGS, STANDING_BG, formatDate, standingLabel, type Standing } from '../lib/position.ts'
 import { FootingTag, NotFound, StandingDot, StandingPill, Syncing, tally } from '../components/bits.tsx'
 import { Hemicycle } from '../components/Hemicycle.tsx'
@@ -31,14 +31,14 @@ function Board() {
   const navigate = Route.useNavigate()
   const { tracker, isReady } = useTracker()
   const question = tracker.questionBySlug.get(slug)
-  const rows = useMemo(() => (question ? tracker.board(question).filter(isHeld) : []), [tracker, question])
+  const { body } = useViewedBody(question)
+  const rows = useMemo(() => (question && body ? tracker.board(question, body.id).filter(isHeld) : []), [tracker, question, body])
 
   if (!isReady) return <Syncing />
-  if (!question) return <NotFound what="question" />
-  if (tracker.isAsk(question)) return <Ask question={question} />
+  if (!question || !body) return <NotFound what="question" />
+  if (tracker.isAsk(question)) return <Ask question={question} bodyId={body.id} />
 
   const set = (patch: BoardSearch) => navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true })
-  const body = tracker.bodies.find((b) => b.id === question.body_id)
   const chambers = [...new Set(rows.map((r) => r.seat.chamber).filter((c) => c !== null))].sort()
   const chamber = chambers.includes(search.chamber ?? '') ? search.chamber : undefined
   const hasChallengers = rows.some((r) => r.challengers.length > 0)
@@ -71,7 +71,7 @@ function Board() {
     <div className="space-y-6">
       <QuestionHeader question={question} />
 
-      <KeyPeople people={tracker.keyPeople(question)} />
+      <KeyPeople people={tracker.keyPeople(question, body.id)} />
 
       <div className={`grid gap-4 ${charts.length > 1 ? 'lg:grid-cols-2' : ''}`}>
         {charts.map((c) => (
@@ -171,16 +171,17 @@ function Board() {
 }
 
 // An ask is put to a few named people, so it gets a list in place of a seat chart.
-function Ask({ question }: { question: Question }) {
+function Ask({ question, bodyId }: { question: Question; bodyId: string }) {
   const { tracker } = useTracker()
   const parent = question.parent_id ? tracker.questionById.get(question.parent_id) : undefined
+  const people = tracker.peopleOf(question, bodyId)
   return (
     <div className="space-y-6">
       <QuestionHeader question={question} />
       <ClosedNote ask={question} />
-      {tracker.peopleOf(question).length === 0 && <p className="text-muted">Nobody holds the role this is asked of on {formatDate(tracker.asOf)}.</p>}
+      {people.length === 0 && <p className="text-muted">Nobody holds the role this is asked of on {formatDate(tracker.asOf)}.</p>}
       <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {tracker.peopleOf(question).map(({ key, roleLabel, contender, seat }) => (
+        {people.map(({ key, roleLabel, contender, seat }) => (
           <li key={key}>
             <Link
               to="/q/$slug/$decider"

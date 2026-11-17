@@ -1,4 +1,4 @@
-import type { Act, Body, Decider, Office, OfficeHolder, Question, QuestionDecider, QuestionOffice, Reading, Report, Role, Seat, Source, Stance } from '../../shared/schema.ts'
+import type { Act, Body, Decider, Office, OfficeHolder, Question, QuestionBody, QuestionDecider, QuestionOffice, Reading, Report, Role, Seat, Source, Stance } from '../../shared/schema.ts'
 import { inEffect, stanceId } from '../../shared/schema.ts'
 import { footingOf, type Footing } from '../../shared/standing.ts'
 import type { Standing } from './position.ts'
@@ -56,6 +56,7 @@ export type TrackerData = {
   seats: Seat[]
   roles: Role[]
   questions: Question[]
+  questionBodies: QuestionBody[]
   questionDeciders: QuestionDecider[]
   offices: Office[]
   officeHolders: OfficeHolder[]
@@ -97,6 +98,14 @@ export function buildTracker(c: TrackerData, asOf: string) {
   const actsByDecider = groupBy(c.acts, (a) => a.decider_id)
   const reportsByAct = groupBy(c.reports, (r) => r.act_id)
   const namedIn = groupBy(c.questionDeciders, (l) => l.question_id)
+
+  const bodyById = indexBy(c.bodies, (b) => b.id)
+  const alsoPutTo = groupBy(c.questionBodies, (l) => l.question_id)
+  // Every body a question is put to, the one it is listed under first.
+  const bodyIdsOf = (question: Question): string[] => [question.body_id, ...(alsoPutTo.get(question.id) ?? []).map((l) => l.body_id).filter((id) => id !== question.body_id)]
+  const bodiesOf = (question: Question): Body[] => bodyIdsOf(question).flatMap((id) => bodyById.get(id) ?? [])
+  const appliesIn = (question: Question, bodyId: string) => bodyIdsOf(question).includes(bodyId)
+  const questionsIn = (bodyId: string): Question[] => c.questions.filter((q) => !q.parent_id && appliesIn(q, bodyId)).sort((a, b) => a.sort - b.sort)
 
   const isAsk = (question: Question) => namedIn.has(question.id) || officesOf.has(question.id)
   const byOpenThenSort = (a: Question, b: Question) => Number(a.status !== 'open') - Number(b.status !== 'open') || a.sort - b.sort
@@ -156,11 +165,17 @@ export function buildTracker(c: TrackerData, asOf: string) {
     return tenures.filter((t) => t.holder.decider_id === deciderId && asked.has(t.office.id))
   }
 
-  const officesHeldBy = (deciderId: string): Office[] =>
-    tenures.filter((t) => t.holder.decider_id === deciderId && inEffect(t.holder, asOf)).map((t) => t.office)
+  // The roles someone holds on the day viewed that count in this body: its own
+  // offices, and any role they hold at large.
+  const tenuresHeldBy = (deciderId: string, bodyId: string): Tenure[] =>
+    tenures.filter((t) => t.holder.decider_id === deciderId && inEffect(t.holder, asOf) && (t.office.body_id === null || t.office.body_id === bodyId))
 
-  function board(question: Question): SeatRow[] {
-    const seats = (seatsByBody.get(question.body_id) ?? []).filter((s) => !question.chamber || s.chamber === question.chamber)
+  const measuresIn = (question: Question, bodyId: string): Question[] => (measuresOf.get(question.id) ?? []).filter((m) => appliesIn(m, bodyId))
+
+  // A question put to several bodies has one board per body. Left out, the
+  // body is the one the question is listed under.
+  function board(question: Question, bodyId: string = question.body_id): SeatRow[] {
+    const seats = (seatsByBody.get(bodyId) ?? []).filter((s) => !question.chamber || s.chamber === question.chamber)
     return seats
       .map((seat) => {
         const contenders = (rolesBySeat.get(seat.id) ?? [])
@@ -176,33 +191,39 @@ export function buildTracker(c: TrackerData, asOf: string) {
       .filter((row) => !isAsk(question) || row.incumbent || row.challengers.length > 0)
   }
 
-  // The seat someone holds in the question's body on the day viewed. Someone
-  // who has left, or has not arrived, still resolves to their seat so their
-  // page and record stay reachable.
-  function roleIn(question: Question, deciderId: string): Role | undefined {
-    const inBody = (r: Role) => seatById.get(r.seat_id)?.body_id === question.body_id
-    return (rolesByDecider.get(deciderId) ?? []).find(inBody) ?? (everyRoleByDecider.get(deciderId) ?? []).find(inBody)
+  // The seat someone holds, on the day viewed, in a body the question is put
+  // to: the body named if they sit there, else another. Someone who has left,
+  // or has not arrived, still resolves to their seat so their page and record
+  // stay reachable.
+  function roleIn(question: Question, deciderId: string, bodyId?: string): Role | undefined {
+    const order = bodyIdsOf(question)
+    if (bodyId) order.sort((a, b) => Number(b === bodyId) - Number(a === bodyId))
+    const pick = (roles: Role[]) => order.map((id) => roles.find((r) => seatById.get(r.seat_id)?.body_id === id)).find((r) => r !== undefined)
+    return pick(rolesByDecider.get(deciderId) ?? []) ?? pick(everyRoleByDecider.get(deciderId) ?? [])
   }
 
-  function keyPerson(ask: Question, deciderId: string, key: string, roleLabel: string | null): KeyPerson[] {
-    const role = roleIn(ask, deciderId)
+  // Someone an ask is put to appears in a body only if they have a seat in it.
+  function keyPerson(ask: Question, bodyId: string, deciderId: string, key: string, roleLabel: string | null): KeyPerson[] {
+    const role = roleIn(ask, deciderId, bodyId)
     const seat = role && seatById.get(role.seat_id)
     const person = role && contender(ask, role)
-    return person && seat ? [{ ask, key, roleLabel, contender: person, seat }] : []
+    return person && seat?.body_id === bodyId ? [{ ask, key, roleLabel, contender: person, seat }] : []
   }
 
   // The people an ask is put to on the day viewed: office holders, then anyone named.
-  function peopleOf(ask: Question): KeyPerson[] {
+  function peopleOf(ask: Question, bodyId: string = ask.body_id): KeyPerson[] {
     return [
-      ...sittingFor(ask).flatMap((t) => keyPerson(ask, t.holder.decider_id, t.holder.id, t.office.label)),
-      ...(namedIn.get(ask.id) ?? []).flatMap((l) => keyPerson(ask, l.decider_id, l.id, l.role_label)),
+      ...sittingFor(ask).flatMap((t) => keyPerson(ask, bodyId, t.holder.decider_id, t.holder.id, t.office.label)),
+      ...(namedIn.get(ask.id) ?? []).flatMap((l) => keyPerson(ask, bodyId, l.decider_id, l.id, l.role_label)),
     ]
   }
 
   // Everyone with an ask under this question, open asks first.
-  const keyPeople = (question: Question): KeyPerson[] => (asksOf.get(question.id) ?? []).flatMap(peopleOf)
+  const keyPeople = (question: Question, bodyId: string = question.body_id): KeyPerson[] =>
+    (asksOf.get(question.id) ?? []).filter((a) => appliesIn(a, bodyId)).flatMap((a) => peopleOf(a, bodyId))
 
-  const asksFor = (question: Question, deciderId: string): KeyPerson[] => keyPeople(question).filter((k) => k.contender.decider.id === deciderId)
+  const asksFor = (question: Question, deciderId: string, bodyId: string = question.body_id): KeyPerson[] =>
+    keyPeople(question, bodyId).filter((k) => k.contender.decider.id === deciderId)
 
   return {
     ...c,
@@ -222,7 +243,12 @@ export function buildTracker(c: TrackerData, asOf: string) {
     isAsk,
     appliesTo,
     tenuresOn,
-    officesHeldBy,
+    tenuresHeldBy,
+    bodyById,
+    bodiesOf,
+    appliesIn,
+    questionsIn,
+    measuresIn,
     asOf,
     recordFor,
     contender,

@@ -6,6 +6,27 @@
     "description": "A made-up council with made-up people, here to show every state the tracker can display. Nothing in it is real."
   },
   "next_election_on": "2027-05-04",
+  "other_bodies": [
+    {
+      "id": "harbor-port-authority",
+      "name": "Harbor Port Authority Board",
+      "jurisdiction": "Harbor City (fictional)",
+      "description": "A second made-up body. Two of its members also sit on the council, to show one question put to both.",
+      "seats": [
+        { "label": "Council appointee A", "incumbent": ["Odalys Brennan", "Harbor Forward"] },
+        { "label": "Council appointee B", "incumbent": ["Desmond Kowalczyk", "Dockside Alliance"] },
+        { "label": "Mayoral appointee", "incumbent": ["Ilse Marchetti", "Independent"] }
+      ]
+    }
+  ],
+  "roles_at_large": [
+    {
+      "id": "demo-ferry-riders-union-president",
+      "label": "President, Ferry Riders Union",
+      "holder": "Odalys Brennan",
+      "source": { "url": "https://example.com/harbor-city/ferry-riders-union", "title": "Ferry Riders Union: Officers" }
+    }
+  ],
   "seats": [
     { "label": "Ward 1", "incumbent": ["Odalys Brennan", "Harbor Forward"], "challengers": [["Tomas Whitlock", "Independent", "general"]] },
     { "label": "Ward 2", "incumbent": ["Ikenna Vasquez", "Harbor Forward"], "challengers": [] },
@@ -43,6 +64,15 @@
       "status": "resolved",
       "closed_on": "2026-10-30",
       "closed_note": "The fiscal note was published on October 30."
+    },
+    {
+      "id": "no-cruise-money",
+      "kind": "formal_act",
+      "act_label": "Pledged",
+      "title": "Have they pledged not to take cruise line money?",
+      "short_title": "Cruise money pledge",
+      "description": "A pledge to refuse campaign donations from cruise operators. It is about the person, so it is put to the council and the port board alike, and someone who sits on both has one answer.",
+      "bodies": ["harbor-port-authority"]
     }
   ],
   "stances": [
@@ -56,7 +86,9 @@
     ["free-ferry-ord-26-114", "Nadezhda Okafor", "support", "Co-signer."],
     ["free-ferry", "Suvi Castellanos", "support", "Running against the incumbent on this issue."],
     ["free-ferry", "Calloway Nduka", "oppose", "Calls it a giveaway to commuters from outside the city."],
-    ["free-ferry-fiscal-note", "Nadezhda Okafor", "support", "Published it a week before the vote."]
+    ["free-ferry-fiscal-note", "Nadezhda Okafor", "support", "Published it a week before the vote."],
+    ["no-cruise-money", "Odalys Brennan", "support", "Signed the pledge at her campaign launch."],
+    ["no-cruise-money", "Ilse Marchetti", "support", "Signed on joining the board."]
   ],
   "acts": [
     ["free-ferry", "Odalys Brennan", "statement", "support", "2025-03-18", "The ferry is a bridge we forgot to build. Nobody pays a toll to cross a bridge in this city.", "Harbor Ledger: Brennan opens campaign on the ferry dock"],
@@ -73,6 +105,8 @@
     ["free-ferry", "Suvi Castellanos", "interview", "support", "2026-10-19", "The incumbent has had four years to fix the commute and chose the cruise lines.", "Tideline Radio: Ward 3 primary forum"],
     ["free-ferry", "Calloway Nduka", "statement", "oppose", "2025-01-22", "Half the riders do not live here. Why are we buying their tickets?", "Harbor Ledger: Letters"],
     ["free-ferry", "Calloway Nduka", "statement", "oppose", "2025-07-30", "I would rather fix the buses people in Ward 5 actually ride.", "Dockside Dispatch: Candidate questionnaire"],
-    ["free-ferry-fiscal-note", "Nadezhda Okafor", "formal_act", "support", "2026-10-30", "Published the fiscal note for Ordinance 26-114.", "Council docket: Fiscal note for Ordinance 26-114"]
+    ["free-ferry-fiscal-note", "Nadezhda Okafor", "formal_act", "support", "2026-10-30", "Published the fiscal note for Ordinance 26-114.", "Council docket: Fiscal note for Ordinance 26-114"],
+    ["no-cruise-money", "Odalys Brennan", "formal_act", "support", "2025-03-18", "Signed the pledge to refuse campaign donations from cruise operators.", "Clean Harbor Pledge: Signers"],
+    ["no-cruise-money", "Ilse Marchetti", "formal_act", "support", "2026-01-12", "Signed the pledge to refuse campaign donations from cruise operators.", "Clean Harbor Pledge: Signers"]
   ]
 }

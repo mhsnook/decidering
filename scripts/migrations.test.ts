@@ -114,6 +114,33 @@ describe('0004_evidence_model', () => {
   })
 })
 
+describe('0006_shared_questions_and_roles_at_large', () => {
+  const db = database('0006')
+  db.exec(`
+    INSERT INTO bodies (id, slug, name) VALUES ('b', 'b', 'Body');
+    INSERT INTO deciders (id, slug, name, sort_name) VALUES ('ann', 'ann', 'Ann', 'Ann');
+    INSERT INTO questions (id, slug, body_id, kind, title, short_title) VALUES ('ask', 'ask', 'b', 'position', 'Ask?', 'Ask');
+    INSERT INTO offices (id, body_id, chamber, label, sort) VALUES ('chair', 'b', 'Upper', 'Chair', 3);
+    INSERT INTO office_holders (id, office_id, decider_id, starts_on, ends_on) VALUES ('chair:ann', 'chair', 'ann', NULL, '2027-01-03');
+    INSERT INTO question_offices (id, question_id, office_id) VALUES ('ask:chair', 'ask', 'chair');
+  `)
+  db.exec(migration('0006_shared_questions_and_roles_at_large.sql'))
+
+  it('rebuilds offices without losing rows or the rows that point at them', () => {
+    expect(all(db, `SELECT o.id, o.body_id, o.chamber, o.label, o.sort, h.decider_id, h.ends_on, h.source_id, l.question_id
+      FROM offices o JOIN office_holders h ON h.office_id = o.id JOIN question_offices l ON l.office_id = o.id`)).toEqual([
+      { id: 'chair', body_id: 'b', chamber: 'Upper', label: 'Chair', sort: 3, decider_id: 'ann', ends_on: '2027-01-03', source_id: null, question_id: 'ask' },
+    ])
+    expect(all(db, `PRAGMA foreign_key_check`)).toEqual([])
+    expect(all(db, `SELECT name FROM sqlite_master WHERE name LIKE 'offices_new' OR name LIKE '%_aside'`)).toEqual([])
+  })
+
+  it('allows a role with no body, and still refuses a holder of an office that does not exist', () => {
+    db.exec(`INSERT INTO offices (id, body_id, label) VALUES ('at-large', NULL, 'Fundraiser')`)
+    expect(() => db.exec(`INSERT INTO office_holders (id, office_id, decider_id) VALUES ('x', 'nope', 'ann')`)).toThrow(/FOREIGN KEY/)
+  })
+})
+
 describe('the seed', () => {
   let seed = ''
   beforeAll(() => {
@@ -124,7 +151,7 @@ describe('the seed', () => {
   it('loads into the migrated schema, and loads again without duplicating anything', () => {
     const db = database()
     db.exec(seed)
-    const tables = ['sources', 'acts', 'reports', 'readings', 'stances', 'questions', 'question_deciders', 'offices', 'office_holders', 'question_offices', 'roles']
+    const tables = ['sources', 'acts', 'reports', 'readings', 'stances', 'questions', 'question_deciders', 'offices', 'office_holders', 'question_offices', 'question_bodies', 'bodies', 'seats', 'roles']
     const first = tables.map((t) => count(db, t))
     expect(count(db, 'acts')).toBeGreaterThan(0)
     expect(count(db, 'reports')).toBe(count(db, 'acts'))

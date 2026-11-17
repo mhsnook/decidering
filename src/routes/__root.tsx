@@ -2,12 +2,16 @@ import { Link, Outlet, createRootRoute, retainSearchParams } from '@tanstack/rea
 import { TrackerProvider } from '../lib/tracker.tsx'
 import { isEditor } from '../lib/editor.ts'
 
-// `as` is the day every body is viewed on. It is kept across links, so a
-// reader looking at the next term stays in it until they switch back.
+// `as` is the day every body is viewed on, and `body` the one a question put
+// to several is viewed through. Both are kept across links, so a reader stays
+// in the view they chose until they switch back.
 export const Route = createRootRoute({
   component: Root,
-  validateSearch: (s: Record<string, unknown>): { as?: string } => ({ as: typeof s.as === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.as) ? s.as : undefined }),
-  search: { middlewares: [retainSearchParams(['as'])] },
+  validateSearch: (s: Record<string, unknown>): { as?: string; body?: string } => ({
+    as: typeof s.as === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.as) ? s.as : undefined,
+    body: typeof s.body === 'string' && s.body ? s.body : undefined,
+  }),
+  search: { middlewares: [retainSearchParams(['as', 'body'])] },
 })
 
 function Root() {

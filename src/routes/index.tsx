@@ -21,7 +21,7 @@ function Home() {
       </section>
 
       {bodies.map((body) => {
-        const questions = tracker.questions.filter((q) => q.body_id === body.id && !q.parent_id).sort((a, b) => a.sort - b.sort)
+        const questions = tracker.questionsIn(body.id)
         return (
           <section key={body.id}>
             <div className="mb-4 flex flex-wrap items-baseline gap-x-3">
@@ -31,14 +31,15 @@ function Home() {
             </div>
             <ul className="grid gap-4 md:grid-cols-2">
               {questions.map((question) => {
-                const rows = tracker.board(question).filter((r) => r.incumbent)
+                const rows = tracker.board(question, body.id).filter((r) => r.incumbent)
                 const thin = rows.filter((r) => NEEDS_ATTENTION.has(r.incumbent!.footing)).length
-                const measures = tracker.measuresOf.get(question.id) ?? []
+                const measures = tracker.measuresIn(question, body.id)
                 return (
                   <li key={question.id}>
                     <Link
                       to="/q/$slug"
                       params={{ slug: question.slug }}
+                      search={{ body: body.id === question.body_id ? undefined : body.slug }}
                       className="block rounded-xl border border-line bg-surface p-5 transition-colors hover:border-ink"
                     >
                       {question.is_hot && <Eyebrow>In the news</Eyebrow>}

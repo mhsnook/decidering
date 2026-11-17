@@ -150,12 +150,74 @@ describe('viewing a body on a day', () => {
   it('keeps each holder their own position on the ask, and knows when they hold the office', () => {
     expect(next.stanceById.get('markup:crapo')?.position).toBe('oppose')
     expect(now.tenuresOn(markup, 'wyden').map((t) => [t.office.label, t.holder.starts_on])).toEqual([['Chair, Finance', TERM]])
-    expect(now.officesHeldBy('crapo').map((o) => o.id)).toEqual(['chair'])
-    expect(next.officesHeldBy('crapo')).toEqual([])
+    expect(now.tenuresHeldBy('crapo', 'body').map((t) => t.office.id)).toEqual(['chair'])
+    expect(next.tenuresHeldBy('crapo', 'body')).toEqual([])
   })
 
   it('still finds the seat of someone who has left or not yet arrived', () => {
     expect(next.roleIn(policy, 'old')?.seat_id).toBe('tx')
     expect(now.roleIn(policy, 'new')?.seat_id).toBe('tx')
+  })
+})
+
+describe('a question put to more than one body', () => {
+  const pledge = question('pledge', { body_id: 'council' })
+  const rows = {
+    bodies: [
+      { id: 'council', slug: 'council', name: 'Council', jurisdiction: null, description: null, is_demo: false, sort: 0, next_term_on: null, next_term_label: null },
+      { id: 'board', slug: 'board', name: 'Board', jurisdiction: null, description: null, is_demo: false, sort: 1, next_term_on: null, next_term_label: null },
+      { id: 'elsewhere', slug: 'elsewhere', name: 'Elsewhere', jurisdiction: null, description: null, is_demo: false, sort: 2, next_term_on: null, next_term_label: null },
+    ],
+    deciders: [decider('ann'), decider('bob'), decider('cy')],
+    seats: [seat('c1', { body_id: 'council' }), seat('c2', { body_id: 'council' }), seat('b1', { body_id: 'board' }), seat('b2', { body_id: 'board' }), seat('e1', { body_id: 'elsewhere' })],
+    roles: [role('c1', 'ann'), role('c2', 'bob'), role('b1', 'ann'), role('b2', 'cy'), role('e1', 'cy')],
+    questions: [pledge, question('council-only', { body_id: 'council' }), question('bill', { body_id: 'council', parent_id: 'pledge', kind: 'formal_act' as const })],
+    questionBodies: [{ id: 'pledge:board', question_id: 'pledge', body_id: 'board' }],
+    stances: [stance('pledge', 'ann', 'support')],
+    offices: [office('fundraiser', { body_id: null, label: 'Fundraiser' }), office('speaker', { body_id: 'council', label: 'Speaker' })],
+    officeHolders: [holder('fundraiser', 'ann'), holder('speaker', 'ann')],
+  }
+  const tracker = track(rows)
+
+  it('lists it under each body it is put to, and only those', () => {
+    expect(tracker.bodiesOf(pledge).map((b) => b.id)).toEqual(['council', 'board'])
+    expect(tracker.questionsIn('council').map((q) => q.id)).toEqual(['pledge', 'council-only'])
+    expect(tracker.questionsIn('board').map((q) => q.id)).toEqual(['pledge'])
+    expect(tracker.questionsIn('elsewhere')).toEqual([])
+  })
+
+  it("draws each body's own seats, with one answer for someone who sits in both", () => {
+    expect(tracker.board(pledge).map((r) => [r.incumbent?.decider.id, r.incumbent?.standing])).toEqual([
+      ['ann', 'support'],
+      ['bob', 'unknown'],
+    ])
+    expect(tracker.board(pledge, 'board').map((r) => [r.incumbent?.decider.id, r.incumbent?.standing])).toEqual([
+      ['ann', 'support'],
+      ['cy', 'unknown'],
+    ])
+  })
+
+  it('finds a person in the body asked for, else in another the question is put to, never one it is not', () => {
+    expect(tracker.roleIn(pledge, 'ann', 'board')?.seat_id).toBe('b1')
+    expect(tracker.roleIn(pledge, 'ann')?.seat_id).toBe('c1')
+    expect(tracker.roleIn(pledge, 'bob', 'board')?.seat_id).toBe('c2')
+    expect(tracker.roleIn(pledge, 'cy')?.seat_id).toBe('b2')
+  })
+
+  it('keeps a measure in the bodies it is put to', () => {
+    expect(tracker.measuresIn(pledge, 'council').map((q) => q.id)).toEqual(['bill'])
+    expect(tracker.measuresIn(pledge, 'board')).toEqual([])
+  })
+
+  it('shows a role held at large in every body, and an office of one body only there', () => {
+    expect(tracker.tenuresHeldBy('ann', 'council').map((t) => t.office.label)).toEqual(['Fundraiser', 'Speaker'])
+    expect(tracker.tenuresHeldBy('ann', 'board').map((t) => t.office.label)).toEqual(['Fundraiser'])
+  })
+
+  it('puts an ask of a role at large to its holder wherever they sit', () => {
+    const ask = question('ask', { body_id: 'council', parent_id: 'pledge' })
+    const asked = track({ ...rows, questions: [...rows.questions, ask], questionBodies: [...rows.questionBodies, { id: 'ask:board', question_id: 'ask', body_id: 'board' }], questionOffices: [{ id: 'ask:fundraiser', question_id: 'ask', office_id: 'fundraiser' }] })
+    expect(asked.keyPeople(pledge, 'council').map((k) => [k.contender.decider.id, k.roleLabel, k.seat.id])).toEqual([['ann', 'Fundraiser', 'c1']])
+    expect(asked.keyPeople(pledge, 'board').map((k) => [k.contender.decider.id, k.roleLabel, k.seat.id])).toEqual([['ann', 'Fundraiser', 'b1']])
   })
 })

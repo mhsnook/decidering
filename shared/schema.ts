@@ -64,10 +64,12 @@ export type Role = z.infer<typeof roleSchema>
 export const inEffect = (row: { starts_on: string | null; ends_on: string | null }, day: string) =>
   (row.starts_on === null || row.starts_on <= day) && (row.ends_on === null || day < row.ends_on)
 
-// A key role in a body, such as a committee chair. It outlives its holders.
+// A key role, such as a committee chair. It outlives its holders.
 export const officeSchema = z.object({
   id: z.string(),
-  body_id: z.string(),
+  // null is a role held at large: it belongs to its holder in their own right
+  // and shows with them in every body they sit in.
+  body_id: z.string().nullable(),
   chamber: z.string().nullable(),
   label: z.string(),
   sort: z.number(),
@@ -80,8 +82,17 @@ export const officeHolderSchema = z.object({
   decider_id: z.string(),
   starts_on: z.string().nullable(),
   ends_on: z.string().nullable(),
+  source_id: z.string().nullable(),
 })
 export type OfficeHolder = z.infer<typeof officeHolderSchema>
+
+// Puts a question to a body beyond the one in questions.body_id.
+export const questionBodySchema = z.object({
+  id: z.string(),
+  question_id: z.string(),
+  body_id: z.string(),
+})
+export type QuestionBody = z.infer<typeof questionBodySchema>
 
 // An ask put to whoever holds an office on the day being viewed.
 export const questionOfficeSchema = z.object({
@@ -285,6 +296,7 @@ export const publicCollections = [
   definePartyCollection({ name: 'roles', key: 'id', schema: roleSchema, access: editorWrites }),
   definePartyCollection({ name: 'questions', key: 'id', schema: questionSchema, access: editorWrites }),
   definePartyCollection({ name: 'question_deciders', key: 'id', schema: questionDeciderSchema, access: editorWrites }),
+  definePartyCollection({ name: 'question_bodies', key: 'id', schema: questionBodySchema, access: editorWrites }),
   definePartyCollection({ name: 'offices', key: 'id', schema: officeSchema, access: editorWrites }),
   definePartyCollection({ name: 'office_holders', key: 'id', schema: officeHolderSchema, access: editorWrites }),
   definePartyCollection({ name: 'question_offices', key: 'id', schema: questionOfficeSchema, access: editorWrites }),

@@ -316,14 +316,27 @@ const person = (name: string) => {
   }
   return demoIds.get(name)!
 }
-for (const seat of demo.seats) {
-  const seatId = `${D}:${slugify(`${D} ${seat.label}`).slice(D.length + 1)}`
-  insert('seats', { id: seatId, body_id: D, chamber: null, region: null, label: seat.label, is_voting: true, next_election_on: demo.next_election_on })
-  const [name, affiliation] = seat.incumbent
-  insert('roles', { id: `${seatId}:${person(name)}`, seat_id: seatId, decider_id: person(name), kind: 'incumbent', contest: null, affiliation })
-  for (const [cName, cAffiliation, contest] of seat.challengers) {
-    insert('roles', { id: `${seatId}:${person(cName)}`, seat_id: seatId, decider_id: person(cName), kind: 'challenger', contest, affiliation: cAffiliation })
+function demoSeats(bodyId: string, seats: any[], next_election_on: string | null) {
+  for (const seat of seats) {
+    const seatId = `${bodyId}:${slugify(`${bodyId} ${seat.label}`).slice(bodyId.length + 1)}`
+    insert('seats', { id: seatId, body_id: bodyId, chamber: null, region: null, label: seat.label, is_voting: true, next_election_on })
+    const [name, affiliation] = seat.incumbent
+    insert('roles', { id: `${seatId}:${person(name)}`, seat_id: seatId, decider_id: person(name), kind: 'incumbent', contest: null, affiliation })
+    for (const [cName, cAffiliation, contest] of seat.challengers ?? []) {
+      insert('roles', { id: `${seatId}:${person(cName)}`, seat_id: seatId, decider_id: person(cName), kind: 'challenger', contest, affiliation: cAffiliation })
+    }
   }
+}
+demoSeats(D, demo.seats, demo.next_election_on)
+demo.other_bodies.forEach((body: any, i: number) => {
+  const { seats, ...row } = body
+  insert('bodies', { ...row, slug: body.id, is_demo: true, sort: 2 + i })
+  demoSeats(body.id, seats, null)
+})
+for (const r of demo.roles_at_large) {
+  source({ ...r.source, kind: 'official_record' }, '2026-01-01T00:00:00.000Z')
+  insert('offices', { id: r.id, body_id: null, chamber: null, label: r.label, sort: 0 })
+  insert('office_holders', { id: `${r.id}:${person(r.holder)}`, office_id: r.id, decider_id: person(r.holder), starts_on: null, ends_on: null, source_id: sourceId(r.source.url) })
 }
 demo.questions.forEach((q: any, i: number) => {
   question({
@@ -343,7 +356,9 @@ demo.questions.forEach((q: any, i: number) => {
     status: q.status ?? 'open',
     closed_on: q.closed_on ?? null,
     closed_note: q.closed_note ?? null,
+    act_label: q.act_label ?? null,
   })
+  for (const bodyId of q.bodies ?? []) insert('question_bodies', { id: `${q.id}:${bodyId}`, question_id: q.id, body_id: bodyId })
   for (const [name, role_label] of q.deciders ?? []) {
     insert('question_deciders', { id: `${q.id}:${person(name)}`, question_id: q.id, decider_id: person(name), role_label })
   }

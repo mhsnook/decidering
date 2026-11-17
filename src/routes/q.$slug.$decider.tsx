@@ -2,7 +2,7 @@ import { Link, createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { FOOTING_HINT } from '../../shared/standing.ts'
 import { stanceId } from '../../shared/schema.ts'
-import { useTracker } from '../lib/tracker.tsx'
+import { useTracker, useViewedBody, type Tenure } from '../lib/tracker.tsx'
 import { FootingTag, NotFound, StandingPill, Syncing } from '../components/bits.tsx'
 import { QuestionHeader } from '../components/QuestionHeader.tsx'
 import { RecordItem } from '../components/RecordItem.tsx'
@@ -20,26 +20,29 @@ function DeciderOnQuestion() {
   const { slug, decider: deciderSlug } = Route.useParams()
   const { tracker, isReady } = useTracker()
   const [adding, setAdding] = useState(false)
-  if (!isReady) return <Syncing />
-
   const question = tracker.questionBySlug.get(slug)
   const decider = tracker.deciderBySlug.get(deciderSlug)
-  const role = decider && question && tracker.roleIn(question, decider.id)
+  const { body } = useViewedBody(question, decider?.id)
+  if (!isReady) return <Syncing />
+
+  const role = decider && question && tracker.roleIn(question, decider.id, body?.id)
   const seat = role && tracker.seatById.get(role.seat_id)
   const me = question && role && tracker.contender(question, role)
   // Someone who held, or will hold, the office an ask is put to keeps their page for it.
   const tenures = question && decider ? tracker.tenuresOn(question, decider.id) : []
-  if (!question || !decider || !seat || !me || !(tracker.appliesTo(question, decider.id) || tenures.length > 0)) return <NotFound what="record" />
+  if (!question || !decider || !body || !seat || !me || !(tracker.appliesTo(question, decider.id) || tenures.length > 0)) return <NotFound what="record" />
 
-  const measures = (tracker.measuresOf.get(question.id) ?? []).filter((m) => !m.chamber || m.chamber === seat.chamber)
+  const measures = tracker.measuresIn(question, body.id).filter((m) => !m.chamber || m.chamber === seat.chamber)
   const isAsk = tracker.isAsk(question)
   const root = (question.parent_id && tracker.questionById.get(question.parent_id)) || question
-  const asks = tracker.asksFor(root, decider.id)
+  const asks = tracker.asksFor(root, decider.id, body.id)
+  const held = tracker.tenuresHeldBy(decider.id, body.id)
+  const sourceOf = (t: Tenure) => (t.holder.source_id ? tracker.sourceById.get(t.holder.source_id) : undefined)
   const span = (t: { starts_on: string | null; ends_on: string | null }) =>
     t.starts_on && t.starts_on > tracker.asOf ? ` from ${formatDate(t.starts_on)}` : t.ends_on && t.ends_on <= tracker.asOf ? ` until ${formatDate(t.ends_on)}` : ''
   const roleLabels = [
     ...new Set([
-      ...tracker.officesHeldBy(decider.id).map((o) => o.label),
+      ...held.filter((t) => !sourceOf(t)).map((t) => t.office.label),
       ...asks.map((k) => k.roleLabel).filter((l) => l !== null),
       ...tenures.filter((t) => span(t.holder)).map((t) => t.office.label + span(t.holder)),
     ]),
@@ -68,6 +71,16 @@ function DeciderOnQuestion() {
               {seatSpan && ` · holds the seat${seatSpan}`}
             </p>
             {roleLabels.length > 0 && <p className="text-sm font-medium">{roleLabels.join(' · ')}</p>}
+            {held.flatMap((t) => {
+              const url = sourceOf(t)?.url
+              return url ? (
+                <a key={t.holder.id} href={url} target="_blank" rel="noreferrer" className="block text-sm font-medium underline underline-offset-2">
+                  {t.office.label} ↗
+                </a>
+              ) : (
+                []
+              )
+            })}
           </div>
           <div className="flex items-center gap-2">
             <StandingPill standing={me.standing} question={question} />
