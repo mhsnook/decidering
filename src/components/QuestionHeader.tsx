@@ -9,7 +9,11 @@ export function QuestionHeader({ question, deciderSlug }: { question: Question; 
   const { tracker } = useTracker()
   const body = tracker.bodies.find((b) => b.id === question.body_id)
   const root = question.parent_id ? (tracker.questionById.get(question.parent_id) ?? question) : question
-  const family = [root, ...(tracker.measuresOf.get(root.id) ?? [])]
+  // An ask is put to named people, so its tab only appears where it applies:
+  // on those people's pages, and on the ask's own page.
+  const deciderId = deciderSlug && tracker.deciderBySlug.get(deciderSlug)?.id
+  const asks = (tracker.asksOf.get(root.id) ?? []).filter((a) => a.id === question.id || (deciderId && tracker.appliesTo(a, deciderId)))
+  const family = [root, ...(tracker.measuresOf.get(root.id) ?? []), ...asks]
 
   return (
     <header className="space-y-3">

@@ -31,6 +31,18 @@
       "title": "Have they signed on to Ordinance 26-114?",
       "short_title": "Ordinance 26-114",
       "description": "The specific measure on the table: a two-year fare-free pilot paid for by a berth fee on cruise ships."
+    },
+    {
+      "id": "free-ferry-fiscal-note",
+      "parent": "free-ferry",
+      "kind": "position",
+      "title": "Will she publish the fiscal note before the vote?",
+      "short_title": "Fiscal note",
+      "description": "The council does not vote on a spending measure until the budget chair has published its fiscal note.",
+      "deciders": [["Nadezhda Okafor", "Chair, Budget Committee"]],
+      "status": "resolved",
+      "closed_on": "2026-10-30",
+      "closed_note": "The fiscal note was published on October 30."
     }
   ],
   "stances": [
@@ -43,7 +55,8 @@
     ["free-ferry", "Nadezhda Okafor", "support", "Co-signed the ordinance."],
     ["free-ferry-ord-26-114", "Nadezhda Okafor", "support", "Co-signer."],
     ["free-ferry", "Suvi Castellanos", "support", "Running against the incumbent on this issue."],
-    ["free-ferry", "Calloway Nduka", "oppose", "Calls it a giveaway to commuters from outside the city."]
+    ["free-ferry", "Calloway Nduka", "oppose", "Calls it a giveaway to commuters from outside the city."],
+    ["free-ferry-fiscal-note", "Nadezhda Okafor", "support", "Published it a week before the vote."]
   ],
   "acts": [
     ["free-ferry", "Odalys Brennan", "statement", "support", "2025-03-18", "The ferry is a bridge we forgot to build. Nobody pays a toll to cross a bridge in this city.", "Harbor Ledger: Brennan opens campaign on the ferry dock"],
@@ -59,6 +72,7 @@
     ["free-ferry", "Suvi Castellanos", "platform", "support", "2026-09-30", "Fare-free ferry, funded by the ships that crowd our harbor. Day one.", "Castellanos for Ward 3: Platform"],
     ["free-ferry", "Suvi Castellanos", "interview", "support", "2026-10-19", "The incumbent has had four years to fix the commute and chose the cruise lines.", "Tideline Radio: Ward 3 primary forum"],
     ["free-ferry", "Calloway Nduka", "statement", "oppose", "2025-01-22", "Half the riders do not live here. Why are we buying their tickets?", "Harbor Ledger: Letters"],
-    ["free-ferry", "Calloway Nduka", "statement", "oppose", "2025-07-30", "I would rather fix the buses people in Ward 5 actually ride.", "Dockside Dispatch: Candidate questionnaire"]
+    ["free-ferry", "Calloway Nduka", "statement", "oppose", "2025-07-30", "I would rather fix the buses people in Ward 5 actually ride.", "Dockside Dispatch: Candidate questionnaire"],
+    ["free-ferry-fiscal-note", "Nadezhda Okafor", "formal_act", "support", "2026-10-30", "Published the fiscal note for Ordinance 26-114.", "Council docket: Fiscal note for Ordinance 26-114"]
   ]
 }

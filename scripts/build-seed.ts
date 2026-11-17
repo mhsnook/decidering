@@ -8,6 +8,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 
 const read = (name: string) => JSON.parse(readFileSync(new URL(`../seed/data/${name}`, import.meta.url), 'utf8'))
 const congress = read('us-congress.json')
+const congressAsks = read('us-congress-asks.json')
 const era = read('us-states-era.json')
 const demo = read('demo.json')
 
@@ -187,6 +188,31 @@ congress.bills.forEach((bill: any, i: number) => {
   }
 })
 
+// ---- Asks of key people in Congress: its own file, so it can be added to a
+// database without replaying the roster and stances over an editor's changes --
+
+dataSet('us-congress-asks')
+congressAsks.asks.forEach((ask: any, i: number) => {
+  question({
+    id: ask.id,
+    slug: ask.slug,
+    body_id: US,
+    parent_id: ask.parent,
+    kind: 'position',
+    title: ask.title,
+    short_title: ask.short_title,
+    description: ask.description,
+    reference_url: null,
+    chamber: ask.chamber,
+    is_hot: false,
+    sort: 100 + i,
+  })
+  for (const d of ask.deciders) {
+    if (!members.has(d.bioguide)) throw new Error(`${ask.id} names ${d.bioguide}, who is not in the roster`)
+    insert('question_deciders', { id: `${ask.id}:${d.bioguide}`, question_id: ask.id, decider_id: d.bioguide, role_label: d.role_label })
+  }
+})
+
 // ---- The states and the Equal Rights Amendment: the National Archives' list --
 
 dataSet('us-states')
@@ -298,7 +324,13 @@ demo.questions.forEach((q: any, i: number) => {
     is_hot: q.is_hot ?? false,
     sort: i,
     implies_parent_support: q.kind === 'formal_act' && !!q.parent,
+    status: q.status ?? 'open',
+    closed_on: q.closed_on ?? null,
+    closed_note: q.closed_note ?? null,
   })
+  for (const [name, role_label] of q.deciders ?? []) {
+    insert('question_deciders', { id: `${q.id}:${person(name)}`, question_id: q.id, decider_id: person(name), role_label })
+  }
 })
 for (const [q, name, position, summary] of demo.stances) {
   insert('stances', { id: `${q}:${person(name)}`, question_id: q, decider_id: person(name), position, summary, updated_at: '2026-11-01T00:00:00.000Z' })

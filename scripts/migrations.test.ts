@@ -149,4 +149,14 @@ describe('the seed', () => {
       WHERE q.implies_parent_support = 1 AND r.position = 'support'
         AND NOT EXISTS (SELECT 1 FROM readings p WHERE p.act_id = r.act_id AND p.question_id = q.parent_id AND p.via_question_id = q.id)`)[0].n).toBe(0)
   })
+
+  it('seeds an open ask of one named person in Congress', () => {
+    const db = database()
+    db.exec(seed)
+    expect(all(db, `SELECT q.parent_id, q.status, q.implies_parent_support, d.name, l.role_label FROM questions q
+      JOIN question_deciders l ON l.question_id = q.id JOIN deciders d ON d.id = l.decider_id WHERE q.id = 'm4a-s1506-markup'`)).toEqual([
+      { parent_id: 'm4a', status: 'open', implies_parent_support: 0, name: 'Ron Wyden', role_label: 'Ranking Member, Senate Finance Committee' },
+    ])
+    expect(all(db, `SELECT COUNT(*) AS n FROM readings WHERE question_id = 'm4a-s1506-markup'`)[0].n).toBe(0)
+  })
 })
