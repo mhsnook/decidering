@@ -59,3 +59,11 @@ export const KIND_LABEL: Record<ActKind, string> = {
 
 const dateFmt = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })
 export const formatDate = (iso: string) => dateFmt.format(new Date(iso))
+
+export function hostOf(url: string | null): string {
+  try {
+    return url ? new URL(url).hostname : 'No link'
+  } catch {
+    return url ?? 'No link'
+  }
+}

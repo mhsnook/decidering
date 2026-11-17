@@ -305,11 +305,23 @@ export const publicCollections = [
   definePartyCollection({ name: 'acts', key: 'id', schema: actSchema, access: editorWrites }),
   definePartyCollection({ name: 'reports', key: 'id', schema: reportSchema, access: editorWrites }),
   definePartyCollection({ name: 'readings', key: 'id', schema: readingSchema, access: editorWrites }),
-  // Unreviewed proposals are public. Add no column here that only an editor
-  // should read; that belongs in proposal_notes.
-  definePartyCollection({ name: 'proposals', key: 'id', schema: proposalSchema, access: editorWrites }),
-  definePartyCollection({ name: 'proposal_items', key: 'id', schema: proposalItemSchema, access: editorWrites }),
 ] as const
+
+// Unreviewed proposals are public. Add no column here that only an editor
+// should read; that belongs in proposal_notes.
+//
+// Both are sliced so a browser loads them only when a page asks: readers, whose
+// pages show no proposals, download none, and the editor's unfiltered queries
+// load the whole table. The slice columns never change on a row, which party-db
+// requires; `status` does, so it cannot be one.
+export const proposalsCollection = definePartyCollection({ name: 'proposals', key: 'id', schema: proposalSchema, sliceBy: 'source_id', access: editorWrites })
+export const proposalItemsCollection = definePartyCollection({
+  name: 'proposal_items',
+  key: 'id',
+  schema: proposalItemSchema,
+  sliceBy: 'proposal_id',
+  access: editorWrites,
+})
 
 export const proposalNotesCollection = definePartyCollection({
   name: 'proposal_notes',
@@ -329,6 +341,6 @@ export const commentsCollection = definePartyCollection({
   access: { read: 'public', delete: 'authed' },
 })
 
-export const allCollections = [...publicCollections, proposalNotesCollection, commentsCollection] as const
+export const allCollections = [...publicCollections, proposalsCollection, proposalItemsCollection, proposalNotesCollection, commentsCollection] as const
 
 export const stanceId = (questionId: string, deciderId: string) => `${questionId}:${deciderId}`

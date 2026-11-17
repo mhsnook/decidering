@@ -7,7 +7,7 @@ import { editorFetch, isEditor, signIn, signOut } from '../lib/editor.ts'
 import { commit } from '../lib/review.ts'
 import { planReview, type ItemVerdict } from '../lib/review-plan.ts'
 import { useTracker } from '../lib/tracker.tsx'
-import { KIND_LABEL, SIGNAL_LABEL, formatDate, standingLabel } from '../lib/position.ts'
+import { KIND_LABEL, SIGNAL_LABEL, formatDate, hostOf, standingLabel } from '../lib/position.ts'
 import { StandingPill, Syncing } from '../components/bits.tsx'
 import { RecordItem } from '../components/RecordItem.tsx'
 
@@ -44,14 +44,6 @@ const ORIGIN_LABEL: Record<Proposal['origin'], string> = {
   news_search: 'Found by news search',
   partner: 'Sent in by a partner',
   model: 'Read by a model',
-}
-
-function hostOf(url: string | null): string {
-  try {
-    return url ? new URL(url).hostname : 'No link'
-  } catch {
-    return url ?? 'No link'
-  }
 }
 
 function Queue() {
