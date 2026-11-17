@@ -20,7 +20,7 @@ export function QuestionHeader({ question, deciderSlug }: { question: Question; 
       <h1 className="max-w-3xl text-3xl leading-tight font-semibold sm:text-4xl">{question.title}</h1>
       {question.description && <p className="max-w-2xl text-muted">{question.description}</p>}
       {question.reference_url && (
-        <a href={question.reference_url} target="_blank" rel="noreferrer" className="inline-block text-sm text-accent underline underline-offset-2">
+        <a href={question.reference_url} target="_blank" rel="noreferrer" className="inline-block text-sm link">
           Read the measure ↗
         </a>
       )}

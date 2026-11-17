@@ -1,13 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useLiveQuery } from '@tanstack/react-db'
-import { EVIDENCE_KINDS, POSITIONS, stanceId, type Submission } from '../../shared/schema.ts'
+import { EVIDENCE_KINDS, POSITIONS, stanceId, type Position, type Submission } from '../../shared/schema.ts'
 import { db } from '../lib/db.ts'
 import { editorFetch, isEditor, signIn, signOut } from '../lib/editor.ts'
 import { approve, reject, type Verdict } from '../lib/review.ts'
 import { useTracker } from '../lib/tracker.tsx'
-import { KIND_LABEL, SIGNAL_LABEL, formatDate, standingLabel } from '../lib/position.ts'
-import { StandingPill, Syncing } from '../components/bits.tsx'
+import { KIND_LABEL, formatDate, standingLabel } from '../lib/position.ts'
+import { Syncing, Token } from '../components/bits.tsx'
 import { EvidenceItem } from '../components/EvidenceList.tsx'
 
 export const Route = createFileRoute('/editor')({ component: Editor })
@@ -24,8 +24,8 @@ function SignIn() {
     setFailed(!(await signIn(token)))
   }
   return (
-    <form onSubmit={onSubmit} className="mx-auto max-w-sm space-y-4 py-12">
-      <h1 className="text-2xl font-semibold">Editors</h1>
+    <form onSubmit={onSubmit} className="card mx-auto mt-8 max-w-sm space-y-4 p-6">
+      <h1 className="text-[28px] font-black">Editors</h1>
       <div>
         <label className="label" htmlFor="token">
           Editor token
@@ -37,6 +37,9 @@ function SignIn() {
     </form>
   )
 }
+
+// How many waiting items to list beside the open one.
+const UP_NEXT = 12
 
 function Queue() {
   const { tracker, isReady } = useTracker()
@@ -50,6 +53,7 @@ function Queue() {
     .sort((a, b) => (b.reviewed_at ?? '').localeCompare(a.reviewed_at ?? ''))
   const list = tab === 'pending' ? pending : reviewed
   const selected = list.find((s) => s.id === selectedId) ?? list[0]
+  const others = list.filter((s) => s.id !== selected?.id)
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -69,75 +73,93 @@ function Queue() {
 
   if (!isReady) return <Syncing />
 
+  const total = pending.length + reviewed.length
+  const tabClass = (t: typeof tab) => (tab === t ? 'font-black' : 'link cursor-pointer font-semibold')
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-3xl font-semibold">Review queue</h1>
-        <div className="flex items-center gap-2">
+    <div className="pb-24 sm:pb-0">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-4">
+        <h1 className="text-[32px] leading-none font-black sm:text-[40px]">Review queue</h1>
+        <div
+          className="h-3.5 min-w-[200px] flex-1 overflow-hidden rounded-full border-2 border-ink bg-surface sm:h-[18px]"
+          role="progressbar"
+          aria-label="Reviewed"
+          aria-valuemin={0}
+          aria-valuemax={total}
+          aria-valuenow={reviewed.length}
+        >
+          <div className="h-full bg-support transition-[width] duration-300" style={{ width: `${total ? (reviewed.length / total) * 100 : 0}%` }} />
+        </div>
+        <p className="tabular-nums">
+          <button type="button" aria-pressed={tab === 'reviewed'} className={tabClass('reviewed')} onClick={() => setTab('reviewed')}>
+            {reviewed.length} reviewed
+          </button>
+          {' · '}
+          <button type="button" aria-pressed={tab === 'pending'} className={tabClass('pending')} onClick={() => setTab('pending')}>
+            {pending.length} to go
+          </button>
+        </p>
+        <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto">
           <NewsSearchButton />
-          <button type="button" className="btn" onClick={signOut}>
+          <button type="button" className="btn rounded-full py-1.5 text-[15px] font-semibold shadow-none" onClick={signOut}>
             Sign out
           </button>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 border-b border-line">
-        {(['pending', 'reviewed'] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium capitalize ${tab === t ? 'border-ink' : 'border-transparent text-muted'}`}
-          >
-            {t} <span className="tabular-nums">{t === 'pending' ? pending.length : reviewed.length}</span>
-          </button>
-        ))}
-        <p className="ml-auto hidden gap-3 pb-1 text-xs text-muted md:flex">
-          <span>
-            <kbd className="kbd">j</kbd> <kbd className="kbd">k</kbd> move
-          </span>
-          <span>
-            <kbd className="kbd">o</kbd> open source
-          </span>
-          <span>
-            <kbd className="kbd">a</kbd> approve
-          </span>
-          <span>
-            <kbd className="kbd">r</kbd> reject
-          </span>
-        </p>
-      </div>
-
-      {list.length === 0 ? (
-        <p className="py-16 text-center text-muted">{tab === 'pending' ? 'The queue is clear.' : 'Nothing reviewed yet.'}</p>
+      {!selected ? (
+        <div className="card mt-10 bg-mint px-5 py-7 text-center sm:mt-12 sm:rounded-3xl sm:p-12">
+          <h2 className="text-2xl font-black sm:text-[32px]">{tab === 'pending' ? 'The queue is empty.' : 'Nothing reviewed yet.'}</h2>
+          {tab === 'pending' && <p className="mt-2 text-[15px] sm:text-[17px]">Every lead has been reviewed. The next news search runs in a few hours.</p>}
+        </div>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[20rem_1fr]">
-          <ul className="max-h-[70vh] space-y-1 overflow-y-auto pr-1">
-            {list.map((s) => (
-              <li key={s.id}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedId(s.id)}
-                  className={`w-full rounded-lg border p-3 text-left ${s.id === selected?.id ? 'border-ink bg-surface' : 'border-transparent hover:bg-surface'}`}
-                >
-                  <span className="flex items-center justify-between gap-2 text-sm font-medium">
-                    {tracker.deciderById.get(s.decider_id)?.name ?? s.decider_id}
-                    {s.status !== 'pending' && <span className={`text-xs ${s.status === 'approved' ? 'text-support' : 'text-muted'}`}>{s.status}</span>}
-                  </span>
-                  <span className="block truncate text-xs text-muted">{tracker.questionById.get(s.question_id)?.short_title}</span>
-                  <span className="mt-1 line-clamp-2 text-xs">{s.quote}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-          {selected && <Review key={selected.id} submission={selected} />}
+        <div className="mt-6 grid items-start gap-9 sm:mt-8 lg:grid-cols-[minmax(0,1fr)_minmax(260px,340px)]">
+          <Review key={selected.id} submission={selected} behind={others.length} />
+          {others.length > 0 && (
+            <aside>
+              <h2 className="mb-2.5 text-base font-black sm:text-lg">{tab === 'pending' ? 'Up next' : 'Reviewed'}</h2>
+              <ul className="flex flex-col gap-2 sm:gap-2.5">
+                {others.slice(0, UP_NEXT).map((s) => (
+                  <li key={s.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId(s.id)}
+                      className="flex w-full cursor-pointer items-start gap-3 rounded-[14px] border-2 border-ink bg-surface px-3.5 py-3 text-left hover:shadow-[0_4px_0_var(--color-ink)]"
+                    >
+                      <Token standing={tracker.stanceById.get(stanceId(s.question_id, s.decider_id))?.position ?? 'unknown'} className="mt-0.5 size-[22px]" />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-baseline justify-between gap-2 font-bold">
+                          {tracker.deciderById.get(s.decider_id)?.name ?? s.decider_id}
+                          {s.status !== 'pending' && <span className="tag">{s.status}</span>}
+                        </span>
+                        <span className="mt-0.5 line-clamp-1 text-sm leading-snug text-muted sm:line-clamp-2">{s.quote}</span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {others.length > UP_NEXT && <p className="mt-3 text-sm font-semibold text-muted">and {others.length - UP_NEXT} more</p>}
+              <p className="tag mt-4 hidden text-[13px] leading-[1.8] font-medium text-faint lg:block">
+                J / K move · O open source
+                <br />A approve · R reject
+              </p>
+            </aside>
+          )}
         </div>
       )}
     </div>
   )
 }
 
-function Review({ submission }: { submission: Submission }) {
+const PICKED: Record<Position, string> = {
+  support: 'has-checked:bg-support/20',
+  lean_support: 'has-checked:bg-lean-support/40',
+  mixed: 'has-checked:bg-mixed/30',
+  lean_oppose: 'has-checked:bg-lean-oppose/40',
+  oppose: 'has-checked:bg-oppose/15',
+}
+
+function Review({ submission, behind }: { submission: Submission; behind: number }) {
   const { tracker } = useTracker()
   const [error, setError] = useState<string | null>(null)
   const question = tracker.questionById.get(submission.question_id)
@@ -147,6 +169,7 @@ function Review({ submission }: { submission: Submission }) {
   const stance = tracker.stanceById.get(stanceId(question.id, decider.id))
   const existing = tracker.evidenceFor(question, decider.id)
   const isPending = submission.status === 'pending'
+  const fromSearch = submission.origin === 'news_search'
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -154,6 +177,7 @@ function Review({ submission }: { submission: Submission }) {
     const text = (name: string) => (f.get(name) as string).trim()
     const action = ((e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement).value
     const review_note = text('review_note') || null
+    const signals = f.get('signals') as Verdict['signals']
     setError(null)
     const done =
       action === 'reject'
@@ -161,10 +185,10 @@ function Review({ submission }: { submission: Submission }) {
         : approve(submission, {
             quote: text('quote'),
             kind: f.get('kind') as Verdict['kind'],
-            signals: f.get('signals') as Verdict['signals'],
+            signals,
             occurred_on: text('occurred_on'),
             source_title: text('source_title') || null,
-            position: f.get('position') as Verdict['position'],
+            position: (f.get('position') as Verdict['position'] | '') || signals,
             summary: text('summary') || null,
             review_note,
           })
@@ -172,133 +196,144 @@ function Review({ submission }: { submission: Submission }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-5">
-      <div className="rounded-xl border border-line bg-surface p-5">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <h2 className="text-xl font-semibold">{decider.name}</h2>
-            <p className="text-sm text-muted">{question.title}</p>
+    <div>
+      <div className="relative mr-2 sm:mr-3">
+        {behind > 1 && <div className="absolute inset-0 translate-x-2 translate-y-3 rounded-[20px] border-2 border-ink bg-surface sm:translate-x-3 sm:translate-y-4 sm:rounded-3xl" />}
+        {behind > 0 && <div className="absolute inset-0 translate-x-1 translate-y-1.5 rounded-[20px] border-2 border-ink bg-surface sm:translate-x-1.5 sm:translate-y-2 sm:rounded-3xl" />}
+        <form onSubmit={onSubmit} className="relative flex flex-col gap-4 rounded-[20px] border-2 border-ink bg-surface p-[18px] sm:gap-5 sm:rounded-3xl sm:p-7">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-center gap-3 sm:gap-3.5">
+              <Token
+                standing={stance?.position ?? 'unknown'}
+                className={`size-10 border-[3px] sm:size-[52px] ${stance ? 'shadow-[0_3px_0_var(--color-ink)] sm:shadow-[0_4px_0_var(--color-ink)]' : ''}`}
+              />
+              <div>
+                <h2 className="text-[22px] leading-[1.1] font-black sm:text-[28px]">{decider.name}</h2>
+                <p className="mt-1 text-sm text-muted sm:text-base">{question.title}</p>
+              </div>
+            </div>
+            <span className="tag rounded-full border-2 border-dashed border-ink px-2.5 py-1 text-[11px] sm:text-xs">
+              {fromSearch ? 'News search' : 'Sent in by a reader'} · {formatDate(submission.created_at)}
+            </span>
           </div>
-          <span className="rounded bg-paper px-2 py-1 text-xs text-muted">
-            {submission.origin === 'news_search' ? 'Found by news search' : 'Sent in by a reader'} · {formatDate(submission.created_at)}
-          </span>
-        </div>
-        <a href={submission.source_url} target="_blank" rel="noreferrer" className="mt-3 block text-sm break-all text-accent underline underline-offset-2">
-          {submission.source_url} ↗
-        </a>
-        {submission.submitter_note && <p className="mt-3 rounded bg-paper p-3 text-sm">Note: {submission.submitter_note}</p>}
+
+          <fieldset disabled={!isPending} className="flex min-w-0 flex-col gap-4 sm:gap-5">
+            <div className="rounded-[14px] border-2 border-dashed border-line bg-paper px-3.5 py-3 sm:px-[18px] sm:py-4">
+              <label className="tag text-[10px] text-faint sm:text-xs" htmlFor="quote">
+                {fromSearch ? 'Search excerpt, not a checked quote' : 'Reader’s quote, not yet checked'}
+              </label>
+              <textarea id="quote" name="quote" required rows={3} defaultValue={submission.quote} className="field mt-2 leading-normal sm:text-lg" />
+              <a href={submission.source_url} target="_blank" rel="noreferrer" className="link mt-2 flex min-h-11 items-center text-sm font-semibold break-all sm:min-h-0">
+                {submission.source_url} ↗
+              </a>
+              {submission.submitter_note && <p className="mt-2 text-sm">Reader’s note: {submission.submitter_note}</p>}
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div>
+                <label className="label" htmlFor="source_title">
+                  Source
+                </label>
+                <input id="source_title" name="source_title" defaultValue={submission.source_title ?? ''} className="field" />
+              </div>
+              <div>
+                <label className="label" htmlFor="occurred_on">
+                  Date it happened
+                </label>
+                <input id="occurred_on" name="occurred_on" type="date" required defaultValue={submission.occurred_on ?? ''} className="field" />
+              </div>
+              <div>
+                <label className="label" htmlFor="kind">
+                  Kind
+                </label>
+                <select id="kind" name="kind" defaultValue={submission.kind} className="field">
+                  {EVIDENCE_KINDS.map((k) => (
+                    <option key={k} value={k}>
+                      {KIND_LABEL[k]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div role="radiogroup" aria-labelledby="signals-label">
+              <p className="mb-2.5 flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm sm:mb-3">
+                <span id="signals-label" className="font-bold">
+                  What does this show?
+                </span>
+                <span className="text-[13px] font-medium text-faint sm:text-sm">
+                  {stance ? `Now listed as ${standingLabel(stance.position, question)}, from ${existing.length} item${existing.length === 1 ? '' : 's'}` : 'Not listed yet'}
+                </span>
+              </p>
+              <div className="grid grid-cols-5 gap-1.5 text-center text-[11px] leading-[1.15] font-bold sm:gap-2.5 sm:text-[15px]">
+                {POSITIONS.map((p) => (
+                  <label
+                    key={p}
+                    className={`flex min-h-[72px] cursor-pointer flex-col items-center gap-1.5 rounded-xl border-2 border-ink bg-surface px-0.5 pt-2.5 pb-2 transition-transform has-checked:-translate-y-[3px] has-checked:shadow-[0_4px_0_var(--color-ink)] has-focus-visible:outline-3 has-focus-visible:outline-offset-2 has-focus-visible:outline-accent sm:gap-2 sm:rounded-[14px] sm:py-3 ${PICKED[p]}`}
+                  >
+                    <input type="radio" name="signals" value={p} required defaultChecked={submission.signals === p} className="sr-only" />
+                    <Token standing={p} className="size-6 sm:size-7" />
+                    {standingLabel(p, question)}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-[12rem_1fr]">
+              <div>
+                <label className="label" htmlFor="position">
+                  Listed as, after approving
+                </label>
+                <select id="position" name="position" defaultValue={stance?.position ?? ''} className="field">
+                  <option value="">Same as this item</option>
+                  {POSITIONS.map((p) => (
+                    <option key={p} value={p}>
+                      {standingLabel(p, question)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label" htmlFor="summary">
+                  One-line summary
+                </label>
+                <input id="summary" name="summary" defaultValue={stance?.summary ?? ''} placeholder="Write one line…" className="field" />
+              </div>
+            </div>
+
+            <div>
+              <label className="label" htmlFor="review_note">
+                Review note <span className="font-normal text-faint">(only editors see this)</span>
+              </label>
+              <input id="review_note" name="review_note" defaultValue={submission.review_note ?? ''} placeholder="Add a note…" className="field" />
+            </div>
+
+            {isPending && (
+              <div className="fixed inset-x-0 bottom-0 z-10 flex gap-2.5 border-t-2 border-ink bg-surface px-4 pt-3 pb-5 sm:static sm:gap-3 sm:border-0 sm:p-0">
+                <button id="approve" name="action" value="approve" className="btn btn-go order-2 min-h-[52px] flex-[2] rounded-[14px] shadow-[0_4px_0_var(--color-ink)] sm:order-1 sm:flex-1 sm:text-[17px]">
+                  Approve and publish <span className="hidden sm:inline">[A]</span>
+                </button>
+                <button id="reject" name="action" value="reject" formNoValidate className="btn order-1 min-h-[52px] flex-1 rounded-[14px] shadow-[0_4px_0_var(--color-ink)] sm:order-2 sm:text-[17px]">
+                  Reject <span className="hidden sm:inline">[R]</span>
+                </button>
+              </div>
+            )}
+            {error && <p className="text-sm font-semibold text-oppose">Not saved: {error}</p>}
+          </fieldset>
+        </form>
       </div>
 
-      <fieldset disabled={!isPending} className="space-y-4">
-        <div>
-          <label className="label" htmlFor="quote">
-            Quote or act, as it will be published
-          </label>
-          <textarea id="quote" name="quote" required rows={4} defaultValue={submission.quote} className="field" />
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="label" htmlFor="source_title">
-              Source name
-            </label>
-            <input id="source_title" name="source_title" defaultValue={submission.source_title ?? ''} className="field" />
-          </div>
-          <div>
-            <label className="label" htmlFor="occurred_on">
-              Date it happened
-            </label>
-            <input id="occurred_on" name="occurred_on" type="date" required defaultValue={submission.occurred_on ?? ''} className="field" />
-          </div>
-          <div>
-            <label className="label" htmlFor="kind">
-              Kind
-            </label>
-            <select id="kind" name="kind" defaultValue={submission.kind} className="field">
-              {EVIDENCE_KINDS.map((k) => (
-                <option key={k} value={k}>
-                  {KIND_LABEL[k]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label" htmlFor="signals">
-              This item shows
-            </label>
-            <select id="signals" name="signals" required defaultValue={submission.signals ?? ''} className="field">
-              <option value="" disabled>
-                Choose…
-              </option>
-              {POSITIONS.map((p) => (
-                <option key={p} value={p}>
-                  {SIGNAL_LABEL[p]}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-line p-4">
-          <p className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-            Currently listed as <StandingPill standing={stance?.position ?? 'unknown'} question={question} /> on {existing.length} item
-            {existing.length === 1 ? '' : 's'}.
-          </p>
-          <div className="grid gap-4 sm:grid-cols-[12rem_1fr]">
-            <div>
-              <label className="label" htmlFor="position">
-                Position after approving
-              </label>
-              <select id="position" name="position" required defaultValue={stance?.position ?? submission.signals ?? ''} className="field">
-                <option value="" disabled>
-                  Choose…
-                </option>
-                {POSITIONS.map((p) => (
-                  <option key={p} value={p}>
-                    {standingLabel(p, question)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor="summary">
-                One-line summary
-              </label>
-              <input id="summary" name="summary" defaultValue={stance?.summary ?? ''} className="field" />
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <label className="label" htmlFor="review_note">
-            Review note <span className="font-normal normal-case">(internal)</span>
-          </label>
-          <input id="review_note" name="review_note" defaultValue={submission.review_note ?? ''} className="field" />
-        </div>
-
-        {isPending && (
-          <div className="flex gap-2">
-            <button id="approve" name="action" value="approve" className="btn btn-primary">
-              Approve and publish
-            </button>
-            <button id="reject" name="action" value="reject" formNoValidate className="btn">
-              Reject
-            </button>
-          </div>
-        )}
-        {error && <p className="text-sm text-oppose">Not saved: {error}</p>}
-      </fieldset>
-
       {existing.length > 0 && (
-        <section>
-          <h3 className="mb-2 text-base font-semibold">Already on the record</h3>
-          <ol className="space-y-2">
+        <section className="mt-10">
+          <h3 className="mb-2.5 text-base font-black sm:text-lg">Already on the record</h3>
+          <ol className="space-y-2.5">
             {existing.map((e) => (
               <EvidenceItem key={e.id} evidence={e} question={question} />
             ))}
           </ol>
         </section>
       )}
-    </form>
+    </div>
   )
 }
 
@@ -316,8 +351,8 @@ function NewsSearchButton() {
   }
   return (
     <>
-      {state !== 'idle' && state !== 'running' && <span className="text-xs text-muted">{state}</span>}
-      <button type="button" className="btn" onClick={run} disabled={state === 'running'} title="Searches the news for questions marked as in the news">
+      {state !== 'idle' && state !== 'running' && <span className="text-sm font-semibold">{state}</span>}
+      <button type="button" className="btn rounded-full py-1.5 text-[15px] font-semibold" onClick={run} disabled={state === 'running'} title="Searches the news for questions marked as in the news">
         {state === 'running' ? 'Searching…' : 'Search the news now'}
       </button>
     </>
