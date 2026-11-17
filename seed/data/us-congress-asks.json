@@ -1,14 +1,26 @@
 {
+  "next_term": { "on": "2027-01-03", "label": "120th Congress" },
+  "offices": [
+    {
+      "id": "us-senate-finance-chair",
+      "chamber": "Senate",
+      "label": "Chair, Senate Finance Committee",
+      "holders": [
+        { "bioguide": "C000880", "ends_on": "2027-01-03" },
+        { "bioguide": "W000779", "starts_on": "2027-01-03" }
+      ]
+    }
+  ],
   "asks": [
     {
       "id": "m4a-s1506-markup",
       "slug": "medicare-for-all-senate-markup",
       "parent": "m4a",
       "chamber": "Senate",
-      "title": "Will he commit to a markup?",
+      "title": "Will they commit to a markup?",
       "short_title": "Senate markup",
-      "description": "A markup is the committee session where a bill is debated, amended and voted on before it can go to the floor. This asks about S. 1506, the Senate bill.",
-      "deciders": [{ "bioguide": "W000779", "role_label": "Ranking Member, Senate Finance Committee" }]
+      "description": "A markup is the committee session where a bill is debated, amended and voted on before it can go to the floor. This is asked of whoever chairs the Senate Finance Committee.",
+      "offices": ["us-senate-finance-chair"]
     }
   ]
 }

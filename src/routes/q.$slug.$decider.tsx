@@ -27,13 +27,24 @@ function DeciderOnQuestion() {
   const role = decider && question && tracker.roleIn(question, decider.id)
   const seat = role && tracker.seatById.get(role.seat_id)
   const me = question && role && tracker.contender(question, role)
-  if (!question || !decider || !seat || !me || !tracker.appliesTo(question, decider.id)) return <NotFound what="record" />
+  // Someone who held, or will hold, the office an ask is put to keeps their page for it.
+  const tenures = question && decider ? tracker.tenuresOn(question, decider.id) : []
+  if (!question || !decider || !seat || !me || !(tracker.appliesTo(question, decider.id) || tenures.length > 0)) return <NotFound what="record" />
 
   const measures = (tracker.measuresOf.get(question.id) ?? []).filter((m) => !m.chamber || m.chamber === seat.chamber)
   const isAsk = tracker.isAsk(question)
   const root = (question.parent_id && tracker.questionById.get(question.parent_id)) || question
   const asks = tracker.asksFor(root, decider.id)
-  const roleLabels = [...new Set(asks.map((k) => k.link.role_label).filter((l) => l !== null))]
+  const span = (t: { starts_on: string | null; ends_on: string | null }) =>
+    t.starts_on && t.starts_on > tracker.asOf ? ` from ${formatDate(t.starts_on)}` : t.ends_on && t.ends_on <= tracker.asOf ? ` until ${formatDate(t.ends_on)}` : ''
+  const roleLabels = [
+    ...new Set([
+      ...tracker.officesHeldBy(decider.id).map((o) => o.label),
+      ...asks.map((k) => k.roleLabel).filter((l) => l !== null),
+      ...tenures.filter((t) => span(t.holder)).map((t) => t.office.label + span(t.holder)),
+    ]),
+  ]
+  const seatSpan = span(me.role)
   const rivals = (tracker.rolesBySeat.get(seat.id) ?? [])
     .filter((r) => r.decider_id !== decider.id)
     .map((r) => tracker.contender(question, r))
@@ -54,6 +65,7 @@ function DeciderOnQuestion() {
               {seat.chamber && `, ${seat.chamber}`}
               {me.role.affiliation && ` · ${me.role.affiliation}`}
               {seat.next_election_on && ` · next election ${formatDate(seat.next_election_on)}`}
+              {seatSpan && ` · holds the seat${seatSpan}`}
             </p>
             {roleLabels.length > 0 && <p className="text-sm font-medium">{roleLabels.join(' · ')}</p>}
           </div>

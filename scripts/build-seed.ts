@@ -103,6 +103,8 @@ insert('bodies', {
   description: `Members of the 119th Congress. Roster and cosponsor records as of ${congress.fetched_on}.`,
   is_demo: false,
   sort: 0,
+  next_term_on: congressAsks.next_term.on,
+  next_term_label: congressAsks.next_term.label,
 })
 
 const members = new Map<string, any>()
@@ -192,6 +194,18 @@ congress.bills.forEach((bill: any, i: number) => {
 // database without replaying the roster and stances over an editor's changes --
 
 dataSet('us-congress-asks')
+const member = (bioguide: string, where: string) => {
+  if (!members.has(bioguide)) throw new Error(`${where} names ${bioguide}, who is not in the roster`)
+  return bioguide
+}
+// Also set by the roster's own file. Repeated so this file works alone.
+lines.push(`UPDATE bodies SET next_term_on = ${sql(congressAsks.next_term.on)}, next_term_label = ${sql(congressAsks.next_term.label)} WHERE id = ${sql(US)};`)
+congressAsks.offices.forEach((o: any, i: number) => {
+  insert('offices', { id: o.id, body_id: US, chamber: o.chamber, label: o.label, sort: i })
+  for (const h of o.holders) {
+    insert('office_holders', { id: `${o.id}:${member(h.bioguide, o.id)}`, office_id: o.id, decider_id: h.bioguide, starts_on: h.starts_on ?? null, ends_on: h.ends_on ?? null })
+  }
+})
 congressAsks.asks.forEach((ask: any, i: number) => {
   question({
     id: ask.id,
@@ -207,10 +221,12 @@ congressAsks.asks.forEach((ask: any, i: number) => {
     is_hot: false,
     sort: 100 + i,
   })
-  for (const d of ask.deciders) {
-    if (!members.has(d.bioguide)) throw new Error(`${ask.id} names ${d.bioguide}, who is not in the roster`)
-    insert('question_deciders', { id: `${ask.id}:${d.bioguide}`, question_id: ask.id, decider_id: d.bioguide, role_label: d.role_label })
+  // An ask that used to name people and now names offices must not keep both.
+  lines.push(`DELETE FROM question_deciders WHERE question_id = ${sql(ask.id)};`)
+  for (const d of ask.deciders ?? []) {
+    insert('question_deciders', { id: `${ask.id}:${member(d.bioguide, ask.id)}`, question_id: ask.id, decider_id: d.bioguide, role_label: d.role_label })
   }
+  for (const officeId of ask.offices ?? []) insert('question_offices', { id: `${ask.id}:${officeId}`, question_id: ask.id, office_id: officeId })
 })
 
 // ---- The states and the Equal Rights Amendment: the National Archives' list --

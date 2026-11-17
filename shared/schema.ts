@@ -19,6 +19,9 @@ export const bodySchema = z.object({
   description: z.string().nullable(),
   is_demo: z.boolean(),
   sort: z.number(),
+  // The day the body next changes over and what it is called from then on.
+  next_term_on: z.string().nullable(),
+  next_term_label: z.string().nullable(),
 })
 export type Body = z.infer<typeof bodySchema>
 
@@ -50,8 +53,43 @@ export const roleSchema = z.object({
   kind: z.enum(['incumbent', 'challenger']),
   contest: z.enum(['primary', 'general']).nullable(),
   affiliation: z.string().nullable(),
+  starts_on: z.string().nullable(),
+  ends_on: z.string().nullable(),
 })
 export type Role = z.infer<typeof roleSchema>
+
+// Whether a dated row holds on a day. A null start is "since before we kept
+// track" and a null end is "no end known". The end day itself is excluded, so
+// one holder can end on the day the next starts.
+export const inEffect = (row: { starts_on: string | null; ends_on: string | null }, day: string) =>
+  (row.starts_on === null || row.starts_on <= day) && (row.ends_on === null || day < row.ends_on)
+
+// A key role in a body, such as a committee chair. It outlives its holders.
+export const officeSchema = z.object({
+  id: z.string(),
+  body_id: z.string(),
+  chamber: z.string().nullable(),
+  label: z.string(),
+  sort: z.number(),
+})
+export type Office = z.infer<typeof officeSchema>
+
+export const officeHolderSchema = z.object({
+  id: z.string(),
+  office_id: z.string(),
+  decider_id: z.string(),
+  starts_on: z.string().nullable(),
+  ends_on: z.string().nullable(),
+})
+export type OfficeHolder = z.infer<typeof officeHolderSchema>
+
+// An ask put to whoever holds an office on the day being viewed.
+export const questionOfficeSchema = z.object({
+  id: z.string(),
+  question_id: z.string(),
+  office_id: z.string(),
+})
+export type QuestionOffice = z.infer<typeof questionOfficeSchema>
 
 export const questionSchema = z.object({
   id: z.string(),
@@ -82,8 +120,8 @@ export const questionSchema = z.object({
 })
 export type Question = z.infer<typeof questionSchema>
 
-// A question with rows here is an ask of those people only. One without
-// applies to every seat in its body or chamber.
+// A question with rows here, or in question_offices, is an ask of those people
+// only. One with neither applies to every seat in its body or chamber.
 export const questionDeciderSchema = z.object({
   id: z.string(),
   question_id: z.string(),
@@ -247,6 +285,9 @@ export const publicCollections = [
   definePartyCollection({ name: 'roles', key: 'id', schema: roleSchema, access: editorWrites }),
   definePartyCollection({ name: 'questions', key: 'id', schema: questionSchema, access: editorWrites }),
   definePartyCollection({ name: 'question_deciders', key: 'id', schema: questionDeciderSchema, access: editorWrites }),
+  definePartyCollection({ name: 'offices', key: 'id', schema: officeSchema, access: editorWrites }),
+  definePartyCollection({ name: 'office_holders', key: 'id', schema: officeHolderSchema, access: editorWrites }),
+  definePartyCollection({ name: 'question_offices', key: 'id', schema: questionOfficeSchema, access: editorWrites }),
   definePartyCollection({ name: 'stances', key: 'id', schema: stanceSchema, access: editorWrites }),
   definePartyCollection({ name: 'sources', key: 'id', schema: sourceSchema, access: editorWrites }),
   definePartyCollection({ name: 'acts', key: 'id', schema: actSchema, access: editorWrites }),

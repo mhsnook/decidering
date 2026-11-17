@@ -1,6 +1,7 @@
-import { Link } from '@tanstack/react-router'
-import type { Question } from '../../shared/schema.ts'
-import { useTracker } from '../lib/tracker.tsx'
+import { Link, useNavigate } from '@tanstack/react-router'
+import type { Body, Question } from '../../shared/schema.ts'
+import { today, useTracker } from '../lib/tracker.tsx'
+import { formatDate } from '../lib/position.ts'
 import { Eyebrow } from './bits.tsx'
 
 // The broad question and its specific measures are one family; the tabs move
@@ -28,6 +29,7 @@ export function QuestionHeader({ question, deciderSlug }: { question: Question; 
           Read the measure ↗
         </a>
       )}
+      {body && <TermToggle body={body} />}
       {family.length > 1 && (
         <nav className="flex flex-wrap gap-2 pt-1" aria-label="Related questions">
           {family.map((q) => {
@@ -46,5 +48,34 @@ export function QuestionHeader({ question, deciderSlug }: { question: Question; 
         </nav>
       )}
     </header>
+  )
+}
+
+// Switches between the body as it stands and as it will stand once its next
+// term starts. Seats, key roles and the asks put to them all follow the day.
+function TermToggle({ body }: { body: Body }) {
+  const { tracker } = useTracker()
+  const navigate = useNavigate()
+  const now = today()
+  if (!body.next_term_on || body.next_term_on <= now) return null
+  const isNext = tracker.asOf >= body.next_term_on
+  const view = (as: string | undefined) => navigate({ to: '.', search: (prev) => ({ ...prev, as }), replace: true })
+  const tab = (on: boolean) => `btn -ml-px rounded-none first:ml-0 first:rounded-l-md last:rounded-r-md ${on ? 'btn-primary relative' : ''}`
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-1">
+      <div className="flex" role="group" aria-label="When">
+        <button type="button" aria-pressed={!isNext} className={tab(!isNext)} onClick={() => view(undefined)}>
+          Now
+        </button>
+        <button type="button" aria-pressed={isNext} className={tab(isNext)} onClick={() => view(body.next_term_on!)}>
+          {body.next_term_label ?? 'Next term'}
+        </button>
+      </div>
+      <p className="text-sm text-muted">
+        {isNext
+          ? `As it is expected to stand from ${formatDate(body.next_term_on)}.`
+          : `${body.next_term_label ?? 'The next term'} starts ${formatDate(body.next_term_on)}.`}
+      </p>
+    </div>
   )
 }

@@ -27,8 +27,8 @@ export function KeyPeople({ people }: { people: KeyPerson[] }) {
     <section>
       <h2 className="mb-3 text-lg font-semibold">Key people</h2>
       <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {people.map(({ ask, link, contender, seat }) => (
-          <li key={link.id}>
+        {people.map(({ ask, key, roleLabel, contender, seat }) => (
+          <li key={key}>
             <Link
               to="/q/$slug/$decider"
               params={{ slug: ask.slug, decider: contender.decider.slug }}
@@ -39,7 +39,7 @@ export function KeyPeople({ people }: { people: KeyPerson[] }) {
                 <StandingPill standing={contender.standing} question={ask} />
               </span>
               <span className="block text-xs text-muted">
-                {link.role_label ?? seat.label}
+                {roleLabel ?? seat.label}
                 {contender.role.affiliation && ` · ${contender.role.affiliation}`}
               </span>
               <span className="mt-2 flex flex-wrap items-center gap-2 text-sm">

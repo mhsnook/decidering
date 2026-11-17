@@ -124,7 +124,7 @@ describe('the seed', () => {
   it('loads into the migrated schema, and loads again without duplicating anything', () => {
     const db = database()
     db.exec(seed)
-    const tables = ['sources', 'acts', 'reports', 'readings', 'stances', 'questions', 'question_deciders']
+    const tables = ['sources', 'acts', 'reports', 'readings', 'stances', 'questions', 'question_deciders', 'offices', 'office_holders', 'question_offices', 'roles']
     const first = tables.map((t) => count(db, t))
     expect(count(db, 'acts')).toBeGreaterThan(0)
     expect(count(db, 'reports')).toBe(count(db, 'acts'))
@@ -150,13 +150,27 @@ describe('the seed', () => {
         AND NOT EXISTS (SELECT 1 FROM readings p WHERE p.act_id = r.act_id AND p.question_id = q.parent_id AND p.via_question_id = q.id)`)[0].n).toBe(0)
   })
 
-  it('seeds an open ask of one named person in Congress', () => {
+  it('seeds an open ask of an office in Congress, with a holder now and one from the next term', () => {
     const db = database()
     db.exec(seed)
-    expect(all(db, `SELECT q.parent_id, q.status, q.implies_parent_support, d.name, l.role_label FROM questions q
-      JOIN question_deciders l ON l.question_id = q.id JOIN deciders d ON d.id = l.decider_id WHERE q.id = 'm4a-s1506-markup'`)).toEqual([
-      { parent_id: 'm4a', status: 'open', implies_parent_support: 0, name: 'Ron Wyden', role_label: 'Ranking Member, Senate Finance Committee' },
+    expect(all(db, `SELECT q.parent_id, q.status, q.implies_parent_support, o.label, b.next_term_on FROM questions q
+      JOIN question_offices l ON l.question_id = q.id JOIN offices o ON o.id = l.office_id JOIN bodies b ON b.id = o.body_id WHERE q.id = 'm4a-s1506-markup'`)).toEqual([
+      { parent_id: 'm4a', status: 'open', implies_parent_support: 0, label: 'Chair, Senate Finance Committee', next_term_on: '2027-01-03' },
+    ])
+    expect(all(db, `SELECT d.name, h.starts_on, h.ends_on FROM office_holders h JOIN deciders d ON d.id = h.decider_id
+      WHERE h.office_id = 'us-senate-finance-chair' ORDER BY h.starts_on IS NOT NULL`)).toEqual([
+      { name: 'Mike Crapo', starts_on: null, ends_on: '2027-01-03' },
+      { name: 'Ron Wyden', starts_on: '2027-01-03', ends_on: null },
     ])
     expect(all(db, `SELECT COUNT(*) AS n FROM readings WHERE question_id = 'm4a-s1506-markup'`)[0].n).toBe(0)
+  })
+
+  it('moves an ask that named a person onto its office when the asks file is replayed alone', () => {
+    const db = database()
+    db.exec(seed)
+    db.exec(`INSERT INTO question_deciders (id, question_id, decider_id, role_label) VALUES ('old', 'm4a-s1506-markup', 'W000779', 'Ranking Member, Senate Finance Committee')`)
+    db.exec(readFileSync(new URL('seed/out/us-congress-asks.sql', root), 'utf8'))
+    expect(all(db, `SELECT COUNT(*) AS n FROM question_deciders WHERE question_id = 'm4a-s1506-markup'`)[0].n).toBe(0)
+    expect(all(db, `PRAGMA foreign_key_check`)).toEqual([])
   })
 })

@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import type { Question } from '../../shared/schema.ts'
 import { NEEDS_ATTENTION } from '../../shared/standing.ts'
 import { isHeld, useTracker, type HeldSeat } from '../lib/tracker.tsx'
-import { SPECTRUM, STANDINGS, STANDING_BG, standingLabel, type Standing } from '../lib/position.ts'
+import { SPECTRUM, STANDINGS, STANDING_BG, formatDate, standingLabel, type Standing } from '../lib/position.ts'
 import { FootingTag, NotFound, StandingDot, StandingPill, Syncing, tally } from '../components/bits.tsx'
 import { Hemicycle } from '../components/Hemicycle.tsx'
 import { QuestionHeader } from '../components/QuestionHeader.tsx'
@@ -178,9 +178,10 @@ function Ask({ question }: { question: Question }) {
     <div className="space-y-6">
       <QuestionHeader question={question} />
       <ClosedNote ask={question} />
+      {tracker.peopleOf(question).length === 0 && <p className="text-muted">Nobody holds the role this is asked of on {formatDate(tracker.asOf)}.</p>}
       <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {tracker.peopleOf(question).map(({ link, contender, seat }) => (
-          <li key={link.id}>
+        {tracker.peopleOf(question).map(({ key, roleLabel, contender, seat }) => (
+          <li key={key}>
             <Link
               to="/q/$slug/$decider"
               params={{ slug: question.slug, decider: contender.decider.slug }}
@@ -191,7 +192,7 @@ function Ask({ question }: { question: Question }) {
                 <StandingPill standing={contender.standing} question={question} />
               </span>
               <span className="block text-xs text-muted">
-                {link.role_label ?? seat.label}
+                {roleLabel ?? seat.label}
                 {contender.role.affiliation && ` · ${contender.role.affiliation}`}
               </span>
               <span className="mt-2 flex flex-wrap items-center gap-2">
