@@ -69,7 +69,15 @@ pnpm seed:build && wrangler d1 execute DB --remote --file seed/out/us-states.sql
 
 ## Deploy
 
-Production deploys from git. Cloudflare Workers Builds watches the `main` branch of this repo, runs the Vite build, and deploys the Worker. Every other branch gets a [Preview](https://developers.cloudflare.com/workers/previews/) from `wrangler preview`. Migrations do not run in either build, so apply them by hand before pushing a schema change.
+Production deploys from git. Cloudflare Workers Builds watches the `main` branch of this repo, runs the Vite build, and deploys the Worker. Every other branch gets a [Preview](https://developers.cloudflare.com/workers/previews/) from `wrangler preview`.
+
+A build can apply database migrations before it deploys. In the Cloudflare dashboard, under the Worker's Settings > Builds:
+
+- set the deploy command to `pnpm run deploy:ci`;
+- set the preview command to `pnpm run preview:ci`;
+- give the build's API token the D1 Edit permission. The token Cloudflare generates for builds does not include it.
+
+Until that is done, apply migrations by hand before pushing a schema change: `pnpm db:migrate:remote` for production and `pnpm db:migrate:preview` for Previews. Seeding is never automatic.
 
 One-time setup, from a machine with `wrangler login`:
 
@@ -86,7 +94,7 @@ Then connect the repo in the Cloudflare dashboard and push to `main`. Secrets pe
 
 A Preview takes only the bindings in the `previews` block of `wrangler.jsonc`. All Previews share one database, `decidering-preview`, so nothing posted or approved on a preview URL reaches production. Each Preview gets its own sync room.
 
-Set the preview database up once, and migrate it again whenever the schema changes:
+Set the preview database up once. All Previews share it, so a migration on one branch reaches every Preview:
 
 ```sh
 pnpm db:migrate:preview
