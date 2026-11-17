@@ -1,13 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useLiveQuery } from '@tanstack/react-db'
-import { ACT_KINDS, POSITIONS, stanceId, type ActKind, type Position, type Proposal, type ProposalItem, type ProposalNote } from '../../shared/schema.ts'
+import { ACT_KINDS, BEARINGS, POSITIONS, stanceId, type ActKind, type Bearing, type Position, type Proposal, type ProposalItem, type ProposalNote } from '../../shared/schema.ts'
 import { db } from '../lib/db.ts'
 import { editorFetch, isEditor, signIn, signOut } from '../lib/editor.ts'
 import { commit } from '../lib/review.ts'
 import { planReview, type ItemVerdict } from '../lib/review-plan.ts'
 import { useTracker } from '../lib/tracker.tsx'
-import { KIND_LABEL, SIGNAL_LABEL, formatDate, hostOf, standingLabel } from '../lib/position.ts'
+import { KIND_CHOICE, KIND_LABEL, SIGNAL_LABEL, formatDate, hostOf, standingLabel } from '../lib/position.ts'
 import { StandingPill, Syncing } from '../components/bits.tsx'
 import { RecordItem } from '../components/RecordItem.tsx'
 
@@ -179,6 +179,7 @@ function Review({ proposal, items, notes }: { proposal: Proposal; items: Proposa
       const comment = text(field('comment')) || null
       if (rejectAll || f.get(field('accept')) !== '1') return { item, accept: false, comment }
       const onFile = tracker.actById.get(text(field('act')))
+      const reading = f.get(field('reading')) as Position
       return {
         item,
         accept: true,
@@ -187,8 +188,10 @@ function Review({ proposal, items, notes }: { proposal: Proposal; items: Proposa
         kind: onFile?.kind ?? (f.get(field('kind')) as ActKind),
         occurred_on: onFile?.occurred_on ?? text(field('occurred_on')),
         quote: text(field('quote')),
-        reading: f.get(field('reading')) as Position,
-        position: f.get(field('position')) as Position,
+        reading,
+        bearing: f.get(field('bearing')) as Bearing,
+        // A formal-act question has no position to judge: it is read off the acts.
+        position: (f.get(field('position')) as Position | null) ?? reading,
         summary: text(field('summary')) || null,
         comment,
       }
@@ -304,7 +307,8 @@ function ItemFields({
   const onFile = [...(tracker.actsByDecider.get(decider.id) ?? [])].sort((a, b) => b.occurred_on.localeCompare(a.occurred_on))
   const stance = tracker.stanceById.get(stanceId(question.id, decider.id))
   const record = tracker.recordFor(question, decider.id)
-  const parent = question.implies_parent_support && question.parent_id ? tracker.questionById.get(question.parent_id) : undefined
+  const parent = question.implies_on_parent && question.parent_id ? tracker.questionById.get(question.parent_id) : undefined
+  const isFormal = question.kind === 'formal_act'
   const field = (name: string) => `${item.id}:${name}`
   const other = family.find((q) => q.id !== questionId)
 
@@ -382,7 +386,7 @@ function ItemFields({
                 <select id={field('kind')} name={field('kind')} defaultValue={item.kind} className="field">
                   {ACT_KINDS.map((k) => (
                     <option key={k} value={k}>
-                      {KIND_LABEL[k]}
+                      {KIND_CHOICE[k]}
                     </option>
                   ))}
                 </select>
@@ -406,18 +410,31 @@ function ItemFields({
           </div>
         </div>
 
+        <div className="max-w-xs">
+          <label className="label" htmlFor={field('bearing')}>
+            It is about
+          </label>
+          <select id={field('bearing')} name={field('bearing')} defaultValue={item.bearing} className="field">
+            {BEARINGS.map((b) => (
+              <option key={b} value={b}>
+                {b === 'direct' ? 'This question itself' : 'Something else that bears on it'}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div className="rounded-lg bg-surface p-4">
           <p className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-            Currently listed as <StandingPill standing={stance?.position ?? 'unknown'} question={question} /> on {record.length} item
+            Currently listed as <StandingPill standing={tracker.standingFor(question, decider.id)} question={question} /> on {record.length} item
             {record.length === 1 ? '' : 's'}.
           </p>
           {/* Keyed by question so the defaults follow the question picked above. */}
-          <div key={question.id} className="grid gap-4 sm:grid-cols-[12rem_1fr]">
-            <div>
+          <div key={question.id} className={`grid gap-4 ${isFormal ? '' : 'sm:grid-cols-[12rem_1fr]'}`}>
+            <div className={isFormal ? 'hidden' : ''}>
               <label className="label" htmlFor={field('position')}>
                 Position after publishing
               </label>
-              <select id={field('position')} name={field('position')} required defaultValue={item.position ?? stance?.position ?? item.reading ?? ''} className="field">
+              <select id={field('position')} name={field('position')} required disabled={isFormal} defaultValue={item.position ?? stance?.position ?? item.reading ?? ''} className="field">
                 <option value="" disabled>
                   Choose…
                 </option>
@@ -435,7 +452,12 @@ function ItemFields({
               <input id={field('summary')} name={field('summary')} defaultValue={item.summary ?? stance?.summary ?? ''} className="field" />
             </div>
           </div>
-          {parent && <p className="mt-3 text-xs text-muted">If this shows support, it is also recorded as support on “{parent.short_title}”.</p>}
+          {isFormal && <p className="mt-3 text-xs text-muted">Where they stand on this is read off the acts on file, so there is no position to set.</p>}
+          {parent && question.implies_on_parent && (
+            <p className="mt-3 text-xs text-muted">
+              If this shows support here, it is also recorded as “{SIGNAL_LABEL[question.implies_on_parent]}” on “{parent.short_title}”.
+            </p>
+          )}
         </div>
 
         {record.length > 0 && (

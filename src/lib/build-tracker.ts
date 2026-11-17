@@ -1,5 +1,5 @@
 import type { Act, Body, Decider, Office, OfficeHolder, Question, QuestionBody, QuestionDecider, QuestionOffice, Reading, Report, Role, Seat, Source, Stance } from '../../shared/schema.ts'
-import { inEffect, stanceId } from '../../shared/schema.ts'
+import { inEffect, isOpenOn, stanceId } from '../../shared/schema.ts'
 import { footingOf, type Footing } from '../../shared/standing.ts'
 import type { Standing } from './position.ts'
 
@@ -24,6 +24,11 @@ export type RecordEntry = {
   // The sub-question this reading was written from, when support there counts here.
   via: Question | undefined
   reports: { report: Report; source: Source }[]
+  // Why a commitment no longer holds on the day viewed, if it does not: it was
+  // taken back, or the measure it was made on has closed.
+  lapse: 'withdrawn' | 'closed' | null
+  // The act binds them on this very question and still holds. See `Signal`.
+  onRecord: boolean
 }
 
 export type Contender = {
@@ -108,7 +113,8 @@ export function buildTracker(c: TrackerData, asOf: string) {
   const questionsIn = (bodyId: string): Question[] => c.questions.filter((q) => !q.parent_id && appliesIn(q, bodyId)).sort((a, b) => a.sort - b.sort)
 
   const isAsk = (question: Question) => namedIn.has(question.id) || officesOf.has(question.id)
-  const byOpenThenSort = (a: Question, b: Question) => Number(a.status !== 'open') - Number(b.status !== 'open') || a.sort - b.sort
+  const isOpen = (question: Question) => isOpenOn(question, asOf)
+  const byOpenThenSort = (a: Question, b: Question) => Number(!isOpen(a)) - Number(!isOpen(b)) || a.sort - b.sort
   const children = c.questions.filter((q) => q.parent_id)
   // Sub-questions put to the whole body or chamber, and those put to named people.
   const measuresOf = groupBy(
@@ -129,7 +135,15 @@ export function buildTracker(c: TrackerData, asOf: string) {
       .filter((r): r is { report: Report; source: Source } => r.source !== undefined)
       // The record of the act itself before the sources that only report it.
       .sort((a, b) => Number(b.source.id === act.primary_source_id) - Number(a.source.id === act.primary_source_id) || a.report.created_at.localeCompare(b.report.created_at))
-    const entry = { act, reading, via: reading.via_question_id ? questionById.get(reading.via_question_id) : undefined, reports }
+    const question = questionById.get(reading.question_id)
+    const via = reading.via_question_id ? questionById.get(reading.via_question_id) : undefined
+    // A closed question is read as it stood when it closed, so its page keeps
+    // showing who had signed on. An open one is read on the day viewed.
+    const day = question && !isOpen(question) && question.closed_on ? question.closed_on : asOf
+    const lapse =
+      act.kind !== 'commits' ? null : act.withdrawn_on && act.withdrawn_on <= day ? ('withdrawn' as const) : via && !isOpenOn(via, day) ? ('closed' as const) : null
+    const onRecord = reading.bearing === 'direct' && (act.kind === 'does' || (act.kind === 'commits' && lapse === null))
+    const entry: RecordEntry = { act, reading, via, reports, lapse, onRecord }
     const key = stanceId(reading.question_id, act.decider_id)
     const list = entriesByPair.get(key)
     if (list) list.push(entry)
@@ -141,12 +155,26 @@ export function buildTracker(c: TrackerData, asOf: string) {
   // reading on a sub-question appears here only if it was also written here.
   const recordFor = (question: Question, deciderId: string): RecordEntry[] => entriesByPair.get(stanceId(question.id, deciderId)) ?? []
 
+  // Where someone stands. On a formal-act question that is read off the record:
+  // the acts that bind them there and still hold. Nobody sets it by hand, so a
+  // withdrawn cosponsorship is "has not" the day it is withdrawn. Anywhere else
+  // it is the position an editor judged from the whole record.
+  function standingFor(question: Question, deciderId: string): Standing {
+    if (question.kind !== 'formal_act') return stanceById.get(stanceId(question.id, deciderId))?.position ?? 'unknown'
+    const positions = new Set(recordFor(question, deciderId).filter((e) => e.onRecord).map((e) => e.reading.position))
+    return positions.size === 0 ? 'unknown' : positions.size === 1 ? [...positions][0] : 'mixed'
+  }
+
   function contender(question: Question, role: Role): Contender | undefined {
     const decider = deciderById.get(role.decider_id)
     if (!decider) return undefined
     const stance = stanceById.get(stanceId(question.id, decider.id))
     const record = recordFor(question, decider.id)
-    return { decider, role, stance, standing: stance?.position ?? 'unknown', record, footing: footingOf(record.map((e) => e.act)) }
+    const footing = footingOf(
+      record.map((e) => ({ occurred_on: e.act.occurred_on, onRecord: e.onRecord })),
+      new Date(asOf),
+    )
+    return { decider, role, stance, standing: standingFor(question, decider.id), record, footing }
   }
 
   // The offices an ask is put to, each with whoever sits in it on the day viewed.
@@ -251,6 +279,8 @@ export function buildTracker(c: TrackerData, asOf: string) {
     measuresIn,
     asOf,
     recordFor,
+    standingFor,
+    isOpen,
     contender,
     board,
     roleIn,

@@ -43,37 +43,51 @@ function source(ref: SourceRef, created_at: string) {
   )
 }
 
-const questions = new Map<string, { parent_id: string | null; implies_parent_support: boolean }>()
-function question(row: { id: string; parent_id: string | null; implies_parent_support?: boolean } & Record<string, unknown>) {
-  const full = { threshold: null, act_label: null, status: 'open', closed_on: null, closed_note: null, implies_parent_support: false, ...row }
+const questions = new Map<string, { parent_id: string | null; implies_on_parent: string | null }>()
+function question(row: { id: string; parent_id: string | null; implies_on_parent?: string | null } & Record<string, unknown>) {
+  const full = { threshold: null, act_label: null, status: 'open', closed_on: null, closed_note: null, implies_on_parent: null, ...row }
   questions.set(full.id, full)
   insert('questions', full)
 }
 
-const RECORDED = new Set(['formal_act', 'vote'])
 const sourcesWritten = new Set<string>()
 // One act, the source that reports it and what it signals on one question.
-function act(a: { id: string; question_id: string; decider_id: string; kind: string; position: string; occurred_on: string; body: string; source: SourceRef }) {
+// `primary` says the source is the record of the act itself.
+function act(a: {
+  id: string
+  question_id: string
+  decider_id: string
+  kind: 'says' | 'commits' | 'does'
+  position: string
+  bearing?: 'direct' | 'indirect'
+  occurred_on: string
+  withdrawn_on?: string | null
+  body: string
+  source: SourceRef
+  primary: boolean
+}) {
   const created_at = `${a.occurred_on}T00:00:00.000Z`
   const key = `${dataSetName} ${a.source.url}`
   if (!sourcesWritten.has(key)) {
     sourcesWritten.add(key)
     source(a.source, created_at)
   }
+  const bearing = a.bearing ?? 'direct'
   insert('acts', {
     id: a.id,
     decider_id: a.decider_id,
     kind: a.kind,
     occurred_on: a.occurred_on,
     body: a.body,
-    primary_source_id: RECORDED.has(a.kind) ? sourceId(a.source.url) : null,
+    primary_source_id: a.primary ? sourceId(a.source.url) : null,
+    withdrawn_on: a.withdrawn_on ?? null,
     created_at,
   })
   insert('reports', { id: a.id, source_id: sourceId(a.source.url), act_id: a.id, excerpt: null, created_at })
-  insert('readings', { id: a.id, act_id: a.id, question_id: a.question_id, position: a.position, via_question_id: null, created_at })
+  insert('readings', { id: a.id, act_id: a.id, question_id: a.question_id, position: a.position, bearing, via_question_id: null, created_at })
   const q = questions.get(a.question_id)!
-  if (q.implies_parent_support && q.parent_id && a.position === 'support') {
-    insert('readings', { id: `${a.id}:parent`, act_id: a.id, question_id: q.parent_id, position: 'support', via_question_id: a.question_id, created_at })
+  if (q.implies_on_parent && q.parent_id && a.position === 'support' && bearing === 'direct') {
+    insert('readings', { id: `${a.id}:parent`, act_id: a.id, question_id: q.parent_id, position: q.implies_on_parent, bearing: 'direct', via_question_id: a.question_id, created_at })
   }
 }
 
@@ -157,7 +171,12 @@ congress.bills.forEach((bill: any, i: number) => {
     chamber: bill.chamber,
     is_hot: false,
     sort: i + 1,
-    implies_parent_support: true,
+    implies_on_parent: 'support',
+    // A bill that has not passed dies with its Congress, and a cosponsorship of
+    // it stops being a commitment in force.
+    status: 'lapsed',
+    closed_on: congressAsks.next_term.on,
+    closed_note: 'A bill that has not passed dies when its Congress ends.',
   })
   const signers = [
     { bioguide: bill.sponsor, on: bill.introduced_on, act: `Introduced ${bill.label}, the ${bill.title}, as its sponsor.`, summary: `Sponsor of ${bill.label}.` },
@@ -178,11 +197,12 @@ congress.bills.forEach((bill: any, i: number) => {
       id: `${qid}:${s.bioguide}`,
       question_id: qid,
       decider_id: s.bioguide,
-      kind: 'formal_act',
+      kind: 'commits',
       position: 'support',
       occurred_on: s.on,
       body: s.act,
       source: { url: `${bill.url}/cosponsors`, title: `Congress.gov: ${bill.label} cosponsors`, kind: 'official_record' },
+      primary: true,
     })
     for (const q of [qid, 'm4a']) {
       insert('stances', { id: `${q}:${s.bioguide}`, question_id: q, decider_id: s.bioguide, position: 'support', summary: s.summary, updated_at: stamp })
@@ -279,11 +299,12 @@ for (const state of era.states) {
       id: `era:${state.code}:${suffix}`,
       question_id: 'era',
       decider_id: id,
-      kind: 'formal_act',
+      kind: 'does',
       position,
       occurred_on: on,
       body,
       source: { ...era.source, kind: 'official_record' },
+      primary: true,
     })
   record('ratified', state.ratified_on, 'support', `Ratified the Equal Rights Amendment${isLate ? ', after the deadline set by Congress had passed' : ''}.`)
   if (state.rescinded_on) {
@@ -352,7 +373,7 @@ demo.questions.forEach((q: any, i: number) => {
     chamber: null,
     is_hot: q.is_hot ?? false,
     sort: i,
-    implies_parent_support: q.kind === 'formal_act' && !!q.parent,
+    implies_on_parent: q.kind === 'formal_act' && q.parent ? 'support' : null,
     status: q.status ?? 'open',
     closed_on: q.closed_on ?? null,
     closed_note: q.closed_note ?? null,
@@ -366,17 +387,23 @@ demo.questions.forEach((q: any, i: number) => {
 for (const [q, name, position, summary] of demo.stances) {
   insert('stances', { id: `${q}:${person(name)}`, question_id: q, decider_id: person(name), position, summary, updated_at: '2026-11-01T00:00:00.000Z' })
 }
-const DEMO_SOURCE_KIND: Record<string, string> = { formal_act: 'official_record', vote: 'official_record', social: 'social_post' }
-demo.acts.forEach(([q, name, kind, position, on, body, title]: string[], i: number) => {
+// The demo file names each act by where it happened, which decides the kind of
+// its source and, unless the row says otherwise, how much the act binds.
+const DEMO_SOURCE_KIND: Record<string, string> = { formal_act: 'official_record', vote: 'official_record', social: 'social_post', interview: 'transcript' }
+const DEMO_ACT_KIND: Record<string, 'says' | 'commits' | 'does'> = { formal_act: 'commits', vote: 'does' }
+demo.acts.forEach(([q, name, medium, position, on, body, title, more = {}]: any[], i: number) => {
   act({
     id: `demo-e${i + 1}`,
     question_id: q,
     decider_id: person(name),
-    kind,
+    kind: more.kind ?? DEMO_ACT_KIND[medium] ?? 'says',
     position,
+    bearing: more.bearing,
     occurred_on: on,
+    withdrawn_on: more.withdrawn_on,
     body,
-    source: { url: `https://example.com/harbor-city/${i + 1}`, title, kind: DEMO_SOURCE_KIND[kind] ?? 'article' },
+    source: { url: `https://example.com/harbor-city/${i + 1}`, title, kind: DEMO_SOURCE_KIND[medium] ?? 'article' },
+    primary: medium === 'formal_act' || medium === 'vote',
   })
 })
 

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { ACT_KINDS, POSITIONS, type Decider, type Question } from '../../shared/schema.ts'
-import { KIND_LABEL, SIGNAL_LABEL } from '../lib/position.ts'
+import { KIND_CHOICE, SIGNAL_LABEL } from '../lib/position.ts'
 
 type State = { status: 'idle' | 'sending' } | { status: 'sent'; duplicate: boolean } | { status: 'error'; message: string }
 
@@ -96,7 +96,7 @@ export function SubmitEvidence({ question, decider, onDone }: { question: Questi
           <select id="kind" name="kind" className="field">
             {ACT_KINDS.map((k) => (
               <option key={k} value={k}>
-                {KIND_LABEL[k]}
+                {KIND_CHOICE[k]}
               </option>
             ))}
           </select>

@@ -84,6 +84,7 @@ export class Tracker extends PartyDbServer<Env> {
       proposal_id: proposal.id,
       sort,
       act_id: crypto.randomUUID(),
+      bearing: 'direct',
       position: null,
       summary: null,
       status: 'pending',

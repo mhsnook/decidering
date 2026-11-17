@@ -50,6 +50,6 @@ export function leadFromHit(hit: SearchHit, questionId: string, query: string, m
   return {
     source: { url: hit.url, title: hit.title.slice(0, 300) || null },
     note: `Search excerpt, not a verified quote. Found by searching: ${query}`,
-    items: people.map((decider_id) => ({ question_id: questionId, decider_id, kind: 'statement', occurred_on, quote, reading: null })),
+    items: people.map((decider_id) => ({ question_id: questionId, decider_id, kind: 'says', occurred_on, quote, reading: null })),
   }
 }

@@ -5,9 +5,20 @@ export const POSITIONS = ['support', 'lean_support', 'mixed', 'lean_oppose', 'op
 export const positionSchema = z.enum(POSITIONS)
 export type Position = z.infer<typeof positionSchema>
 
-export const ACT_KINDS = ['statement', 'formal_act', 'vote', 'platform', 'interview', 'social'] as const
+// How much an act binds the person, not where it happened (the source says that).
+//   says     words, in any medium
+//   commits  a formal, public, revocable commitment: cosponsoring, signing, pledging
+//   does     using the office itself: voting, scheduling, ratifying
+export const ACT_KINDS = ['says', 'commits', 'does'] as const
 export const actKindSchema = z.enum(ACT_KINDS)
 export type ActKind = z.infer<typeof actKindSchema>
+
+// How an act bears on the question it is read on. A vote on the bill itself is
+// direct. A vote on something else that tells you about this question is
+// indirect: a signal, but not being on the record here.
+export const BEARINGS = ['direct', 'indirect'] as const
+export const bearingSchema = z.enum(BEARINGS)
+export type Bearing = z.infer<typeof bearingSchema>
 
 export const SOURCE_KINDS = ['article', 'press_release', 'official_record', 'transcript', 'social_post'] as const
 
@@ -124,10 +135,11 @@ export const questionSchema = z.object({
   status: z.enum(['open', 'resolved', 'lapsed']),
   closed_on: z.string().nullable(),
   closed_note: z.string().nullable(),
-  // A supporting reading here also writes a supporting reading on the parent,
-  // as cosponsoring a bill is support for its policy. Without it, a reading on
-  // a sub-question says nothing about the parent.
-  implies_parent_support: z.boolean(),
+  // What doing the thing this sub-question asks about says on its parent: a
+  // supporting reading here also writes this reading there, as cosponsoring a
+  // bill is support for its policy and signing a letter against it is not.
+  // null means a reading here says nothing about the parent.
+  implies_on_parent: positionSchema.nullable(),
 })
 export type Question = z.infer<typeof questionSchema>
 
@@ -173,6 +185,9 @@ export const actSchema = z.object({
   body: z.string(),
   // The record of the act itself, as opposed to a source that reports it.
   primary_source_id: z.string().nullable(),
+  // Only a commitment can be taken back. Words and uses of office are
+  // answered by a later act.
+  withdrawn_on: z.string().nullable(),
   created_at: z.string(),
 })
 export type Act = z.infer<typeof actSchema>
@@ -191,6 +206,7 @@ export const readingSchema = z.object({
   act_id: z.string(),
   question_id: z.string(),
   position: positionSchema,
+  bearing: bearingSchema,
   // Set on a reading written because a sub-question implies support on this one.
   via_question_id: z.string().nullable(),
   created_at: z.string(),
@@ -225,6 +241,7 @@ export const proposalItemSchema = z.object({
   quote: z.string(),
   // null on a news-search lead: a search hit names a person, not a position.
   reading: positionSchema.nullable(),
+  bearing: bearingSchema,
   position: positionSchema.nullable(),
   summary: z.string().nullable(),
   status: z.enum(['pending', 'accepted', 'rejected']),
@@ -261,6 +278,11 @@ export type ProposalDraft = {
   note: string | null
   items: Pick<ProposalItem, 'question_id' | 'decider_id' | 'kind' | 'occurred_on' | 'quote' | 'reading'>[]
 }
+
+// Whether a question is still open on a day. A closing date can lie ahead: a
+// bill is known to die when its Congress ends.
+export const isOpenOn = (question: Pick<Question, 'status' | 'closed_on'>, day: string) =>
+  question.status === 'open' || (question.closed_on !== null && question.closed_on > day)
 
 // Two links to one page should find one source, so the part after # is dropped.
 export function sourceUrl(url: string): string {

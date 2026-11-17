@@ -4,14 +4,15 @@ import type { Question } from '../../shared/schema.ts'
 import { db } from '../lib/db.ts'
 import { isEditor } from '../lib/editor.ts'
 import { formatDate } from '../lib/position.ts'
-import { today, type KeyPerson } from '../lib/tracker.tsx'
+import { today, useTracker, type KeyPerson } from '../lib/tracker.tsx'
 import { StandingPill } from './bits.tsx'
 import { Modal } from './Modal.tsx'
 
 const CLOSED_LABEL = { resolved: 'Resolved', lapsed: 'Lapsed' } as const
 
 export function AskStatus({ ask }: { ask: Question }) {
-  if (ask.status === 'open') return null
+  const { tracker } = useTracker()
+  if (ask.status === 'open' || tracker.isOpen(ask)) return null
   return (
     <span className="rounded border border-line px-1.5 py-px text-[11px] font-medium whitespace-nowrap text-muted">
       {CLOSED_LABEL[ask.status]}
@@ -22,6 +23,7 @@ export function AskStatus({ ask }: { ask: Question }) {
 
 // The people a question turns on, each with what is being asked of them.
 export function KeyPeople({ people }: { people: KeyPerson[] }) {
+  const { tracker } = useTracker()
   if (people.length === 0) return null
   return (
     <section>
@@ -32,7 +34,7 @@ export function KeyPeople({ people }: { people: KeyPerson[] }) {
             <Link
               to="/q/$slug/$decider"
               params={{ slug: ask.slug, decider: contender.decider.slug }}
-              className={`block h-full rounded-lg border border-line bg-surface p-3 hover:border-ink ${ask.status === 'open' ? '' : 'opacity-70'}`}
+              className={`block h-full rounded-lg border border-line bg-surface p-3 hover:border-ink ${tracker.isOpen(ask) ? '' : 'opacity-70'}`}
             >
               <span className="flex items-start justify-between gap-2">
                 <span className="leading-snug font-medium">{contender.decider.name}</span>
@@ -134,8 +136,18 @@ export function CloseAsk({ ask }: { ask: Question }) {
   )
 }
 
+// A question can be known to close on a day still ahead, as a bill dies when its
+// Congress ends. Until then it is open, with the date given.
 export function ClosedNote({ ask }: { ask: Question }) {
+  const { tracker } = useTracker()
   if (ask.status === 'open') return null
+  if (tracker.isOpen(ask)) {
+    return (
+      <p className="rounded-lg border border-line bg-surface p-3 text-sm">
+        <span className="font-semibold">Closes {ask.closed_on && formatDate(ask.closed_on)}.</span> {ask.closed_note}
+      </p>
+    )
+  }
   return (
     <p className="rounded-lg border border-line bg-surface p-3 text-sm">
       <span className="font-semibold">
