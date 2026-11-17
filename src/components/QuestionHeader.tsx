@@ -86,13 +86,13 @@ function TermToggle({ body }: { body: Body }) {
 function BodySwitch({ body, choices, home }: { body: Body; choices: Body[]; home: string }) {
   const navigate = useNavigate()
   return (
-    <div className="flex flex-wrap" role="group" aria-label="Body">
+    <div className="flex flex-wrap gap-2" role="group" aria-label="Body">
       {choices.map((b) => (
         <button
           key={b.id}
           type="button"
           aria-pressed={b.id === body.id}
-          className={`btn -ml-px rounded-none first:ml-0 first:rounded-l-md last:rounded-r-md ${b.id === body.id ? 'btn-primary relative' : ''}`}
+          className={`btn ${b.id === body.id ? 'btn-primary' : ''}`}
           onClick={() => navigate({ to: '.', search: (prev) => ({ ...prev, body: b.id === home ? undefined : b.slug }), replace: true })}
         >
           {b.name}
