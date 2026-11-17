@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { Question } from '../../shared/schema.ts'
 import { isRecordedAct } from '../../shared/standing.ts'
 import type { RecordEntry } from '../lib/tracker.tsx'
@@ -11,7 +12,7 @@ function hostOf(url: string): string {
   }
 }
 
-export function RecordItem({ entry, question }: { entry: RecordEntry; question?: Question }) {
+export function RecordItem({ entry, question, children }: { entry: RecordEntry; question?: Question; children?: ReactNode }) {
   const { act, reading, via, reports } = entry
   return (
     <li className="rounded-lg border border-line bg-surface p-4">
@@ -45,6 +46,7 @@ export function RecordItem({ entry, question }: { entry: RecordEntry; question?:
           </li>
         ))}
       </ul>
+      {children}
     </li>
   )
 }

@@ -10,6 +10,8 @@ import { SubmitEvidence } from '../components/SubmitEvidence.tsx'
 import { Discussion } from '../components/Discussion.tsx'
 import { Modal } from '../components/Modal.tsx'
 import { AskStatus, CloseAsk, ClosedNote } from '../components/Asks.tsx'
+import { MergeAct } from '../components/MergeAct.tsx'
+import { isEditor } from '../lib/editor.ts'
 import { formatDate } from '../lib/position.ts'
 
 export const Route = createFileRoute('/q/$slug/$decider')({ component: DeciderOnQuestion })
@@ -116,7 +118,9 @@ function DeciderOnQuestion() {
           ) : (
             <ol className="space-y-3">
               {me.record.map((entry) => (
-                <RecordItem key={entry.reading.id} entry={entry} question={question} />
+                <RecordItem key={entry.reading.id} entry={entry} question={question}>
+                  {isEditor() && <MergeAct act={entry.act} />}
+                </RecordItem>
               ))}
             </ol>
           )}

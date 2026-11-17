@@ -195,3 +195,41 @@ export function planReview(
 
   return writes.sort((a, b) => APPROVAL_ORDER.indexOf(a.on) - APPROVAL_ORDER.indexOf(b.on))
 }
+
+// Folds one act into another when both turn out to be the same real-world
+// thing. Reports and readings move to the survivor; where the survivor already
+// has a report from that source or a reading on that question, its own stands
+// and the duplicate is deleted. The dropped act goes last, once nothing points
+// at it.
+export function planMerge(published: Pick<Published, 'acts' | 'reports' | 'readings'> & { proposalItems: ProposalItem[] }, keepId: string, dropId: string): Write[] {
+  const keep = published.acts.find((a) => a.id === keepId)
+  const drop = published.acts.find((a) => a.id === dropId)
+  if (!keep || !drop) throw new Error('Both acts have to be on file.')
+  if (keep.id === drop.id) throw new Error('An act cannot be merged into itself.')
+  if (keep.decider_id !== drop.decider_id) throw new Error('Acts by different people cannot be the same act.')
+
+  const writes: Write[] = []
+  const keptReports = new Map(published.reports.filter((r) => r.act_id === keepId).map((r) => [r.source_id, r]))
+  for (const report of published.reports.filter((r) => r.act_id === dropId)) {
+    const kept = keptReports.get(report.source_id)
+    if (!kept) {
+      writes.push({ on: 'reports', type: 'update', id: report.id, changes: { act_id: keepId } })
+      continue
+    }
+    writes.push({ on: 'reports', type: 'delete', id: report.id })
+    if (!kept.excerpt && report.excerpt) writes.push({ on: 'reports', type: 'update', id: kept.id, changes: { excerpt: report.excerpt } })
+  }
+
+  const keptQuestions = new Set(published.readings.filter((r) => r.act_id === keepId).map((r) => r.question_id))
+  for (const reading of published.readings.filter((r) => r.act_id === dropId)) {
+    writes.push(keptQuestions.has(reading.question_id) ? { on: 'readings', type: 'delete', id: reading.id } : { on: 'readings', type: 'update', id: reading.id, changes: { act_id: keepId } })
+  }
+
+  for (const item of published.proposalItems.filter((i) => i.act_id === dropId)) {
+    writes.push({ on: 'proposal_items', type: 'update', id: item.id, changes: { act_id: keepId } })
+  }
+
+  if (!keep.primary_source_id && drop.primary_source_id) writes.push({ on: 'acts', type: 'update', id: keepId, changes: { primary_source_id: drop.primary_source_id } })
+  writes.push({ on: 'acts', type: 'delete', id: dropId })
+  return writes
+}
