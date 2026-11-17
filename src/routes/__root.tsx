@@ -54,7 +54,7 @@ function Root() {
         </main>
         <footer className="-mx-5 mt-10 flex flex-wrap justify-between gap-2 border-t-2 border-ink px-5 py-5 text-[15px] sm:-mx-8 sm:px-8">
           <span>Every position links to its source.</span>
-          <span className="tag">Open source</span>
+          <span className="tag">Open source · MIT licence</span>
         </footer>
       </div>
     </TrackerProvider>
