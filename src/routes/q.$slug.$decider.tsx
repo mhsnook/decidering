@@ -121,7 +121,7 @@ function DeciderOnQuestion() {
                     <Link
                       to="/q/$slug/$decider"
                       params={{ slug: question.slug, decider: r.decider.slug }}
-                      className="block rounded-xl border-2 border-ink bg-surface p-3 hover:border-ink"
+                      className="block rounded-xl border-2 border-ink bg-surface p-3 transition-transform hover:-translate-y-0.5"
                     >
                       <span className="flex items-center justify-between gap-2">
                         <span className="font-medium">{r.decider.name}</span>

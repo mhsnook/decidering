@@ -39,7 +39,7 @@ export function Modal({
       onMouseDown={onMouseDown}
       // Tailwind's reset zeroes the margin that centres a native dialog. Leave
       // position alone: the browser's `fixed` is what keeps it in the viewport.
-      className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-xl overflow-y-auto rounded-[20px] border-2 border-ink bg-paper p-5 text-ink shadow-hard-lg backdrop:bg-black/60 sm:p-6"
+      className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-xl overflow-y-auto card card-lg bg-paper p-5 text-ink shadow-hard-lg backdrop:bg-black/60 sm:p-6"
     >
       <h2 className="pr-8 text-xl font-semibold">{title}</h2>
       {description && <p className="mt-1 text-sm text-muted">{description}</p>}

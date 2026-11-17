@@ -2,9 +2,9 @@ import { useMemo, useRef, useState, type MouseEvent } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import type { Question } from '../../shared/schema.ts'
 import { hemicycleLayout, thresholdPath } from '../lib/hemicycle.ts'
-import { SPECTRUM, STANDING_COLOR, standingLabel } from '../lib/position.ts'
+import { SPECTRUM, standingLabel } from '../lib/position.ts'
 import type { HeldSeat } from '../lib/tracker.tsx'
-import { FootingTag, StandingDot } from './bits.tsx'
+import { FootingTag, SeatToken, StandingDot } from './bits.tsx'
 
 const UNIT = 100
 // Room above the outer arc for the threshold line to stand clear of the seats.
@@ -125,18 +125,10 @@ export function Hemicycle({
         >
           {seats.map((row, i) => {
             const { standing } = row.incumbent
-            const hollow = standing === 'unknown'
             const active = shown?.seat.id === row.seat.id
             return (
-              <g key={row.seat.id} opacity={active || isLit(row) ? 1 : 0.18} stroke="var(--color-ink)" strokeWidth={r * (active ? 0.3 : 0.12)}>
-                {!hollow && <circle cx={layout.dots[i].x * UNIT} cy={layout.dots[i].y * UNIT + r * 0.24} r={r * 0.9} fill="var(--color-ink)" />}
-                <circle
-                  cx={layout.dots[i].x * UNIT}
-                  cy={layout.dots[i].y * UNIT}
-                  r={r * 0.9}
-                  fill={hollow ? 'none' : STANDING_COLOR[standing]}
-                  strokeDasharray={hollow && !active ? `${r * 0.32} ${r * 0.22}` : undefined}
-                />
+              <g key={row.seat.id} opacity={active || isLit(row) ? 1 : 0.18}>
+                <SeatToken cx={layout.dots[i].x * UNIT} cy={layout.dots[i].y * UNIT} r={r * 0.9} standing={standing} stroke={active ? 0.3 : 0.12} dashed={!active} />
               </g>
             )
           })}

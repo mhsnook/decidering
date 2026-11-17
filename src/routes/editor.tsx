@@ -79,7 +79,7 @@ function Queue() {
   return (
     <div className="pb-24 sm:pb-0">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-4">
-        <h1 className="text-[32px] leading-none font-black sm:text-[40px]">Review queue</h1>
+        <h1 className="h-page">Review queue</h1>
         <div
           className="h-3.5 min-w-[200px] flex-1 overflow-hidden rounded-full border-2 border-ink bg-surface sm:h-[18px]"
           role="progressbar"
@@ -101,14 +101,14 @@ function Queue() {
         </p>
         <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto">
           <NewsSearchButton />
-          <button type="button" className="btn rounded-full py-1.5 text-[15px] font-semibold shadow-none" onClick={signOut}>
+          <button type="button" className="btn btn-sm shadow-none" onClick={signOut}>
             Sign out
           </button>
         </div>
       </div>
 
       {!selected ? (
-        <div className="card mt-10 bg-mint px-5 py-7 text-center sm:mt-12 sm:rounded-3xl sm:p-12">
+        <div className="card card-lg mt-10 bg-mint px-5 py-7 text-center sm:mt-12 sm:p-12">
           <h2 className="text-2xl font-black sm:text-[32px]">{tab === 'pending' ? 'The queue is empty.' : 'Nothing reviewed yet.'}</h2>
           {tab === 'pending' && <p className="mt-2 text-[15px] sm:text-[17px]">Every lead has been reviewed. The next news search runs in a few hours.</p>}
         </div>
@@ -124,7 +124,7 @@ function Queue() {
                     <button
                       type="button"
                       onClick={() => setSelectedId(s.id)}
-                      className="flex w-full cursor-pointer items-start gap-3 rounded-[14px] border-2 border-ink bg-surface px-3.5 py-3 text-left hover:shadow-[0_4px_0_var(--color-ink)]"
+                      className="flex w-full cursor-pointer items-start gap-3 rounded-[14px] border-2 border-ink bg-surface px-3.5 py-3 text-left hover:shadow-hard-md"
                     >
                       <Token standing={tracker.stanceById.get(stanceId(s.question_id, s.decider_id))?.position ?? 'unknown'} className="mt-0.5 size-[22px]" />
                       <span className="min-w-0 flex-1">
@@ -158,6 +158,8 @@ const PICKED: Record<Position, string> = {
   lean_oppose: 'has-checked:bg-lean-oppose/40',
   oppose: 'has-checked:bg-oppose/15',
 }
+
+const SHEET = 'card card-lg shadow-none'
 
 function Review({ submission, behind }: { submission: Submission; behind: number }) {
   const { tracker } = useTracker()
@@ -198,21 +200,21 @@ function Review({ submission, behind }: { submission: Submission; behind: number
   return (
     <div>
       <div className="relative mr-2 sm:mr-3">
-        {behind > 1 && <div className="absolute inset-0 translate-x-2 translate-y-3 rounded-[20px] border-2 border-ink bg-surface sm:translate-x-3 sm:translate-y-4 sm:rounded-3xl" />}
-        {behind > 0 && <div className="absolute inset-0 translate-x-1 translate-y-1.5 rounded-[20px] border-2 border-ink bg-surface sm:translate-x-1.5 sm:translate-y-2 sm:rounded-3xl" />}
-        <form onSubmit={onSubmit} className="relative flex flex-col gap-4 rounded-[20px] border-2 border-ink bg-surface p-[18px] sm:gap-5 sm:rounded-3xl sm:p-7">
+        {behind > 1 && <div className={`${SHEET} absolute inset-0 translate-x-2 translate-y-3 sm:translate-x-3 sm:translate-y-4`} />}
+        {behind > 0 && <div className={`${SHEET} absolute inset-0 translate-x-1 translate-y-1.5 sm:translate-x-1.5 sm:translate-y-2`} />}
+        <form onSubmit={onSubmit} className={`${SHEET} relative flex flex-col gap-4 p-[18px] sm:gap-5 sm:p-7`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex items-center gap-3 sm:gap-3.5">
               <Token
                 standing={stance?.position ?? 'unknown'}
-                className={`size-10 border-[3px] sm:size-[52px] ${stance ? 'shadow-[0_3px_0_var(--color-ink)] sm:shadow-[0_4px_0_var(--color-ink)]' : ''}`}
+                className={`size-10 border-[3px] sm:size-[52px] ${stance ? 'shadow-hard-sm sm:shadow-hard-md' : ''}`}
               />
               <div>
                 <h2 className="text-[22px] leading-[1.1] font-black sm:text-[28px]">{decider.name}</h2>
                 <p className="mt-1 text-sm text-muted sm:text-base">{question.title}</p>
               </div>
             </div>
-            <span className="tag rounded-full border-2 border-dashed border-ink px-2.5 py-1 text-[11px] sm:text-xs">
+            <span className="tag-pill">
               {fromSearch ? 'News search' : 'Sent in by a reader'} · {formatDate(submission.created_at)}
             </span>
           </div>
@@ -269,7 +271,7 @@ function Review({ submission, behind }: { submission: Submission; behind: number
                 {POSITIONS.map((p) => (
                   <label
                     key={p}
-                    className={`flex min-h-[72px] cursor-pointer flex-col items-center gap-1.5 rounded-xl border-2 border-ink bg-surface px-0.5 pt-2.5 pb-2 transition-transform has-checked:-translate-y-[3px] has-checked:shadow-[0_4px_0_var(--color-ink)] has-focus-visible:outline-3 has-focus-visible:outline-offset-2 has-focus-visible:outline-accent sm:gap-2 sm:rounded-[14px] sm:py-3 ${PICKED[p]}`}
+                    className={`flex min-h-[72px] cursor-pointer flex-col items-center gap-1.5 rounded-xl border-2 border-ink bg-surface px-0.5 pt-2.5 pb-2 transition-transform has-checked:-translate-y-[3px] has-checked:shadow-hard-md has-focus-visible:outline-3 has-focus-visible:outline-offset-2 has-focus-visible:outline-accent sm:gap-2 sm:rounded-[14px] sm:py-3 ${PICKED[p]}`}
                   >
                     <input type="radio" name="signals" value={p} required defaultChecked={submission.signals === p} className="sr-only" />
                     <Token standing={p} className="size-6 sm:size-7" />
@@ -310,10 +312,10 @@ function Review({ submission, behind }: { submission: Submission; behind: number
 
             {isPending && (
               <div className="fixed inset-x-0 bottom-0 z-10 flex gap-2.5 border-t-2 border-ink bg-surface px-4 pt-3 pb-5 sm:static sm:gap-3 sm:border-0 sm:p-0">
-                <button id="approve" name="action" value="approve" className="btn btn-go order-2 min-h-[52px] flex-[2] rounded-[14px] shadow-[0_4px_0_var(--color-ink)] sm:order-1 sm:flex-1 sm:text-[17px]">
+                <button id="approve" name="action" value="approve" className="btn btn-lg btn-go order-2 flex-[2] sm:order-1 sm:flex-1">
                   Approve and publish <span className="hidden sm:inline">[A]</span>
                 </button>
-                <button id="reject" name="action" value="reject" formNoValidate className="btn order-1 min-h-[52px] flex-1 rounded-[14px] shadow-[0_4px_0_var(--color-ink)] sm:order-2 sm:text-[17px]">
+                <button id="reject" name="action" value="reject" formNoValidate className="btn btn-lg order-1 flex-1 sm:order-2">
                   Reject <span className="hidden sm:inline">[R]</span>
                 </button>
               </div>
@@ -352,7 +354,7 @@ function NewsSearchButton() {
   return (
     <>
       {state !== 'idle' && state !== 'running' && <span className="text-sm font-semibold">{state}</span>}
-      <button type="button" className="btn rounded-full py-1.5 text-[15px] font-semibold" onClick={run} disabled={state === 'running'} title="Searches the news for questions marked as in the news">
+      <button type="button" className="btn btn-sm" onClick={run} disabled={state === 'running'} title="Searches the news for questions marked as in the news">
         {state === 'running' ? 'Searching…' : 'Search the news now'}
       </button>
     </>

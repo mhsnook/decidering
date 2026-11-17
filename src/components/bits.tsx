@@ -1,7 +1,6 @@
-import type { ReactNode } from 'react'
 import type { Question } from '../../shared/schema.ts'
 import { FOOTING_HINT, FOOTING_LABEL, type Footing } from '../../shared/standing.ts'
-import { SPECTRUM, STANDING_BG, standingLabel, type Standing } from '../lib/position.ts'
+import { SPECTRUM, STANDING_BG, STANDING_COLOR, standingLabel, type Standing } from '../lib/position.ts'
 
 export function Logo() {
   return (
@@ -19,6 +18,25 @@ export function Token({ standing, className = 'size-5' }: { standing: Standing; 
     <span
       className={`inline-block shrink-0 rounded-full border-2 border-ink ${standing === 'unknown' ? 'border-dashed bg-surface' : STANDING_BG[standing]} ${className}`}
     />
+  )
+}
+
+// The same token inside an SVG seat chart. `stroke` is a fraction of the radius.
+export function SeatToken({ cx, cy, r, standing, stroke = 0.12, dashed = true }: { cx: number; cy: number; r: number; standing: Standing; stroke?: number; dashed?: boolean }) {
+  const hollow = standing === 'unknown'
+  return (
+    <>
+      {!hollow && <circle cx={cx} cy={cy + r * 0.24} r={r} fill="var(--color-ink)" stroke="var(--color-ink)" strokeWidth={r * stroke} />}
+      <circle
+        cx={cx}
+        cy={cy}
+        r={r}
+        fill={hollow ? 'none' : STANDING_COLOR[standing]}
+        stroke="var(--color-ink)"
+        strokeWidth={r * stroke}
+        strokeDasharray={hollow && dashed ? `${r * 0.32} ${r * 0.22}` : undefined}
+      />
+    </>
   )
 }
 
@@ -83,8 +101,4 @@ export function Syncing() {
 
 export function NotFound({ what }: { what: string }) {
   return <p className="py-16 text-center text-muted">No {what} here.</p>
-}
-
-export function Eyebrow({ children }: { children: ReactNode }) {
-  return <p className="tag">{children}</p>
 }

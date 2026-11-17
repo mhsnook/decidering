@@ -25,6 +25,7 @@
   --color-unknown: #bdb6a6;
 
   --shadow-hard-sm: 0 3px 0 var(--color-ink);
+  --shadow-hard-md: 0 4px 0 var(--color-ink);
   --shadow-hard: 0 5px 0 var(--color-ink);
   --shadow-hard-lg: 0 8px 0 var(--color-ink);
   --shadow-hard-go: 0 4px 0 var(--color-support);
@@ -63,11 +64,29 @@ html:has(dialog[open]) {
   .card {
     @apply rounded-2xl border-2 border-ink bg-surface shadow-hard;
   }
+  .card-lg {
+    @apply rounded-[20px] sm:rounded-3xl;
+  }
+  .h-page {
+    @apply text-[32px] leading-none font-black sm:text-[40px];
+  }
+  .h-section {
+    @apply text-[30px] leading-[1.1] font-black sm:text-[40px];
+  }
+  .h-card {
+    @apply text-[19px] leading-tight font-extrabold sm:text-[21px];
+  }
   .field {
     @apply min-h-12 w-full rounded-[10px] border-2 border-ink bg-surface px-3 py-2.5 text-base text-ink placeholder:text-faint;
   }
   .btn {
     @apply inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-ink bg-surface px-4 py-2 text-base font-extrabold text-ink shadow-hard-sm transition-transform active:translate-y-0.5 active:shadow-[0_1px_0_var(--color-ink)] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-lg {
+    @apply min-h-[52px] rounded-[14px] px-5 shadow-hard-md sm:text-[17px];
+  }
+  .btn-sm {
+    @apply rounded-full py-1.5 text-[15px] font-semibold;
   }
   .btn-primary {
     @apply bg-ink text-paper shadow-hard-go;
@@ -80,6 +99,9 @@ html:has(dialog[open]) {
   }
   .tag {
     @apply font-mono text-xs font-semibold uppercase;
+  }
+  .tag-pill {
+    @apply rounded-full border-2 border-dashed border-ink px-2.5 py-1 font-mono text-xs font-semibold uppercase;
   }
   .link {
     @apply underline decoration-2 underline-offset-[3px] hover:text-accent;

@@ -1,24 +1,19 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { useTracker } from '../lib/tracker.tsx'
 import { hemicycleLayout } from '../lib/hemicycle.ts'
-import { SPECTRUM, STANDING_BG, STANDING_COLOR, type Standing } from '../lib/position.ts'
-import { Star, Syncing, Token } from '../components/bits.tsx'
+import { SPECTRUM, STANDING_BG, standingLabel, type Standing } from '../lib/position.ts'
+import { SeatToken, Star, Syncing, Token } from '../components/bits.tsx'
 import { QuestionCard } from '../components/QuestionCard.tsx'
 
 export const Route = createFileRoute('/')({ component: Home })
 
 const EXAMPLE: Record<Standing, number> = { support: 15, lean_support: 4, mixed: 3, unknown: 6, lean_oppose: 4, oppose: 8 }
-const EXAMPLE_LABEL: Record<Standing, string> = {
-  support: 'Yes',
-  lean_support: 'Probably yes',
-  mixed: 'Mixed',
-  unknown: 'No record yet',
-  lean_oppose: 'Probably no',
-  oppose: 'No',
-}
+const label = (standing: Standing) => standingLabel(standing, { kind: 'position', act_label: null })
 const EXAMPLE_SEATS = SPECTRUM.flatMap((s) => Array.from({ length: EXAMPLE[s] }, () => s))
 const EXAMPLE_KEY_FIGURES = new Set([2, 17, 36])
 const EXAMPLE_MAJORITY = Math.floor(EXAMPLE_SEATS.length / 2) + 1
+const EXAMPLE_LAYOUT = hemicycleLayout(EXAMPLE_SEATS.length)
+const EXAMPLE_YES = EXAMPLE.support + EXAMPLE.lean_support
 const EXAMPLE_TIMELINE = [
   [2, 1],
   [4, 2],
@@ -44,10 +39,10 @@ function Home() {
           each one, and keep the record.
         </p>
         <div className="mt-6 flex flex-col gap-3 sm:mt-7 sm:flex-row sm:justify-center">
-          <Link to="/questions" className="btn btn-primary px-5 py-3 sm:text-[17px]">
+          <Link to="/questions" className="btn btn-lg btn-primary">
             Browse the questions
           </Link>
-          <a href="#own" className="btn px-5 py-3 shadow-[0_4px_0_var(--color-ink)] sm:text-[17px]">
+          <a href="#own" className="btn btn-lg">
             Run your own
           </a>
         </div>
@@ -62,15 +57,13 @@ function Home() {
 }
 
 function ExampleChart() {
-  const layout = hemicycleLayout(EXAMPLE_SEATS.length)
-  const r = layout.dotRadius * 88
+  const layout = EXAMPLE_LAYOUT
+  const r = layout.dotRadius * 90
   const edge = 100 + r * 2
-  const yes = EXAMPLE.support + EXAMPLE.lean_support
-  const no = EXAMPLE.oppose + EXAMPLE.lean_oppose
   const most = Math.max(...Object.values(EXAMPLE))
 
   return (
-    <section className="card mt-9 rounded-[20px] px-4 py-[18px] sm:mt-10 sm:rounded-3xl sm:px-8 sm:py-7 sm:shadow-hard-lg">
+    <section className="card card-lg mt-9 px-4 py-[18px] sm:mt-10 sm:px-8 sm:py-7 sm:shadow-hard-lg">
       <p className="tag flex flex-wrap justify-between gap-2 sm:text-[13px]">
         <span>Harbor City Assembly · {EXAMPLE_SEATS.length} seats</span>
         <span className="text-faint">Example</span>
@@ -81,7 +74,7 @@ function ExampleChart() {
         <svg
           viewBox={`${-edge} ${-edge} ${edge * 2} ${edge + r * 1.5}`}
           role="img"
-          aria-label={`Example seat chart. ${SPECTRUM.map((s) => `${EXAMPLE_LABEL[s]}: ${EXAMPLE[s]}`).join(', ')}.`}
+          aria-label={`Example seat chart. ${SPECTRUM.map((s) => `${label(s)}: ${EXAMPLE[s]}`).join(', ')}.`}
           className="mx-auto block w-full max-w-[552px]"
         >
           {layout.dots.map((dot, i) => {
@@ -90,15 +83,7 @@ function ExampleChart() {
             const isKey = EXAMPLE_KEY_FIGURES.has(i)
             return (
               <g key={i} stroke="var(--color-ink)">
-                {standing !== 'unknown' && <circle cx={cx} cy={cy + r * 0.22} r={r} fill="var(--color-ink)" strokeWidth={r * (isKey ? 0.17 : 0.11)} />}
-                <circle
-                  cx={cx}
-                  cy={cy}
-                  r={r}
-                  fill={standing === 'unknown' ? 'none' : STANDING_COLOR[standing]}
-                  strokeWidth={r * (isKey ? 0.17 : 0.11)}
-                  strokeDasharray={standing === 'unknown' ? `${r * 0.32} ${r * 0.22}` : undefined}
-                />
+                <SeatToken cx={cx} cy={cy} r={r} standing={standing} stroke={isKey ? 0.17 : 0.12} />
                 {isKey && (
                   <>
                     <circle cx={cx + r * 0.85} cy={cy - r * 0.85} r={r * 0.56} fill="var(--color-mixed)" strokeWidth={r * 0.11} />
@@ -116,7 +101,7 @@ function ExampleChart() {
           {SPECTRUM.map((s) => (
             <div key={s} className="grid grid-cols-[18px_7.25rem_1fr_1.5rem] items-center gap-2.5">
               <Token standing={s} className="size-[18px]" />
-              <dt>{EXAMPLE_LABEL[s]}</dt>
+              <dt>{label(s)}</dt>
               <span
                 className={`h-2.5 rounded-full ${s === 'unknown' ? 'border-2 border-dashed border-line' : STANDING_BG[s]}`}
                 style={{ width: `${(EXAMPLE[s] / most) * 100}%` }}
@@ -134,28 +119,28 @@ function ExampleChart() {
           <span />
           <p className="tag text-right text-[10px] sm:text-[13px]">{EXAMPLE_MAJORITY} for a majority ▾</p>
           <span />
-          <Track label="Yes" solid={EXAMPLE.support} light={EXAMPLE.lean_support} solidClass="bg-support" lightClass="bg-lean-support" count={yes} />
-          <Track label="No" solid={EXAMPLE.oppose} light={EXAMPLE.lean_oppose} solidClass="bg-oppose" lightClass="bg-lean-oppose" count={no} />
+          <Track solid="support" light="lean_support" />
+          <Track solid="oppose" light="lean_oppose" />
         </div>
       </div>
     </section>
   )
 }
 
-function Track({ label, solid, light, solidClass, lightClass, count }: { label: string; solid: number; light: number; solidClass: string; lightClass: string; count: number }) {
+function Track({ solid, light }: { solid: Standing; light: Standing }) {
   return (
     <>
-      <span className="font-display text-sm font-black sm:text-[17px]">{label}</span>
+      <span className="font-display text-sm font-black sm:text-[17px]">{label(solid)}</span>
       <div className="grid gap-0.5 sm:gap-1" style={{ gridTemplateColumns: `repeat(${EXAMPLE_MAJORITY}, 1fr)` }} aria-hidden="true">
         {Array.from({ length: EXAMPLE_MAJORITY }, (_, i) => (
           <span
             key={i}
-            className={`h-[18px] rounded-[3px] border-[1.5px] border-ink sm:h-6 sm:rounded-[5px] sm:border-2 ${i < solid ? solidClass : i < solid + light ? lightClass : 'bg-surface'}`}
+            className={`h-[18px] rounded-[3px] border-[1.5px] border-ink sm:h-6 sm:rounded-[5px] sm:border-2 ${i < EXAMPLE[solid] ? STANDING_BG[solid] : i < EXAMPLE[solid] + EXAMPLE[light] ? STANDING_BG[light] : 'bg-surface'}`}
           />
         ))}
       </div>
       <span className="text-base leading-none font-black tabular-nums sm:text-[22px]">
-        {count}
+        {EXAMPLE[solid] + EXAMPLE[light]}
         <span className="text-[11px] font-semibold text-faint sm:text-[15px]"> / {EXAMPLE_SEATS.length}</span>
       </span>
     </>
@@ -167,7 +152,7 @@ function Step({ n, numberClass, title, children }: { n: number; numberClass: str
     <div className="flex items-start gap-3 sm:gap-3.5">
       <span className={`grid size-9 flex-none place-items-center rounded-full border-2 border-ink font-black shadow-hard-sm sm:size-10 sm:text-lg ${numberClass}`}>{n}</span>
       <div>
-        <h3 className="text-[19px] leading-tight font-extrabold sm:text-[21px]">{title}</h3>
+        <h3 className="h-card">{title}</h3>
         <p className="mt-1 text-[15px] leading-[1.55] text-muted sm:mt-1.5 sm:text-base">{children}</p>
       </div>
     </div>
@@ -177,7 +162,7 @@ function Step({ n, numberClass, title, children }: { n: number; numberClass: str
 function HowItWorks() {
   return (
     <section id="how" className="scroll-mt-6 pt-14 sm:pt-[88px]">
-      <h2 className="text-[30px] leading-[1.1] font-black sm:text-[40px]">How it works</h2>
+      <h2 className="h-section">How it works</h2>
       <p className="mt-2 max-w-[640px] leading-[1.55] text-muted sm:mt-2.5 sm:text-lg">Nothing is published until an editor has read the source and chosen what it shows.</p>
 
       <div className="mt-6 grid gap-x-10 gap-y-8 sm:mt-8 lg:grid-cols-3">
@@ -201,10 +186,9 @@ function HowItWorks() {
             <p className="tag text-faint">Checked at the source</p>
             <p className="mt-2 mb-3 text-[15px] leading-normal">“We have the votes to try this for two years and I intend to use them.”</p>
             <p className="flex flex-wrap gap-1.5 text-[13px] font-bold">
-              <span className="rounded-full border-2 border-ink bg-support px-2.5 py-1 text-white shadow-hard-sm">Yes</span>
-              {['Probably yes', 'Mixed', 'No'].map((label) => (
-                <span key={label} className="rounded-full border-2 border-ink px-2.5 py-1">
-                  {label}
+              {(['support', 'lean_support', 'mixed', 'oppose'] as const).map((s) => (
+                <span key={s} className={`rounded-full border-2 border-ink px-2.5 py-1 ${s === 'support' ? 'bg-support text-white shadow-hard-sm' : ''}`}>
+                  {label(s)}
                 </span>
               ))}
             </p>
@@ -217,10 +201,13 @@ function HowItWorks() {
           </Step>
           <div className="card flex-1 bg-mint p-4 sm:p-5">
             <p className="flex items-center gap-3">
-              <span className="relative size-7 flex-none rounded-full border-[3px] border-ink bg-support shadow-hard-sm">
+              <span className="relative flex flex-none">
+                <Token standing="support" className="size-7 border-[3px] shadow-hard-sm" />
                 <Star className="absolute -top-2.5 -right-2.5 size-[18px] text-[9px]" />
               </span>
-              <span className="font-display font-extrabold sm:text-[17px]">Priya Nair: Yes. Now 19 of 40.</span>
+              <span className="font-display font-extrabold sm:text-[17px]">
+                Priya Nair: {label('support')}. Now {EXAMPLE_YES} of {EXAMPLE_SEATS.length}.
+              </span>
             </p>
             <div className="relative mt-[18px] flex h-24 gap-[5px] border-t-2 border-dashed border-ink" aria-hidden="true">
               <span className="tag absolute -top-2.5 right-0 bg-mint px-1 text-[11px] font-bold">{EXAMPLE_MAJORITY}</span>
@@ -255,7 +242,7 @@ function OpenQuestions() {
   return (
     <section className="pt-14 sm:pt-[88px]">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1.5">
-        <h2 className="text-[30px] font-black sm:text-[40px]">Open questions</h2>
+        <h2 className="h-section">Open questions</h2>
         {isReady && (
           <Link to="/questions" className="link text-[15px] font-semibold">
             Browse all {questions.length}
@@ -279,14 +266,14 @@ function OpenQuestions() {
 
 function RunYourOwn() {
   return (
-    <section id="own" className="mt-14 grid scroll-mt-6 overflow-hidden rounded-[20px] border-2 border-ink bg-mint shadow-[0_6px_0_var(--color-ink)] sm:mt-[88px] md:grid-cols-2">
+    <section id="own" className="card card-lg mt-14 grid scroll-mt-6 overflow-hidden bg-mint sm:mt-[88px] md:grid-cols-2">
       <div className="px-5 py-[22px] sm:px-9 sm:py-8">
         <p className="tag sm:text-[13px]">// For classrooms and research</p>
         <h2 className="mt-2 mb-2.5 text-[28px] leading-[1.1] font-black sm:mt-2.5 sm:mb-3 sm:text-[34px]">Deploy your own</h2>
         <p className="mb-[18px] leading-[1.55] sm:mb-5 sm:text-[17px]">
           Run your own copy. Choose the questions and the people that matter to your class, and track what they say and do.
         </p>
-        <a href="https://github.com/mhsnook/decidering#readme" target="_blank" rel="noreferrer" className="btn w-full shadow-[0_4px_0_var(--color-ink)] sm:w-auto">
+        <a href="https://github.com/mhsnook/decidering#readme" target="_blank" rel="noreferrer" className="btn w-full shadow-hard-md sm:w-auto">
           Read the guide
         </a>
       </div>

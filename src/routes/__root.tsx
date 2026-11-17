@@ -25,30 +25,36 @@ function NavLinks({ className, onNavigate }: { className: string; onNavigate?: (
   )
 }
 
-function Root() {
+function Header() {
   const [menuOpen, setMenuOpen] = useState(false)
+  return (
+    <header className="-mx-5 border-b-2 border-ink px-5 sm:-mx-8 sm:px-8">
+      <div className="flex items-center justify-between gap-4 py-4 sm:py-6">
+        <Link to="/" className="flex items-center gap-2.5 sm:gap-3" onClick={() => setMenuOpen(false)}>
+          <Logo />
+          <span className="font-display text-xl font-black sm:text-2xl">Sporelight</span>
+        </Link>
+        <nav className="hidden items-center gap-1 text-[15px] font-semibold md:flex">
+          <NavLinks className="rounded-full px-3.5 py-2 hover:text-accent [&.active]:bg-ink [&.active]:text-paper" />
+        </nav>
+        <button type="button" className="btn px-3 text-sm font-bold shadow-none md:hidden" aria-expanded={menuOpen} aria-controls="menu" onClick={() => setMenuOpen(!menuOpen)}>
+          {menuOpen ? 'Close' : 'Menu'}
+        </button>
+      </div>
+      {menuOpen && (
+        <nav id="menu" className="flex flex-col pb-3 text-lg font-bold md:hidden">
+          <NavLinks className="flex min-h-11 items-center border-t-2 border-dashed border-line [&.active]:text-accent" onNavigate={() => setMenuOpen(false)} />
+        </nav>
+      )}
+    </header>
+  )
+}
+
+function Root() {
   return (
     <TrackerProvider>
       <div className="mx-auto flex min-h-dvh max-w-[1200px] flex-col px-5 sm:px-8">
-        <header className="-mx-5 border-b-2 border-ink px-5 sm:-mx-8 sm:px-8">
-          <div className="flex items-center justify-between gap-4 py-4 sm:py-6">
-            <Link to="/" className="flex items-center gap-2.5 sm:gap-3" onClick={() => setMenuOpen(false)}>
-              <Logo />
-              <span className="font-display text-xl font-black sm:text-2xl">Sporelight</span>
-            </Link>
-            <nav className="hidden items-center gap-1 text-[15px] font-semibold md:flex">
-              <NavLinks className="rounded-full px-3.5 py-2 hover:text-accent [&.active]:bg-ink [&.active]:text-paper" />
-            </nav>
-            <button type="button" className="btn px-3 text-sm font-bold shadow-none md:hidden" aria-expanded={menuOpen} aria-controls="menu" onClick={() => setMenuOpen(!menuOpen)}>
-              {menuOpen ? 'Close' : 'Menu'}
-            </button>
-          </div>
-          {menuOpen && (
-            <nav id="menu" className="flex flex-col pb-3 text-lg font-bold md:hidden">
-              <NavLinks className="flex min-h-11 items-center border-t-2 border-dashed border-line [&.active]:text-accent" onNavigate={() => setMenuOpen(false)} />
-            </nav>
-          )}
-        </header>
+        <Header />
         <main className="flex-1 py-8">
           <Outlet />
         </main>
