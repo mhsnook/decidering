@@ -2,15 +2,7 @@ import type { ReactNode } from 'react'
 import type { Question } from '../../shared/schema.ts'
 import { isRecordedAct } from '../../shared/standing.ts'
 import type { RecordEntry } from '../lib/tracker.tsx'
-import { KIND_LABEL, SIGNAL_LABEL, STANDING_BG, formatDate } from '../lib/position.ts'
-
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname
-  } catch {
-    return url
-  }
-}
+import { KIND_LABEL, SIGNAL_LABEL, STANDING_BG, formatDate, hostOf } from '../lib/position.ts'
 
 export function RecordItem({ entry, question, children }: { entry: RecordEntry; question?: Question; children?: ReactNode }) {
   const { act, reading, via, reports } = entry

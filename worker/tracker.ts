@@ -26,6 +26,19 @@ export class Tracker extends PartyDbServer<Env> {
     return token && (await isEditorToken(token, this.env)) ? { claims: { sub: 'editor' } } : null
   }
 
+  // party-db replays its change log to a reconnecting client, and sends entries
+  // for a table this room no longer serves to everyone, since no access rule is
+  // left to filter them. A table dropped by a migration (submissions held
+  // editor-only notes) would be replayed to anonymous readers, so its entries
+  // are cleared before the room takes any connection.
+  async onStart() {
+    await super.onStart()
+    const served = this.collections.map((c) => c.name)
+    await this.env.DB.prepare(`DELETE FROM _oplog WHERE channel NOT IN (${served.map(() => '?').join(', ')})`)
+      .bind(...served)
+      .run()
+  }
+
   protected createAdapter(): PersistenceAdapter {
     return new D1Adapter(this.env.DB, this.collections, { oplogRetention: this.oplogRetention })
   }

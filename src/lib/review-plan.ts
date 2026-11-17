@@ -99,12 +99,13 @@ export function planReview(
       const row: Reading = { id: newId(), act_id: actId, question_id: questionId, position, via_question_id: via, created_at: now }
       newReadings.set(key, row)
       writes.push({ on: 'readings', type: 'insert', row })
-    } else if (via || existing.position === position) {
-      // A reading implied by a sub-question never replaces one made directly.
+    } else if (via) {
+      // A reading implied by a sub-question never replaces one already there.
     } else if (mine) {
-      mine.position = position
-    } else {
-      writes.push({ on: 'readings', type: 'update', id: existing.id, changes: { position } })
+      Object.assign(mine, { position, via_question_id: null })
+    } else if (existing.position !== position || existing.via_question_id) {
+      // Read directly, it stops being a reading the sub-question implied.
+      writes.push({ on: 'readings', type: 'update', id: existing.id, changes: { position, via_question_id: null } })
     }
   }
 

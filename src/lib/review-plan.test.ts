@@ -160,10 +160,23 @@ describe('planReview', () => {
     expect(rowsOf<Act>(writes, 'acts')).toEqual([])
     expect(rowsOf<Report>(writes, 'reports').map((r) => [r.source_id, r.act_id, r.excerpt])).toEqual([['article', 'feb-11', 'As the paper words it.']])
     expect(rowsOf<Reading>(writes, 'readings')).toEqual([])
-    expect(updatesOf(writes, 'readings')).toEqual([{ on: 'readings', type: 'update', id: 'feb-11@policy', changes: { position: 'support' } }])
+    expect(updatesOf(writes, 'readings')).toEqual([{ on: 'readings', type: 'update', id: 'feb-11@policy', changes: { position: 'support', via_question_id: null } }])
     expect(updatesOf(writes, 'stances')).toEqual([{ on: 'stances', type: 'update', id: 'policy:ann', changes: { position: 'support', summary: 'Now for it.', updated_at: NOW } }])
     expect(updatesOf(writes, 'proposal_items')[0].changes.act_id).toBe('feb-11')
     expect(onFile.readings[0].position).toBe('lean_support')
+  })
+
+  it('makes a reading its own once an editor reads the act on the parent directly', () => {
+    const onFile = published({ acts: [act('signed', 'ann', { kind: 'formal_act' })], readings: [reading('signed', 'bill', 'support'), reading('signed', 'policy', 'support', 'bill')] })
+    const writes = planReview(
+      onFile,
+      pending,
+      article,
+      { source_title: article.title, review_note: null, items: [accept(item('i1', 'p1', 'ann', 'policy'), { act_id: 'signed', reading: 'mixed', position: 'mixed' })] },
+      NOW,
+      ids(),
+    )
+    expect(updatesOf(writes, 'readings')).toEqual([{ on: 'readings', type: 'update', id: 'signed@policy', changes: { position: 'mixed', via_question_id: null } }])
   })
 
   it('rejects a whole proposal without publishing anything', () => {
