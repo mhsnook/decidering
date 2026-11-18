@@ -7,7 +7,7 @@ import { KIND_LABEL, SIGNAL_LABEL, STANDING_BG, formatDate, hostOf } from '../li
 export function RecordItem({ entry, question, children }: { entry: RecordEntry; question?: Question; children?: ReactNode }) {
   const { act, reading, via, reports } = entry
   return (
-    <li className="rounded-lg border border-line bg-surface p-4">
+    <li className="rounded-xl border-2 border-ink bg-surface p-4">
       <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
         <time dateTime={act.occurred_on} className="font-semibold text-ink">
           {formatDate(act.occurred_on)}
@@ -29,7 +29,7 @@ export function RecordItem({ entry, question, children }: { entry: RecordEntry; 
         {reports.map(({ report, source }) => (
           <li key={report.id}>
             {source.url ? (
-              <a href={source.url} target="_blank" rel="noreferrer" className="text-accent underline underline-offset-2">
+              <a href={source.url} target="_blank" rel="noreferrer" className="link">
                 {source.title ?? hostOf(source.url)} ↗
               </a>
             ) : (

@@ -1,4 +1,4 @@
-# Decidering
+# Sporelight
 
 A tracker for open questions in front of the people who decide them. For each person and each question it shows where they stand, the statements and acts that position rests on, and how solid that footing is.
 

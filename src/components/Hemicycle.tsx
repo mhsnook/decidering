@@ -2,9 +2,9 @@ import { useMemo, useRef, useState, type MouseEvent } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import type { Question } from '../../shared/schema.ts'
 import { hemicycleLayout, thresholdPath } from '../lib/hemicycle.ts'
-import { SPECTRUM, STANDING_COLOR, standingLabel } from '../lib/position.ts'
+import { SPECTRUM, standingLabel } from '../lib/position.ts'
 import type { HeldSeat } from '../lib/tracker.tsx'
-import { FootingTag, StandingDot } from './bits.tsx'
+import { FootingTag, SeatToken, StandingDot } from './bits.tsx'
 
 const UNIT = 100
 // Room above the outer arc for the threshold line to stand clear of the seats.
@@ -95,7 +95,7 @@ export function Hemicycle({
   const flagText = question.threshold ? `${needed} needed` : `${needed} is a majority`
 
   return (
-    <figure className="rounded-xl border border-line bg-surface p-4 sm:p-5">
+    <figure className="card p-4 sm:p-5">
       <figcaption className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3">
         <h2 className="text-lg font-semibold">{title}</h2>
         <p className="text-xs text-muted">
@@ -125,32 +125,24 @@ export function Hemicycle({
         >
           {seats.map((row, i) => {
             const { standing } = row.incumbent
-            const hollow = standing === 'unknown'
             const active = shown?.seat.id === row.seat.id
             return (
-              <circle
-                key={row.seat.id}
-                cx={layout.dots[i].x * UNIT}
-                cy={layout.dots[i].y * UNIT}
-                r={hollow ? r * 0.82 : r}
-                fill={hollow ? 'none' : STANDING_COLOR[standing]}
-                stroke={active ? 'var(--ink)' : hollow ? STANDING_COLOR.unknown : 'none'}
-                strokeWidth={active ? r * 0.5 : Math.min(r * 0.36, 1.1)}
-                opacity={active || isLit(row) ? 1 : 0.18}
-              />
+              <g key={row.seat.id} opacity={active || isLit(row) ? 1 : 0.18}>
+                <SeatToken cx={layout.dots[i].x * UNIT} cy={layout.dots[i].y * UNIT} r={r * 0.9} standing={standing} stroke={active ? 0.3 : 0.12} dashed={!active} />
+              </g>
             )
           })}
-          <path d={linePath} fill="none" stroke="var(--ink)" strokeWidth={0.5} strokeLinejoin="round" strokeLinecap="round" />
+          <path d={linePath} fill="none" stroke="var(--color-ink)" strokeWidth={0.5} strokeLinejoin="round" strokeLinecap="round" />
         </svg>
         <p className="pointer-events-none absolute inset-x-0 bottom-0 text-center leading-none">
-          <span className="block font-display text-2xl font-semibold tabular-nums sm:text-4xl">{yes}</span>
+          <span className="block font-display text-2xl font-black tabular-nums sm:text-4xl">{yes}</span>
           <span className="text-[11px] text-muted sm:text-xs">{standingLabel('support', question).toLowerCase()}</span>
         </p>
 
         {shown && tip && (
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute z-10 w-max max-w-56 rounded-md border border-line bg-paper px-2.5 py-1.5 text-xs shadow-lg"
+            className="pointer-events-none absolute z-10 w-max max-w-56 rounded-xl border-2 border-ink bg-surface px-2.5 py-1.5 text-xs shadow-hard-sm"
             style={{ left: `${tip.left * 100}%`, top: `${tip.top * 100}%`, transform: `translate(${-tip.left * 100}%, calc(-100% - 6px))` }}
           >
             <p className="text-sm font-semibold">{shown.incumbent.decider.name}</p>

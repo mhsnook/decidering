@@ -1,7 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import type { Question } from '../../shared/schema.ts'
 import { useTracker } from '../lib/tracker.tsx'
-import { Eyebrow } from './bits.tsx'
 
 // The broad question and its specific measures are one family; the tabs move
 // between them without leaving the page you're on.
@@ -17,14 +16,14 @@ export function QuestionHeader({ question, deciderSlug }: { question: Question; 
 
   return (
     <header className="space-y-3">
-      <Eyebrow>
+      <p className="tag">
         {body?.name}
         {body?.is_demo && ' · demo data, not real'}
-      </Eyebrow>
-      <h1 className="max-w-3xl text-3xl leading-tight font-semibold sm:text-4xl">{question.title}</h1>
+      </p>
+      <h1 className="h-section max-w-3xl">{question.title}</h1>
       {question.description && <p className="max-w-2xl text-muted">{question.description}</p>}
       {question.reference_url && (
-        <a href={question.reference_url} target="_blank" rel="noreferrer" className="inline-block text-sm text-accent underline underline-offset-2">
+        <a href={question.reference_url} target="_blank" rel="noreferrer" className="inline-block text-sm link">
           Read the measure ↗
         </a>
       )}
