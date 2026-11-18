@@ -14,7 +14,7 @@ export function AskStatus({ ask }: { ask: Question }) {
   const { tracker } = useTracker()
   if (ask.status === 'open' || tracker.isOpen(ask)) return null
   return (
-    <span className="rounded border border-line px-1.5 py-px text-[11px] font-medium whitespace-nowrap text-muted">
+    <span className="rounded border-2 border-dashed border-line px-1.5 py-px text-[11px] font-semibold whitespace-nowrap text-muted">
       {CLOSED_LABEL[ask.status]}
       {ask.closed_on && ` ${formatDate(ask.closed_on)}`}
     </span>
@@ -27,14 +27,14 @@ export function KeyPeople({ people }: { people: KeyPerson[] }) {
   if (people.length === 0) return null
   return (
     <section>
-      <h2 className="mb-3 text-lg font-semibold">Key people</h2>
+      <h2 className="mb-3 text-lg font-black">Key people</h2>
       <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {people.map(({ ask, key, roleLabel, contender, seat }) => (
           <li key={key}>
             <Link
               to="/q/$slug/$decider"
               params={{ slug: ask.slug, decider: contender.decider.slug }}
-              className={`block h-full rounded-lg border border-line bg-surface p-3 hover:border-ink ${tracker.isOpen(ask) ? '' : 'opacity-70'}`}
+              className={`block h-full rounded-xl border-2 border-ink bg-surface p-3 transition-transform hover:-translate-y-0.5 ${tracker.isOpen(ask) ? '' : 'opacity-70'}`}
             >
               <span className="flex items-start justify-between gap-2">
                 <span className="leading-snug font-medium">{contender.decider.name}</span>
@@ -143,13 +143,13 @@ export function ClosedNote({ ask }: { ask: Question }) {
   if (ask.status === 'open') return null
   if (tracker.isOpen(ask)) {
     return (
-      <p className="rounded-lg border border-line bg-surface p-3 text-sm">
+      <p className="rounded-xl border-2 border-dashed border-line bg-paper p-3 text-sm">
         <span className="font-semibold">Closes {ask.closed_on && formatDate(ask.closed_on)}.</span> {ask.closed_note}
       </p>
     )
   }
   return (
-    <p className="rounded-lg border border-line bg-surface p-3 text-sm">
+    <p className="rounded-xl border-2 border-dashed border-line bg-paper p-3 text-sm">
       <span className="font-semibold">
         {CLOSED_LABEL[ask.status]}
         {ask.closed_on && ` ${formatDate(ask.closed_on)}`}.

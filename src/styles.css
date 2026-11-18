@@ -1,61 +1,43 @@
 @import 'tailwindcss';
-@import '@fontsource-variable/fraunces';
-@import '@fontsource-variable/instrument-sans';
+@import '@fontsource-variable/recursive/full.css';
 
 @theme {
-  --font-sans: 'Instrument Sans Variable', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Fraunces Variable', ui-serif, Georgia, serif;
+  --font-sans: 'Recursive Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Recursive Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display--font-variation-settings: 'CASL' 1;
+  --font-mono: 'Recursive Variable', ui-monospace, monospace;
+  --font-mono--font-variation-settings: 'MONO' 1;
 
-  --color-paper: var(--paper);
-  --color-surface: var(--surface);
-  --color-ink: var(--ink);
-  --color-muted: var(--muted);
-  --color-line: var(--line);
-  --color-accent: var(--accent);
-  --color-support: var(--support);
-  --color-lean-support: var(--lean-support);
-  --color-mixed: var(--mixed);
-  --color-lean-oppose: var(--lean-oppose);
-  --color-oppose: var(--oppose);
-  --color-unknown: var(--unknown);
+  --color-paper: #fff6e0;
+  --color-surface: #fff;
+  --color-ink: #1b1b1b;
+  --color-muted: #3a3a3a;
+  --color-faint: #666;
+  --color-line: #bdb6a6;
+  --color-accent: oklch(0.45 0.15 150);
+  --color-mint: oklch(0.94 0.05 150);
+  --color-terminal: #14261c;
+  --color-support: oklch(0.62 0.17 150);
+  --color-lean-support: oklch(0.85 0.1 150);
+  --color-mixed: oklch(0.84 0.16 90);
+  --color-lean-oppose: oklch(0.85 0.08 28);
+  --color-oppose: oklch(0.62 0.21 28);
+  --color-unknown: #bdb6a6;
+
+  --shadow-hard-sm: 0 3px 0 var(--color-ink);
+  --shadow-hard-md: 0 4px 0 var(--color-ink);
+  --shadow-hard: 0 5px 0 var(--color-ink);
+  --shadow-hard-lg: 0 8px 0 var(--color-ink);
+  --shadow-hard-go: 0 4px 0 var(--color-support);
 }
 
-:root {
-  color-scheme: light dark;
-  --paper: #f5efe3;
-  --surface: #fffcf5;
-  --ink: #211c15;
-  --muted: #6d6253;
-  --line: #ddd2bf;
-  --accent: #a8620c;
-  --support: #1d7355;
-  --lean-support: #74ad94;
-  --mixed: #c9951a;
-  --lean-oppose: #ae83bb;
-  --oppose: #71358a;
-  --unknown: #b3a794;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #17140f;
-    --surface: #211d16;
-    --ink: #efe7d8;
-    --muted: #a39780;
-    --line: #3a3327;
-    --accent: #e0a044;
-    --support: #3fae86;
-    --lean-support: #2f6f58;
-    --mixed: #d8a833;
-    --lean-oppose: #77518a;
-    --oppose: #b06fcc;
-    --unknown: #5d5446;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--color-paper);
+  color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
@@ -64,8 +46,8 @@ h1,
 h2,
 h3 {
   font-family: var(--font-display);
-  font-optical-sizing: auto;
-  letter-spacing: -0.01em;
+  font-variation-settings: 'CASL' 1;
+  letter-spacing: -0.02em;
   text-wrap: balance;
 }
 
@@ -74,24 +56,57 @@ html:has(dialog[open]) {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 3px solid var(--color-accent);
   outline-offset: 2px;
 }
 
 @layer components {
+  .card {
+    @apply rounded-2xl border-2 border-ink bg-surface shadow-hard;
+  }
+  .card-lg {
+    @apply rounded-[20px] sm:rounded-3xl;
+  }
+  .h-page {
+    @apply text-[32px] leading-none font-black sm:text-[40px];
+  }
+  .h-section {
+    @apply text-[30px] leading-[1.1] font-black sm:text-[40px];
+  }
+  .h-card {
+    @apply text-[19px] leading-tight font-extrabold sm:text-[21px];
+  }
   .field {
-    @apply w-full rounded-md border border-line bg-surface px-3 py-2 text-base text-ink placeholder:text-muted sm:text-sm;
+    @apply min-h-12 w-full rounded-[10px] border-2 border-ink bg-surface px-3 py-2.5 text-base text-ink placeholder:text-faint;
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-md border border-line bg-surface px-3 py-2 text-sm font-medium text-ink transition-colors hover:border-ink disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-ink bg-surface px-4 py-2 text-base font-extrabold text-ink shadow-hard-sm transition-transform active:translate-y-0.5 active:shadow-[0_1px_0_var(--color-ink)] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-lg {
+    @apply min-h-[52px] rounded-[14px] px-5 shadow-hard-md sm:text-[17px];
+  }
+  .btn-sm {
+    @apply rounded-full py-1.5 text-[15px] font-semibold;
   }
   .btn-primary {
-    @apply border-ink bg-ink text-paper hover:opacity-90;
+    @apply bg-ink text-paper shadow-hard-go;
+  }
+  .btn-go {
+    @apply bg-support text-white;
   }
   .label {
-    @apply mb-1 block text-xs font-semibold tracking-wide text-muted uppercase;
+    @apply mb-1.5 block text-sm font-bold;
+  }
+  .tag {
+    @apply font-mono text-xs font-semibold uppercase;
+  }
+  .tag-pill {
+    @apply rounded-full border-2 border-dashed border-ink px-2.5 py-1 font-mono text-xs font-semibold uppercase;
+  }
+  .link {
+    @apply underline decoration-2 underline-offset-[3px] hover:text-accent;
   }
   .kbd {
-    @apply rounded border border-line bg-paper px-1.5 py-0.5 font-mono text-[11px] text-muted;
+    @apply rounded border-2 border-ink bg-surface px-1.5 py-px font-mono text-[11px] font-semibold;
   }
 }

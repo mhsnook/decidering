@@ -8,7 +8,7 @@ import { commit } from '../lib/review.ts'
 import { planReview, type ItemVerdict } from '../lib/review-plan.ts'
 import { useTracker } from '../lib/tracker.tsx'
 import { KIND_CHOICE, KIND_LABEL, SIGNAL_LABEL, formatDate, hostOf, standingLabel } from '../lib/position.ts'
-import { StandingPill, Syncing } from '../components/bits.tsx'
+import { Syncing, Token } from '../components/bits.tsx'
 import { RecordItem } from '../components/RecordItem.tsx'
 
 export const Route = createFileRoute('/editor')({ component: Editor })
@@ -25,8 +25,8 @@ function SignIn() {
     setFailed(!(await signIn(token)))
   }
   return (
-    <form onSubmit={onSubmit} className="mx-auto max-w-sm space-y-4 py-12">
-      <h1 className="text-2xl font-semibold">Editors</h1>
+    <form onSubmit={onSubmit} className="card mx-auto mt-8 max-w-sm space-y-4 p-6">
+      <h1 className="text-[28px] font-black">Editors</h1>
       <div>
         <label className="label" htmlFor="token">
           Editor token
@@ -41,10 +41,13 @@ function SignIn() {
 
 const ORIGIN_LABEL: Record<Proposal['origin'], string> = {
   reader: 'Sent in by a reader',
-  news_search: 'Found by news search',
+  news_search: 'News search',
   partner: 'Sent in by a partner',
   model: 'Read by a model',
 }
+
+// How many waiting proposals to list beside the open one.
+const UP_NEXT = 12
 
 function Queue() {
   const { tracker, isReady } = useTracker()
@@ -59,6 +62,7 @@ function Queue() {
   const reviewed = proposals.data.filter((p) => p.status !== 'pending').sort((a, b) => (b.reviewed_at ?? '').localeCompare(a.reviewed_at ?? ''))
   const list = tab === 'pending' ? pending : reviewed
   const selected = list.find((p) => p.id === selectedId) ?? list[0]
+  const others = list.filter((p) => p.id !== selected?.id)
   const selectedSource = selected && tracker.sourceById.get(selected.source_id)
 
   useEffect(() => {
@@ -79,95 +83,126 @@ function Queue() {
 
   if (!isReady || !proposals.isReady || !allItems.isReady || !allNotes.isReady) return <Syncing />
 
+  const total = pending.length + reviewed.length
+  const tabClass = (t: typeof tab) => (tab === t ? 'font-black' : 'link cursor-pointer font-semibold')
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-3xl font-semibold">Review queue</h1>
-        <div className="flex items-center gap-2">
+    <div className="pb-24 sm:pb-0">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-4">
+        <h1 className="h-page">Review queue</h1>
+        <div
+          className="h-3.5 min-w-[200px] flex-1 overflow-hidden rounded-full border-2 border-ink bg-surface sm:h-[18px]"
+          role="progressbar"
+          aria-label="Reviewed"
+          aria-valuemin={0}
+          aria-valuemax={total}
+          aria-valuenow={reviewed.length}
+        >
+          <div className="h-full bg-support transition-[width] duration-300" style={{ width: `${total ? (reviewed.length / total) * 100 : 0}%` }} />
+        </div>
+        <p className="tabular-nums">
+          <button type="button" aria-pressed={tab === 'reviewed'} className={tabClass('reviewed')} onClick={() => setTab('reviewed')}>
+            {reviewed.length} reviewed
+          </button>
+          {' · '}
+          <button type="button" aria-pressed={tab === 'pending'} className={tabClass('pending')} onClick={() => setTab('pending')}>
+            {pending.length} to go
+          </button>
+        </p>
+        <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto">
           <NewsSearchButton />
-          <button type="button" className="btn" onClick={signOut}>
+          <button type="button" className="btn btn-sm shadow-none" onClick={signOut}>
             Sign out
           </button>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 border-b border-line">
-        {(['pending', 'reviewed'] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium capitalize ${tab === t ? 'border-ink' : 'border-transparent text-muted'}`}
-          >
-            {t} <span className="tabular-nums">{t === 'pending' ? pending.length : reviewed.length}</span>
-          </button>
-        ))}
-        <p className="ml-auto hidden gap-3 pb-1 text-xs text-muted md:flex">
-          <span>
-            <kbd className="kbd">j</kbd> <kbd className="kbd">k</kbd> move
-          </span>
-          <span>
-            <kbd className="kbd">o</kbd> open source
-          </span>
-          <span>
-            <kbd className="kbd">a</kbd> publish
-          </span>
-          <span>
-            <kbd className="kbd">r</kbd> reject
-          </span>
-        </p>
-      </div>
-
-      {list.length === 0 ? (
-        <p className="py-16 text-center text-muted">{tab === 'pending' ? 'The queue is clear.' : 'Nothing reviewed yet.'}</p>
+      {!selected ? (
+        <div className="card card-lg mt-10 bg-mint px-5 py-7 text-center sm:mt-12 sm:p-12">
+          <h2 className="text-2xl font-black sm:text-[32px]">{tab === 'pending' ? 'The queue is empty.' : 'Nothing reviewed yet.'}</h2>
+          {tab === 'pending' && <p className="mt-2 text-[15px] sm:text-[17px]">Every lead has been reviewed. The next news search runs in a few hours.</p>}
+        </div>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[20rem_1fr]">
-          <ul className="max-h-[70vh] space-y-1 overflow-y-auto pr-1">
-            {list.map((p) => {
-              const items = itemsOf(p.id)
-              const source = tracker.sourceById.get(p.source_id)
-              const names = [...new Set(items.map((i) => tracker.deciderById.get(i.decider_id)?.name ?? i.decider_id))]
-              const accepted = items.filter((i) => i.status === 'accepted').length
-              return (
-                <li key={p.id}>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedId(p.id)}
-                    className={`w-full rounded-lg border p-3 text-left ${p.id === selected?.id ? 'border-ink bg-surface' : 'border-transparent hover:bg-surface'}`}
-                  >
-                    <span className="flex items-center justify-between gap-2 text-sm font-medium">
-                      <span className="truncate">{names.join(', ')}</span>
-                      {p.status === 'pending' ? (
-                        items.length > 1 && <span className="shrink-0 text-xs text-muted">{items.length} items</span>
-                      ) : (
-                        <span className={`shrink-0 text-xs ${accepted ? 'text-support' : 'text-muted'}`}>
-                          {accepted === 0 ? 'rejected' : accepted === items.length ? 'published' : `${accepted} of ${items.length} published`}
+        <div className="mt-6 grid items-start gap-9 sm:mt-8 lg:grid-cols-[minmax(0,1fr)_minmax(260px,340px)]">
+          <Review
+            key={selected.id}
+            proposal={selected}
+            items={itemsOf(selected.id)}
+            notes={allNotes.data.filter((n) => n.proposal_id === selected.id)}
+            behind={others.length}
+          />
+          {others.length > 0 && (
+            <aside>
+              <h2 className="mb-2.5 text-base font-black sm:text-lg">{tab === 'pending' ? 'Up next' : 'Reviewed'}</h2>
+              <ul className="flex flex-col gap-2 sm:gap-2.5">
+                {others.slice(0, UP_NEXT).map((p) => {
+                  const items = itemsOf(p.id)
+                  const first = items[0]
+                  const names = [...new Set(items.map((i) => tracker.deciderById.get(i.decider_id)?.name ?? i.decider_id))]
+                  const accepted = items.filter((i) => i.status === 'accepted').length
+                  return (
+                    <li key={p.id}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedId(p.id)}
+                        className="flex w-full cursor-pointer items-start gap-3 rounded-[14px] border-2 border-ink bg-surface px-3.5 py-3 text-left hover:shadow-hard-md"
+                      >
+                        <Token
+                          standing={(first && tracker.questionById.has(first.question_id) && tracker.standingFor(tracker.questionById.get(first.question_id)!, first.decider_id)) || 'unknown'}
+                          className="mt-0.5 size-[22px]"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-baseline justify-between gap-2 font-bold">
+                            <span className="truncate">{names.join(', ')}</span>
+                            {p.status === 'pending' ? (
+                              items.length > 1 && <span className="tag shrink-0">{items.length} items</span>
+                            ) : (
+                              <span className="tag shrink-0">
+                                {accepted === 0 ? 'rejected' : accepted === items.length ? 'published' : `${accepted} of ${items.length} published`}
+                              </span>
+                            )}
+                          </span>
+                          <span className="mt-0.5 line-clamp-1 text-sm leading-snug text-muted sm:line-clamp-2">{first?.quote}</span>
                         </span>
-                      )}
-                    </span>
-                    <span className="block truncate text-xs text-muted">{source?.title ?? hostOf(source?.url ?? null)}</span>
-                    <span className="mt-1 line-clamp-2 text-xs">{items[0]?.quote}</span>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-          {selected && <Review key={selected.id} proposal={selected} items={itemsOf(selected.id)} notes={allNotes.data.filter((n) => n.proposal_id === selected.id)} />}
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+              {others.length > UP_NEXT && <p className="mt-3 text-sm font-semibold text-muted">and {others.length - UP_NEXT} more</p>}
+              <p className="tag mt-4 hidden text-[13px] leading-[1.8] font-medium text-faint lg:block">
+                J / K move · O open source
+                <br />A publish · R reject
+              </p>
+            </aside>
+          )}
         </div>
       )}
     </div>
   )
 }
 
-function Review({ proposal, items, notes }: { proposal: Proposal; items: ProposalItem[]; notes: ProposalNote[] }) {
+const PICKED: Record<Position, string> = {
+  support: 'has-checked:bg-support/20',
+  lean_support: 'has-checked:bg-lean-support/40',
+  mixed: 'has-checked:bg-mixed/30',
+  lean_oppose: 'has-checked:bg-lean-oppose/40',
+  oppose: 'has-checked:bg-oppose/15',
+}
+
+const SHEET = 'card card-lg shadow-none'
+
+function Review({ proposal, items, notes, behind }: { proposal: Proposal; items: ProposalItem[]; notes: ProposalNote[]; behind: number }) {
   const { tracker } = useTracker()
   const [error, setError] = useState<string | null>(null)
   const source = tracker.sourceById.get(proposal.source_id)
   if (!source) return <p className="text-muted">This proposal points at a source that no longer exists.</p>
 
   const isPending = proposal.status === 'pending'
+  const fromSearch = proposal.origin === 'news_search'
   const submitterNotes = notes.filter((n) => n.kind === 'submitter')
   const reviewNote = notes.find((n) => n.kind === 'review' && !n.proposal_item_id)
+  const several = items.length > 1
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -191,7 +226,7 @@ function Review({ proposal, items, notes }: { proposal: Proposal; items: Proposa
         reading,
         bearing: f.get(field('bearing')) as Bearing,
         // A formal-act question has no position to judge: it is read off the acts.
-        position: (f.get(field('position')) as Position | null) ?? reading,
+        position: (f.get(field('position')) as Position | '' | null) || reading,
         summary: text(field('summary')) || null,
         comment,
       }
@@ -206,66 +241,72 @@ function Review({ proposal, items, notes }: { proposal: Proposal; items: Proposa
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-5">
-      <div className="rounded-xl border border-line bg-surface p-5">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <h2 className="text-xl font-semibold">{source.title ?? hostOf(source.url)}</h2>
-          <span className="rounded bg-paper px-2 py-1 text-xs text-muted">
+    <div className="relative mr-2 sm:mr-3">
+      {behind > 1 && <div className={`${SHEET} absolute inset-0 translate-x-2 translate-y-3 sm:translate-x-3 sm:translate-y-4`} />}
+      {behind > 0 && <div className={`${SHEET} absolute inset-0 translate-x-1 translate-y-1.5 sm:translate-x-1.5 sm:translate-y-2`} />}
+      <form onSubmit={onSubmit} className={`${SHEET} relative flex flex-col gap-4 p-[18px] sm:gap-5 sm:p-7`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-[22px] leading-[1.1] font-black sm:text-[28px]">{source.title ?? hostOf(source.url)}</h2>
+            {several && <p className="mt-1 text-sm text-muted sm:text-base">{items.length} items from this source</p>}
+          </div>
+          <span className="tag-pill">
             {ORIGIN_LABEL[proposal.origin]} · {formatDate(proposal.created_at)}
           </span>
         </div>
-        {source.url && (
-          <a href={source.url} target="_blank" rel="noreferrer" className="mt-3 block text-sm break-all text-accent underline underline-offset-2">
-            {source.url} ↗
-          </a>
-        )}
-        {submitterNotes.map((n) => (
-          <p key={n.id} className="mt-3 rounded bg-paper p-3 text-sm">
-            Note: {n.body}
-          </p>
-        ))}
-      </div>
 
-      <fieldset disabled={!isPending} className="space-y-5">
-        <div>
-          <label className="label" htmlFor="source_title">
-            Source name
-          </label>
-          <input id="source_title" name="source_title" defaultValue={source.title ?? ''} className="field" />
-        </div>
-
-        {items.map((item, i) => (
-          <ItemFields
-            key={item.id}
-            item={item}
-            number={items.length > 1 ? i + 1 : null}
-            sameActAs={items.slice(0, i).findIndex((other) => other.act_id === item.act_id) + 1 || null}
-            nextSort={Math.max(...items.map((x) => x.sort)) + 1}
-            comment={notes.find((n) => n.proposal_item_id === item.id)?.body ?? ''}
-            isPending={isPending}
-          />
-        ))}
-
-        <div>
-          <label className="label" htmlFor="review_note">
-            Review note <span className="font-normal normal-case">(internal)</span>
-          </label>
-          <input id="review_note" name="review_note" defaultValue={reviewNote?.body ?? ''} className="field" />
-        </div>
-
-        {isPending && (
-          <div className="flex gap-2">
-            <button id="approve" name="action" value="approve" className="btn btn-primary">
-              {items.length > 1 ? 'Publish the accepted items' : 'Approve and publish'}
-            </button>
-            <button id="reject" name="action" value="reject" formNoValidate className="btn">
-              {items.length > 1 ? 'Reject all' : 'Reject'}
-            </button>
+        <fieldset disabled={!isPending} className="flex min-w-0 flex-col gap-4 sm:gap-5">
+          <div className="rounded-[14px] border-2 border-dashed border-line bg-paper px-3.5 py-3 sm:px-[18px] sm:py-4">
+            <label className="label" htmlFor="source_title">
+              Source
+            </label>
+            <input id="source_title" name="source_title" defaultValue={source.title ?? ''} className="field" />
+            {source.url && (
+              <a href={source.url} target="_blank" rel="noreferrer" className="link mt-2 flex min-h-11 items-center text-sm font-semibold break-all sm:min-h-0">
+                {source.url} ↗
+              </a>
+            )}
+            {submitterNotes.map((n) => (
+              <p key={n.id} className="mt-2 text-sm">
+                {fromSearch ? 'Note' : 'Reader’s note'}: {n.body}
+              </p>
+            ))}
           </div>
-        )}
-        {error && <p className="text-sm text-oppose">Not saved: {error}</p>}
-      </fieldset>
-    </form>
+
+          {items.map((item, i) => (
+            <ItemFields
+              key={item.id}
+              item={item}
+              number={several ? i + 1 : null}
+              sameActAs={items.slice(0, i).findIndex((other) => other.act_id === item.act_id) + 1 || null}
+              nextSort={Math.max(...items.map((x) => x.sort)) + 1}
+              comment={notes.find((n) => n.proposal_item_id === item.id)?.body ?? ''}
+              fromSearch={fromSearch}
+              isPending={isPending}
+            />
+          ))}
+
+          <div>
+            <label className="label" htmlFor="review_note">
+              Review note <span className="font-normal text-faint">(only editors see this)</span>
+            </label>
+            <input id="review_note" name="review_note" defaultValue={reviewNote?.body ?? ''} placeholder="Add a note…" className="field" />
+          </div>
+
+          {isPending && (
+            <div className="fixed inset-x-0 bottom-0 z-10 flex gap-2.5 border-t-2 border-ink bg-surface px-4 pt-3 pb-5 sm:static sm:gap-3 sm:border-0 sm:p-0">
+              <button id="approve" name="action" value="approve" className="btn btn-lg btn-go order-2 flex-[2] sm:order-1 sm:flex-1">
+                {several ? 'Publish the accepted items' : 'Approve and publish'} <span className="hidden sm:inline">[A]</span>
+              </button>
+              <button id="reject" name="action" value="reject" formNoValidate className="btn btn-lg order-1 flex-1 sm:order-2">
+                {several ? 'Reject all' : 'Reject'} <span className="hidden sm:inline">[R]</span>
+              </button>
+            </div>
+          )}
+          {error && <p className="text-sm font-semibold text-oppose">Not saved: {error}</p>}
+        </fieldset>
+      </form>
+    </div>
   )
 }
 
@@ -275,6 +316,7 @@ function ItemFields({
   sameActAs,
   nextSort,
   comment,
+  fromSearch,
   isPending,
 }: {
   item: ProposalItem
@@ -282,6 +324,7 @@ function ItemFields({
   sameActAs: number | null
   nextSort: number
   comment: string
+  fromSearch: boolean
   isPending: boolean
 }) {
   const { tracker } = useTracker()
@@ -309,6 +352,7 @@ function ItemFields({
   const record = tracker.recordFor(question, decider.id)
   const parent = question.implies_on_parent && question.parent_id ? tracker.questionById.get(question.parent_id) : undefined
   const isFormal = question.kind === 'formal_act'
+  const standing = tracker.standingFor(question, decider.id)
   const field = (name: string) => `${item.id}:${name}`
   const other = family.find((q) => q.id !== questionId)
 
@@ -318,24 +362,27 @@ function ItemFields({
   }
 
   return (
-    <section className="space-y-4 rounded-xl border border-line p-4" aria-label={`Item ${number ?? 1}: ${decider.name}`}>
+    <section className="flex flex-col gap-4 border-t-2 border-dashed border-line pt-4 sm:gap-5 sm:pt-5" aria-label={`Item ${number ?? 1}: ${decider.name}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="text-lg font-semibold">
-            {number && <span className="mr-2 text-muted tabular-nums">{number}.</span>}
-            {decider.name}
-          </h3>
-          {!isPending && <p className={`text-xs ${item.status === 'accepted' ? 'text-support' : 'text-muted'}`}>{item.status === 'accepted' ? 'Published' : 'Rejected'}</p>}
+        <div className="flex items-center gap-3 sm:gap-3.5">
+          <Token standing={standing} className={`size-10 border-[3px] sm:size-[52px] ${standing !== 'unknown' ? 'shadow-hard-sm sm:shadow-hard-md' : ''}`} />
+          <div>
+            <h3 className="text-[22px] leading-[1.1] font-black sm:text-[28px]">
+              {number && <span className="mr-2 text-faint tabular-nums">{number}.</span>}
+              {decider.name}
+            </h3>
+            <p className="mt-1 text-sm text-muted sm:text-base">{question.title}</p>
+          </div>
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={accept} onChange={(e) => setAccept(e.target.checked)} />
-          Publish this item
+        <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-bold">
+          <input type="checkbox" className="size-5 accent-ink" checked={accept} onChange={(e) => setAccept(e.target.checked)} />
+          {isPending ? 'Publish this item' : item.status === 'accepted' ? 'Published' : 'Rejected'}
         </label>
         <input type="hidden" name={field('accept')} value={accept ? '1' : ''} />
       </div>
 
-      <fieldset disabled={!accept} className={`space-y-4 ${accept ? '' : 'hidden'}`}>
-        <div className="grid gap-4 sm:grid-cols-2">
+      <fieldset disabled={!accept} className={`min-w-0 flex-col gap-4 sm:gap-5 ${accept ? 'flex' : 'hidden'}`}>
+        <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="label" htmlFor={field('question')}>
               Question
@@ -363,54 +410,65 @@ function ItemFields({
           </div>
         </div>
 
-        <div>
-          <label className="label" htmlFor={field('quote')}>
-            {actChoice === 'new' ? 'Quote or act, as it will be published' : 'How this source words it'}
+        <div className="rounded-[14px] border-2 border-dashed border-line bg-paper px-3.5 py-3 sm:px-[18px] sm:py-4">
+          <label className="tag text-[10px] text-faint sm:text-xs" htmlFor={field('quote')}>
+            {actChoice !== 'new' ? 'How this source words it' : fromSearch ? 'Search excerpt, not a checked quote' : 'Reader’s quote, not yet checked'}
           </label>
-          <textarea id={field('quote')} name={field('quote')} required rows={3} defaultValue={item.quote} className="field" />
+          <textarea id={field('quote')} name={field('quote')} required rows={3} defaultValue={item.quote} className="field mt-2 leading-normal sm:text-lg" />
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
-          {actChoice === 'new' && (
-            <>
-              <div>
-                <label className="label" htmlFor={field('occurred_on')}>
-                  Date it happened
-                </label>
-                <input id={field('occurred_on')} name={field('occurred_on')} type="date" required defaultValue={item.occurred_on ?? ''} className="field" />
-              </div>
-              <div>
-                <label className="label" htmlFor={field('kind')}>
-                  Kind
-                </label>
-                <select id={field('kind')} name={field('kind')} defaultValue={item.kind} className="field">
-                  {ACT_KINDS.map((k) => (
-                    <option key={k} value={k}>
-                      {KIND_CHOICE[k]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </>
-          )}
-          <div>
-            <label className="label" htmlFor={field('reading')}>
-              On this question it shows
-            </label>
-            <select id={field('reading')} name={field('reading')} required defaultValue={item.reading ?? ''} className="field">
-              <option value="" disabled>
-                Choose…
-              </option>
-              {POSITIONS.map((p) => (
-                <option key={p} value={p}>
-                  {SIGNAL_LABEL[p]}
-                </option>
-              ))}
-            </select>
+        {actChoice === 'new' && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="label" htmlFor={field('occurred_on')}>
+                Date it happened
+              </label>
+              <input id={field('occurred_on')} name={field('occurred_on')} type="date" required defaultValue={item.occurred_on ?? ''} className="field" />
+            </div>
+            <div>
+              <label className="label" htmlFor={field('kind')}>
+                Kind
+              </label>
+              <select id={field('kind')} name={field('kind')} defaultValue={item.kind} className="field">
+                {ACT_KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {KIND_CHOICE[k]}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
+        )}
+
+        <div role="radiogroup" aria-labelledby={field('reading-label')}>
+          <p className="mb-2.5 flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm sm:mb-3">
+            <span id={field('reading-label')} className="font-bold">
+              What does this show?
+            </span>
+            <span className="text-[13px] font-medium text-faint sm:text-sm">
+              {standing !== 'unknown' ? `Now listed as ${standingLabel(standing, question)}, from ${record.length} item${record.length === 1 ? '' : 's'}` : 'Not listed yet'}
+            </span>
+          </p>
+          <div className="grid grid-cols-5 gap-1.5 text-center text-[11px] leading-[1.15] font-bold sm:gap-2.5 sm:text-[15px]">
+            {POSITIONS.map((p) => (
+              <label
+                key={p}
+                className={`flex min-h-[72px] cursor-pointer flex-col items-center gap-1.5 rounded-xl border-2 border-ink bg-surface px-0.5 pt-2.5 pb-2 transition-transform has-checked:-translate-y-[3px] has-checked:shadow-hard-md has-focus-visible:outline-3 has-focus-visible:outline-offset-2 has-focus-visible:outline-accent sm:gap-2 sm:rounded-[14px] sm:py-3 ${PICKED[p]}`}
+              >
+                <input type="radio" name={field('reading')} value={p} required defaultChecked={item.reading === p} className="sr-only" />
+                <Token standing={p} className="size-6 sm:size-7" />
+                {standingLabel(p, question)}
+              </label>
+            ))}
+          </div>
+          {parent && question.implies_on_parent && (
+            <p className="mt-2.5 text-[13px] text-faint sm:text-sm">
+              If this shows a yes here, it is also recorded as “{SIGNAL_LABEL[question.implies_on_parent]}” on “{parent.short_title}”.
+            </p>
+          )}
         </div>
 
-        <div className="max-w-xs">
+        <div className="sm:max-w-sm">
           <label className="label" htmlFor={field('bearing')}>
             It is about
           </label>
@@ -423,47 +481,34 @@ function ItemFields({
           </select>
         </div>
 
-        <div className="rounded-lg bg-surface p-4">
-          <p className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-            Currently listed as <StandingPill standing={tracker.standingFor(question, decider.id)} question={question} /> on {record.length} item
-            {record.length === 1 ? '' : 's'}.
-          </p>
-          {/* Keyed by question so the defaults follow the question picked above. */}
-          <div key={question.id} className={`grid gap-4 ${isFormal ? '' : 'sm:grid-cols-[12rem_1fr]'}`}>
-            <div className={isFormal ? 'hidden' : ''}>
-              <label className="label" htmlFor={field('position')}>
-                Position after publishing
-              </label>
-              <select id={field('position')} name={field('position')} required disabled={isFormal} defaultValue={item.position ?? stance?.position ?? item.reading ?? ''} className="field">
-                <option value="" disabled>
-                  Choose…
+        {/* Keyed by question so the defaults follow the question picked above. */}
+        <div key={question.id} className={`grid gap-3 ${isFormal ? '' : 'sm:grid-cols-[12rem_1fr]'}`}>
+          <div className={isFormal ? 'hidden' : ''}>
+            <label className="label" htmlFor={field('position')}>
+              Listed as, after approving
+            </label>
+            <select id={field('position')} name={field('position')} disabled={isFormal} defaultValue={item.position ?? stance?.position ?? ''} className="field">
+              <option value="">Same as this item</option>
+              {POSITIONS.map((p) => (
+                <option key={p} value={p}>
+                  {standingLabel(p, question)}
                 </option>
-                {POSITIONS.map((p) => (
-                  <option key={p} value={p}>
-                    {standingLabel(p, question)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor={field('summary')}>
-                One-line summary
-              </label>
-              <input id={field('summary')} name={field('summary')} defaultValue={item.summary ?? stance?.summary ?? ''} className="field" />
-            </div>
+              ))}
+            </select>
           </div>
-          {isFormal && <p className="mt-3 text-xs text-muted">Where they stand on this is read off the acts on file, so there is no position to set.</p>}
-          {parent && question.implies_on_parent && (
-            <p className="mt-3 text-xs text-muted">
-              If this shows support here, it is also recorded as “{SIGNAL_LABEL[question.implies_on_parent]}” on “{parent.short_title}”.
-            </p>
-          )}
+          <div>
+            <label className="label" htmlFor={field('summary')}>
+              One-line summary
+            </label>
+            <input id={field('summary')} name={field('summary')} defaultValue={item.summary ?? stance?.summary ?? ''} placeholder="Write one line…" className="field" />
+          </div>
         </div>
+        {isFormal && <p className="-mt-2 text-[13px] text-faint sm:text-sm">Where they stand on this is read off the acts on file, so there is no position to set.</p>}
 
         {record.length > 0 && (
           <details>
-            <summary className="cursor-pointer text-sm text-muted">Already on the record ({record.length})</summary>
-            <ol className="mt-2 space-y-2">
+            <summary className="cursor-pointer text-sm font-bold">Already on the record ({record.length})</summary>
+            <ol className="mt-2.5 space-y-2.5">
               {record.map((entry) => (
                 <RecordItem key={entry.reading.id} entry={entry} question={question} />
               ))}
@@ -475,12 +520,12 @@ function ItemFields({
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-48 flex-1">
           <label className="label" htmlFor={field('comment')}>
-            Note on this item <span className="font-normal normal-case">(internal)</span>
+            Note on this item <span className="font-normal text-faint">(only editors see this)</span>
           </label>
-          <input id={field('comment')} name={field('comment')} defaultValue={comment} className="field" />
+          <input id={field('comment')} name={field('comment')} defaultValue={comment} placeholder="Add a note…" className="field" />
         </div>
         {isPending && other && (
-          <button type="button" className="btn" onClick={readOnAnotherQuestion} title="Adds an item for the same act on another question, with its own reading">
+          <button type="button" className="btn btn-sm" onClick={readOnAnotherQuestion} title="Adds an item for the same act on another question, with its own reading">
             Read this act on another question too
           </button>
         )}
@@ -503,8 +548,8 @@ function NewsSearchButton() {
   }
   return (
     <>
-      {state !== 'idle' && state !== 'running' && <span className="text-xs text-muted">{state}</span>}
-      <button type="button" className="btn" onClick={run} disabled={state === 'running'} title="Searches the news for questions marked as in the news">
+      {state !== 'idle' && state !== 'running' && <span className="text-sm font-semibold">{state}</span>}
+      <button type="button" className="btn btn-sm" onClick={run} disabled={state === 'running'} title="Searches the news for questions marked as in the news">
         {state === 'running' ? 'Searching…' : 'Search the news now'}
       </button>
     </>

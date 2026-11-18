@@ -5,16 +5,16 @@ export type Standing = Position | 'unknown'
 export const STANDINGS: Standing[] = ['support', 'lean_support', 'mixed', 'lean_oppose', 'oppose', 'unknown']
 
 const LABEL: Record<Position, string> = {
-  support: 'Supports',
-  lean_support: 'Leans toward',
+  support: 'Yes',
+  lean_support: 'Probably yes',
   mixed: 'Mixed',
-  lean_oppose: 'Leans against',
-  oppose: 'Opposes',
+  lean_oppose: 'Probably no',
+  oppose: 'No',
 }
 
 // On a formal-act question a stance records the act, so its absence is a known "no".
 export function standingLabel(standing: Standing, question: Pick<Question, 'kind' | 'act_label'>): string {
-  if (standing === 'unknown') return question.kind === 'formal_act' ? 'Has not' : 'Unknown'
+  if (standing === 'unknown') return question.kind === 'formal_act' ? 'Has not' : 'No record yet'
   if (question.kind === 'formal_act' && standing === 'support') return question.act_label ?? 'Signed on'
   return LABEL[standing]
 }
@@ -37,12 +37,12 @@ export const STANDING_BG: Record<Standing, string> = {
 }
 
 export const STANDING_COLOR: Record<Standing, string> = {
-  support: 'var(--support)',
-  lean_support: 'var(--lean-support)',
-  mixed: 'var(--mixed)',
-  lean_oppose: 'var(--lean-oppose)',
-  oppose: 'var(--oppose)',
-  unknown: 'var(--unknown)',
+  support: 'var(--color-support)',
+  lean_support: 'var(--color-lean-support)',
+  mixed: 'var(--color-mixed)',
+  lean_oppose: 'var(--color-lean-oppose)',
+  oppose: 'var(--color-oppose)',
+  unknown: 'var(--color-unknown)',
 }
 
 // Left to right across a chamber: the yes side, the undecided middle, the no side.
