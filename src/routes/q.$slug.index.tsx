@@ -159,7 +159,7 @@ function Board() {
               ))}
             </ul>
             {shown.length < group.rows.length && (
-              <button type="button" className="mt-3 text-sm text-accent underline underline-offset-2" onClick={() => set({ standing: group.standing })}>
+              <button type="button" className="mt-3 text-sm link" onClick={() => set({ standing: group.standing })}>
                 Show all {group.rows.length}
               </button>
             )}
@@ -186,7 +186,7 @@ function Ask({ question, bodyId }: { question: Question; bodyId: string }) {
             <Link
               to="/q/$slug/$decider"
               params={{ slug: question.slug, decider: contender.decider.slug }}
-              className="block rounded-lg border border-line bg-surface p-3 hover:border-ink"
+              className="block rounded-xl border-2 border-ink bg-surface p-3 transition-transform hover:-translate-y-0.5"
             >
               <span className="flex items-start justify-between gap-2">
                 <span className="leading-snug font-medium">{contender.decider.name}</span>
@@ -207,7 +207,7 @@ function Ask({ question, bodyId }: { question: Question; bodyId: string }) {
       <div className="flex flex-wrap items-center gap-4">
         <CloseAsk ask={question} />
         {parent && (
-          <Link to="/q/$slug" params={{ slug: parent.slug }} className="text-sm text-muted hover:text-ink">
+          <Link to="/q/$slug" params={{ slug: parent.slug }} className="link text-sm">
             ← {parent.title}
           </Link>
         )}
@@ -227,7 +227,7 @@ function Toggle({ on, onChange, children }: { on: boolean; onChange: (on: boolea
 function SeatCard({ row, question }: { row: HeldSeat; question: Question }) {
   const inc = row.incumbent
   return (
-    <li className="relative overflow-hidden rounded-lg border border-line bg-surface">
+    <li className="relative overflow-hidden rounded-xl border-2 border-ink bg-surface">
       <span className={`absolute inset-y-0 left-0 w-1.5 ${STANDING_BG[inc.standing]}`} />
       <Link to="/q/$slug/$decider" params={{ slug: question.slug, decider: inc.decider.slug }} className="block py-2 pr-3 pl-4 hover:bg-paper">
         <span className="flex items-start justify-between gap-2">

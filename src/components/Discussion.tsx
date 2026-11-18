@@ -78,7 +78,7 @@ export function Discussion({ question, decider }: { question: Question; decider:
       {isReady && data.length === 0 && <p className="mb-4 rounded-lg border border-dashed border-line p-4 text-center text-sm text-muted">No comments yet.</p>}
       <ol className="mb-5 space-y-3">
         {data.map((c) => (
-          <li key={c.id} className="rounded-lg border border-line bg-surface p-3">
+          <li key={c.id} className="rounded-xl border-2 border-ink bg-surface p-3">
             <p className="mb-1 flex items-baseline gap-2 text-xs text-muted">
               <span className="text-sm font-semibold text-ink">{c.author_name}</span>
               <time dateTime={c.created_at}>{timeFmt.format(new Date(c.created_at))}</time>

@@ -58,7 +58,7 @@ function DeciderOnQuestion() {
     <div className="space-y-8">
       <QuestionHeader question={question} deciderSlug={decider.slug} />
 
-      <section className="rounded-xl border border-line bg-surface p-5 sm:p-6">
+      <section className="card p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-2xl font-semibold">{decider.name}</h2>
@@ -174,7 +174,7 @@ function DeciderOnQuestion() {
                     <Link
                       to="/q/$slug/$decider"
                       params={{ slug: question.slug, decider: r.decider.slug }}
-                      className="block rounded-lg border border-line bg-surface p-3 hover:border-ink"
+                      className="block rounded-xl border-2 border-ink bg-surface p-3 transition-transform hover:-translate-y-0.5"
                     >
                       <span className="flex items-center justify-between gap-2">
                         <span className="font-medium">{r.decider.name}</span>
@@ -191,7 +191,7 @@ function DeciderOnQuestion() {
             </section>
           )}
           {decider.url && (
-            <a href={decider.url} target="_blank" rel="noreferrer" className="block text-sm text-accent underline underline-offset-2">
+            <a href={decider.url} target="_blank" rel="noreferrer" className="block text-sm link">
               Official site ↗
             </a>
           )}

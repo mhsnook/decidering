@@ -2,7 +2,6 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import type { Body, Question } from '../../shared/schema.ts'
 import { today, useTracker, useViewedBody } from '../lib/tracker.tsx'
 import { formatDate } from '../lib/position.ts'
-import { Eyebrow } from './bits.tsx'
 
 // The broad question and its specific measures are one family; the tabs move
 // between them without leaving the page you're on.
@@ -18,14 +17,14 @@ export function QuestionHeader({ question, deciderSlug }: { question: Question; 
 
   return (
     <header className="space-y-3">
-      <Eyebrow>
+      <p className="tag">
         {body?.name}
         {body?.is_demo && ' · demo data, not real'}
-      </Eyebrow>
-      <h1 className="max-w-3xl text-3xl leading-tight font-semibold sm:text-4xl">{question.title}</h1>
+      </p>
+      <h1 className="h-section max-w-3xl">{question.title}</h1>
       {question.description && <p className="max-w-2xl text-muted">{question.description}</p>}
       {question.reference_url && (
-        <a href={question.reference_url} target="_blank" rel="noreferrer" className="inline-block text-sm text-accent underline underline-offset-2">
+        <a href={question.reference_url} target="_blank" rel="noreferrer" className="inline-block text-sm link">
           Read the measure ↗
         </a>
       )}
@@ -61,14 +60,13 @@ function TermToggle({ body }: { body: Body }) {
   if (!body.next_term_on || body.next_term_on <= now) return null
   const isNext = tracker.asOf >= body.next_term_on
   const view = (as: string | undefined) => navigate({ to: '.', search: (prev) => ({ ...prev, as }), replace: true })
-  const tab = (on: boolean) => `btn -ml-px rounded-none first:ml-0 first:rounded-l-md last:rounded-r-md ${on ? 'btn-primary relative' : ''}`
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-1">
-      <div className="flex" role="group" aria-label="When">
-        <button type="button" aria-pressed={!isNext} className={tab(!isNext)} onClick={() => view(undefined)}>
+      <div className="flex flex-wrap gap-2" role="group" aria-label="When">
+        <button type="button" aria-pressed={!isNext} className={`btn btn-sm ${isNext ? '' : 'btn-primary'}`} onClick={() => view(undefined)}>
           Now
         </button>
-        <button type="button" aria-pressed={isNext} className={tab(isNext)} onClick={() => view(body.next_term_on!)}>
+        <button type="button" aria-pressed={isNext} className={`btn btn-sm ${isNext ? 'btn-primary' : ''}`} onClick={() => view(body.next_term_on!)}>
           {body.next_term_label ?? 'Next term'}
         </button>
       </div>
@@ -92,7 +90,7 @@ function BodySwitch({ body, choices, home }: { body: Body; choices: Body[]; home
           key={b.id}
           type="button"
           aria-pressed={b.id === body.id}
-          className={`btn ${b.id === body.id ? 'btn-primary' : ''}`}
+          className={`btn btn-sm ${b.id === body.id ? 'btn-primary' : ''}`}
           onClick={() => navigate({ to: '.', search: (prev) => ({ ...prev, body: b.id === home ? undefined : b.slug }), replace: true })}
         >
           {b.name}

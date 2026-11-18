@@ -1,6 +1,7 @@
 {
-  "name": "decidering",
+  "name": "sporelight",
   "private": true,
+  "license": "MIT",
   "version": "0.0.1",
   "type": "module",
   "scripts": {
@@ -27,8 +28,7 @@
     ]
   },
   "dependencies": {
-    "@fontsource-variable/fraunces": "^5.3.0",
-    "@fontsource-variable/instrument-sans": "^5.3.0",
+    "@fontsource-variable/recursive": "^5.3.0",
     "@tanstack/db": "^0.15.2",
     "@tanstack/react-db": "^0.5.12",
     "@tanstack/react-router": "^1.170.46",
