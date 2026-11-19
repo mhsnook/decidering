@@ -170,7 +170,7 @@ An editor can run the reader on one URL without queueing anything: open "Try the
 
 ## Archiving sources
 
-Web pages move and disappear, so each published source (one with at least one report) that has a URL gets a copy in the Internet Archive's Wayback Machine, and its address is stored in `sources.archive_url`. It shows as an "archived" link after the source on a person's page, in `/latest`, in the Atom feed, and in the editor's review form.
+Web pages move and disappear, so each published source (one with at least one report) that has a URL gets a copy in the Internet Archive's Wayback Machine, and its address is stored in `sources.archive_url`. It shows as an "archived" link after the source on a person's page, in `/latest`, in the Atom feed (once its five-minute cache runs out), and in the editor's review form.
 
 ### The scheduled pass
 

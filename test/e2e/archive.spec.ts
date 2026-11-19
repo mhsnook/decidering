@@ -1,12 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { readFileSync } from 'node:fs'
-
-const editorToken = () => {
-  const vars = readFileSync(new URL('../../.dev.vars', import.meta.url), 'utf8')
-  const token = vars.match(/^EDITOR_TOKEN=(.*)$/m)?.[1]?.trim()
-  if (!token) throw new Error('EDITOR_TOKEN is not set in .dev.vars')
-  return token
-}
+import { editorToken } from './fixtures.ts'
 
 const PERSON = '/q/free-ferry/odalys-brennan'
 const SOURCE = 'Tideline Radio: Morning interview'
