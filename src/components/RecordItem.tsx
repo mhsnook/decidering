@@ -61,7 +61,8 @@ export function ActWords({ kind, words }: { kind: Act['kind']; words: string }) 
 }
 
 export function ArchivedCopy({ source }: { source: Pick<Source, 'archive_url'> }) {
-  if (!source.archive_url) return null
+  // Editors write this through the sync socket, which checks nothing about it.
+  if (!source.archive_url || !/^https?:\/\//.test(source.archive_url)) return null
   return (
     <>
       {' '}

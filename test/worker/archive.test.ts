@@ -47,7 +47,7 @@ function archive({ available = () => null, save, status }: { available?: (url: s
     if (url.href.startsWith('https://archive.org/wayback/available')) {
       const page = url.searchParams.get('url')!
       calls.push({ kind: 'available', url: page, auth })
-      const closest = available(page, url.searchParams.get('timestamp')!)
+      const closest = await available(page, url.searchParams.get('timestamp')!)
       return closest instanceof Response ? closest : Response.json({ url: page, archived_snapshots: closest ? { closest } : {} })
     }
     if (url.href === 'https://web.archive.org/save' && req.method === 'POST') {
@@ -111,8 +111,9 @@ describe('archiveSources', () => {
     const later = new Date(NOW.getTime() + 6 * HOUR)
     const ia = archive({ available: (page, timestamp) => (timestamp === '20261119120000' ? snapshot(page, '20261119120230') : null) })
     expect(await archiveSources(keyed, await tracker(), later, noWait)).toMatchObject({ looked: 1, found: 1, archived: 1 })
-    // Looked up near the time it was asked for, and not asked for again.
-    expect(ia.kinds()).toEqual(['available'])
+    // The job's status has expired, so it is looked up near the time it was
+    // asked for, and not asked for again.
+    expect(ia.kinds()).toEqual(['status', 'available'])
     expect(await archiveUrl('c')).toBe('https://web.archive.org/web/20261119120230/https://news.example/c')
   })
 
@@ -163,7 +164,7 @@ describe('archiveSources', () => {
     vi.restoreAllMocks()
     const ia = archive()
     await archiveSources(keyed, await tracker(), new Date(NOW.getTime() + 6 * HOUR), noWait)
-    expect(ia.kinds()).toEqual(['available'])
+    expect(ia.kinds()).toEqual(['status', 'available'])
     expect(await attempt('f')).toMatchObject({ outcome: 'failed', attempts: 1 })
   })
 
@@ -215,12 +216,60 @@ describe('archiveSources', () => {
     expect(await rows(`SELECT * FROM archive_attempts`)).toEqual([])
   })
 
+  it('backs off a source the availability API answers 4xx for, and goes on to the next', async () => {
+    await addSource('v1', { created: '2026-10-01T00:00:00Z' })
+    await addSource('v2', { created: '2026-10-02T00:00:00Z' })
+    archive({ available: (page) => (page.endsWith('v1') ? new Response('Bad Request', { status: 400 }) : snapshot(page, '20261003000000')) })
+    expect(await archiveSources(keyed, await tracker(), NOW, noWait)).toMatchObject({ looked: 2, failed: 1, archived: 1 })
+    expect(await attempt('v1')).toMatchObject({ outcome: 'failed', attempts: 1, detail: 'The availability API answered 400.' })
+  })
+
+  it('does not use a capture of a redirect', async () => {
+    await addSource('w')
+    const ia = archive({ available: (page) => ({ ...snapshot(page, '20261102000000'), status: '302' }) })
+    await archiveSources(keyed, await tracker(), NOW, noWait)
+    expect(ia.kinds()).toEqual(['available', 'save', 'status'])
+    expect(await archiveUrl('w')).toBeNull()
+  })
+
+  it('asks a job that was still running how it went before looking the page up', async () => {
+    await addSource('x')
+    archive()
+    await archiveSources(keyed, await tracker(), NOW, noWait)
+    vi.restoreAllMocks()
+    const ia = archive({ status: (job) => Response.json({ status: 'success', job_id: job, timestamp: '20261119120300', original_url: 'https://news.example/x' }) })
+    await archiveSources(keyed, await tracker(), new Date(NOW.getTime() + 6 * HOUR), noWait)
+    expect(ia.kinds()).toEqual(['status'])
+    expect(await archiveUrl('x')).toBe('https://web.archive.org/web/20261119120300/https://news.example/x')
+  })
+
+  it('stops checking jobs when the status endpoint answers 429, and leaves them to the next run', async () => {
+    await addSource('y')
+    archive({ status: () => new Response('Too Many Requests', { status: 429 }) })
+    expect(await archiveSources(keyed, await tracker(), NOW, noWait)).toMatchObject({ requested: 1, error: 'Save Page Now answered 429.' })
+    expect(await attempt('y')).toMatchObject({ outcome: 'requested', job_id: 'job-https://news.example/y' })
+  })
+
   it('keeps an address an editor already put on the source', async () => {
     await addSource('m')
     const room = await tracker()
     expect(await room.setArchiveUrl('m', 'https://archive.ph/abc')).toBe(true)
     expect(await room.setArchiveUrl('m', 'https://web.archive.org/web/1/x')).toBe(false)
     expect(await archiveUrl('m')).toBe('https://archive.ph/abc')
+  })
+
+  it('tells an editor the address actually on the source when it already had one', async () => {
+    await addSource('z')
+    const room = await tracker()
+    archive({
+      // An editor gives an address while the lookup is under way.
+      available: async (page) => {
+        await room.setArchiveUrl('z', 'https://archive.ph/zzz')
+        return snapshot(page, '20261102000000')
+      },
+    })
+    expect(await archiveNow(keyed, room, 'z', NOW, noWait)).toEqual({ outcome: 'archived', archive_url: 'https://archive.ph/zzz' })
+    expect(await attempt('z')).toMatchObject({ outcome: 'archived', detail: expect.stringContaining('kept the address already on the source') })
   })
 
   it('sends the archived address to a connected browser through the sync socket', async () => {
@@ -245,6 +294,13 @@ describe('archiveNow', () => {
     expect(await archiveNow(keyed, await tracker(), 'p', NOW, noWait)).toEqual({ outcome: 'archived', archive_url: 'https://web.archive.org/web/20261119120200/https://news.example/p' })
     expect(checks).toBe(3)
     expect(await attempt('p')).toMatchObject({ outcome: 'archived', attempts: 0 })
+  })
+
+  it('records the job it started when a status check is refused', async () => {
+    await addSource('aa')
+    archive({ status: () => new Response('Too Many Requests', { status: 429 }) })
+    expect(await archiveNow(keyed, await tracker(), 'aa', NOW, noWait)).toEqual({ error: 'Save Page Now answered 429.', status: 502 })
+    expect(await attempt('aa')).toMatchObject({ outcome: 'requested', job_id: 'job-https://news.example/aa' })
   })
 
   it('says so for a source with no URL, and asks nobody', async () => {

@@ -63,6 +63,7 @@ type Candidate = {
   attempts: number | null
   outcome: Outcome | null
   tried_at: string | null
+  job_id: string | null
 }
 
 type Outcome = 'archived' | 'requested' | 'failed' | 'no_key' | 'gave_up'
@@ -107,7 +108,8 @@ function stampDate(stamp: string): Date | null {
 
 export const captureUrl = (timestamp: string, original: string) => `https://web.archive.org/web/${timestamp}/${original}`
 
-type Lookup = { ok: true; archiveUrl: string | null } | { ok: false; reason: string }
+// `stop` is a fault with the archive as a whole; otherwise the fault is this page's.
+type Lookup = { ok: true; archiveUrl: string | null } | { ok: false; reason: string; stop: boolean }
 
 // The capture closest to `near`, if it is one we would use.
 export async function findCapture(url: string, near: Date, recordedAt: Date): Promise<Lookup> {
@@ -116,17 +118,18 @@ export async function findCapture(url: string, near: Date, recordedAt: Date): Pr
   try {
     res = await fetch(`${AVAILABILITY}?${query}`, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(15_000) })
   } catch (e) {
-    return { ok: false, reason: `The availability API could not be reached (${String(e).slice(0, 120)}).` }
+    return { ok: false, reason: `The availability API could not be reached (${String(e).slice(0, 120)}).`, stop: true }
   }
   if (!res.ok) {
     await res.body?.cancel()
-    return { ok: false, reason: `The availability API answered ${res.status}.` }
+    return { ok: false, reason: `The availability API answered ${res.status}.`, stop: res.status === 429 || res.status >= 500 }
   }
   const body = (await res.json().catch(() => null)) as {
     archived_snapshots?: { closest?: { available?: boolean; status?: string; timestamp?: string; url?: string } }
   } | null
   const closest = body?.archived_snapshots?.closest
-  if (!closest?.available || !closest.timestamp || !/^[23]/.test(closest.status ?? '')) return { ok: true, archiveUrl: null }
+  // A capture of a redirect may show wherever the page was sent, not the page.
+  if (!closest?.available || !closest.timestamp || !/^2/.test(closest.status ?? '')) return { ok: true, archiveUrl: null }
   const taken = stampDate(closest.timestamp)
   if (!taken || taken.getTime() < recordedAt.getTime() - EARLIEST_CAPTURE_DAYS * DAY_MS) return { ok: true, archiveUrl: null }
   return { ok: true, archiveUrl: closest.url ? closest.url.replace(/^http:\/\//, 'https://') : captureUrl(closest.timestamp, url) }
@@ -178,6 +181,10 @@ async function captureStatus(jobId: string, key: string): Promise<JobStatus> {
   } catch {
     return { kind: 'pending' }
   }
+  if (res.status === 429) {
+    await res.body?.cancel()
+    return { kind: 'stop', reason: 'Save Page Now answered 429.' }
+  }
   const body = (await res.json().catch(() => null)) as (SaveError & { timestamp?: string; original_url?: string }) | null
   if (!res.ok || !body) return { kind: 'pending' }
   if (body.status === 'success' && body.timestamp && body.original_url) return { kind: 'found', archiveUrl: captureUrl(body.timestamp, body.original_url) }
@@ -202,8 +209,9 @@ async function record(
 async function settle(env: Env, tracker: Archiver, source: Candidate, step: Exclude<Step, { kind: 'stop' }>, now: Date): Promise<Outcome> {
   const previous = source.attempts ?? 0
   if (step.kind === 'found') {
-    await tracker.setArchiveUrl(source.id, step.archiveUrl)
-    await record(env.DB, source.id, now, 'archived', { attempts: 0, nextTryAt: null, detail: step.archiveUrl })
+    const stored = await tracker.setArchiveUrl(source.id, step.archiveUrl)
+    const detail = stored ? step.archiveUrl : `Found ${step.archiveUrl} and kept the address already on the source.`
+    await record(env.DB, source.id, now, 'archived', { attempts: 0, nextTryAt: null, detail })
     return 'archived'
   }
   if (step.kind === 'requested') {
@@ -226,8 +234,15 @@ async function settle(env: Env, tracker: Archiver, source: Candidate, step: Excl
 async function step(source: Candidate, key: string | null, gap: () => Promise<void>): Promise<Step> {
   const recordedAt = new Date(source.created_at)
   const asked = source.outcome === 'requested' && source.tried_at ? new Date(source.tried_at) : null
+  // The job's own answer comes first: the availability API can take hours to
+  // list a new capture.
+  if (asked && source.job_id && key) {
+    const status = await captureStatus(source.job_id, key)
+    if (status.kind !== 'pending') return status
+    await gap()
+  }
   const lookup = await findCapture(source.url, asked ?? recordedAt, recordedAt)
-  if (!lookup.ok) return { kind: 'stop', reason: lookup.reason }
+  if (!lookup.ok) return lookup.stop ? { kind: 'stop', reason: lookup.reason } : { kind: 'failed', detail: lookup.reason, refused: false }
   if (lookup.archiveUrl) return { kind: 'found', archiveUrl: lookup.archiveUrl }
   // A capture asked for on an earlier run that never appeared counts as a
   // failure, so a page that never captures backs off instead of being asked for
@@ -238,7 +253,7 @@ async function step(source: Candidate, key: string | null, gap: () => Promise<vo
   return requestCapture(source.url, key)
 }
 
-const CANDIDATE_COLUMNS = `s.id, s.url, s.created_at, a.attempts, a.outcome, a.tried_at`
+const CANDIDATE_COLUMNS = `s.id, s.url, s.created_at, a.attempts, a.outcome, a.tried_at, a.job_id`
 // A published source is one with a report. A source with no URL is never a
 // candidate. A source waiting for a key is due as soon as there is one.
 const DUE = `
@@ -280,7 +295,9 @@ export async function archiveSources(env: Env, tracker: Archiver, now: Date = ne
 
   if (jobs.length && key) {
     await wait(CAPTURE_WAIT_MS)
+    first = true
     for (const { source, jobId } of jobs) {
+      await gap()
       const status = await captureStatus(jobId, key)
       if (status.kind === 'stop') {
         report.error ??= status.reason
@@ -317,7 +334,10 @@ export async function archiveNow(env: Env, tracker: Archiver, sourceId: string, 
     for (let i = 0; i < EDITOR_POLLS; i++) {
       await wait(EDITOR_POLL_MS)
       const status = await captureStatus(result.jobId, key)
-      if (status.kind === 'stop') return { error: status.reason, status: 502 }
+      if (status.kind === 'stop') {
+        await settle(env, tracker, source, result, now)
+        return { error: status.reason, status: 502 }
+      }
       if (status.kind === 'found' || status.kind === 'failed') {
         result = status
         break
@@ -326,7 +346,8 @@ export async function archiveNow(env: Env, tracker: Archiver, sourceId: string, 
   }
   if (result.kind === 'found') {
     await settle(env, tracker, source, result, now)
-    return { outcome: 'archived', archive_url: result.archiveUrl }
+    const stored = await env.DB.prepare(`SELECT archive_url FROM sources WHERE id = ?`).bind(source.id).first<{ archive_url: string | null }>()
+    return { outcome: 'archived', archive_url: stored?.archive_url ?? result.archiveUrl }
   }
   const outcome = (await settle(env, tracker, source, result, now)) as Exclude<Outcome, 'archived'>
   return {
