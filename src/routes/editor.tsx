@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useLiveQuery } from '@tanstack/react-db'
-import { ACT_KINDS, BEARINGS, POSITIONS, stanceId, type ActKind, type Bearing, type Position, type Proposal, type ProposalItem, type ProposalNote } from '../../shared/schema.ts'
+import { ACT_KINDS, BEARINGS, POSITIONS, type ActKind, type Bearing, type Position, type Proposal, type ProposalItem, type ProposalNote } from '../../shared/schema.ts'
 import { db } from '../lib/db.ts'
 import { editorFetch, isEditor, signIn, signOut } from '../lib/editor.ts'
 import { commit } from '../lib/review.ts'
@@ -342,13 +342,18 @@ function ItemFields({
     const role = tracker.roleIn(root, decider.id)
     return role && tracker.seatById.get(role.seat_id)?.chamber
   })()
+  // `asked` is listed even when this person would not be offered it: a select
+  // whose value matches no option submits its first one.
   const family = [
-    root,
-    ...(tracker.measuresOf.get(root.id) ?? []).filter((m) => !m.chamber || m.chamber === chamber),
-    ...tracker.asksFor(root, decider.id).map((k) => k.ask),
+    ...new Set([
+      root,
+      ...(tracker.measuresOf.get(root.id) ?? []).filter((m) => !m.chamber || m.chamber === chamber),
+      ...tracker.asksFor(root, decider.id).map((k) => k.ask),
+      asked,
+    ]),
   ]
   const onFile = [...(tracker.actsByDecider.get(decider.id) ?? [])].sort((a, b) => b.occurred_on.localeCompare(a.occurred_on))
-  const stance = tracker.stanceById.get(stanceId(question.id, decider.id))
+  const stance = tracker.stanceFor(question, decider.id)
   const record = tracker.recordFor(question, decider.id)
   const parent = question.implies_on_parent && question.parent_id ? tracker.questionById.get(question.parent_id) : undefined
   const isFormal = question.kind === 'formal_act'

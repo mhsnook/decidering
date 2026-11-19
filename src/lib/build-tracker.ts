@@ -167,26 +167,41 @@ export function buildTracker(c: TrackerData, asOf: string) {
   // reading on a sub-question appears here only if it was also written here.
   const recordFor = (question: Question, deciderId: string): RecordEntry[] => entriesByPair.get(stanceId(question.id, deciderId)) ?? []
 
-  // Where someone stands. On a formal-act question that is read off the record:
-  // the acts that bind them there and still hold. Nobody sets it by hand, so a
-  // withdrawn cosponsorship is "has not" the day it is withdrawn. Anywhere else
-  // it is the position an editor judged from the whole record.
-  function standingFor(question: Question, deciderId: string): Standing {
-    if (question.kind !== 'formal_act') return stanceById.get(stanceId(question.id, deciderId))?.position ?? 'unknown'
-    const positions = new Set(recordFor(question, deciderId).filter((e) => e.onRecord).map((e) => e.reading.position))
+  const agreed = (entries: RecordEntry[]): Standing => {
+    const positions = new Set(entries.map((e) => e.reading.position))
     return positions.size === 0 ? 'unknown' : positions.size === 1 ? [...positions][0] : 'mixed'
   }
+
+  // Where someone stands, and the stance behind it if one still describes it.
+  // On a formal-act question the standing is read off the record: the acts that
+  // bind them there and still hold. Nobody sets it by hand, so a withdrawn
+  // cosponsorship is "has not" the day it is withdrawn. Anywhere else it is the
+  // position an editor judged from the whole record, with one exception. When
+  // every entry on the record came by way of a sub-question, no editor has read
+  // anything on this question itself and the stance was written by implication,
+  // so the standing is what those acts imply for as long as they are not taken
+  // back. A measure closing does not take them back.
+  function positionOf(question: Question, deciderId: string): { standing: Standing; stance: Stance | undefined } {
+    const record = recordFor(question, deciderId)
+    const stance = stanceById.get(stanceId(question.id, deciderId))
+    if (question.kind === 'formal_act') return { standing: agreed(record.filter((e) => e.onRecord)), stance }
+    const impliedOnly = record.length > 0 && record.every((e) => e.reading.via_question_id)
+    if (!impliedOnly) return { standing: stance?.position ?? 'unknown', stance }
+    const standing = agreed(record.filter((e) => e.lapse !== 'withdrawn'))
+    return { standing, stance: stance?.position === standing ? stance : undefined }
+  }
+  const standingFor = (question: Question, deciderId: string): Standing => positionOf(question, deciderId).standing
+  const stanceFor = (question: Question, deciderId: string): Stance | undefined => positionOf(question, deciderId).stance
 
   function contender(question: Question, role: Role): Contender | undefined {
     const decider = deciderById.get(role.decider_id)
     if (!decider) return undefined
-    const stance = stanceById.get(stanceId(question.id, decider.id))
     const record = recordFor(question, decider.id)
     const footing = footingOf(
       record.map((e) => ({ occurred_on: e.act.occurred_on, onRecord: e.onRecord })),
       new Date(asOf),
     )
-    return { decider, role, stance, standing: standingFor(question, decider.id), record, footing }
+    return { decider, role, ...positionOf(question, decider.id), record, footing }
   }
 
   // The offices an ask is put to, each with whoever sits in it on the day viewed.
@@ -252,7 +267,7 @@ export function buildTracker(c: TrackerData, asOf: string) {
   // The people an ask is put to on the day viewed: office holders, then anyone named.
   function peopleOf(ask: Question, bodyId: string = ask.body_id): KeyPerson[] {
     return [
-      ...sittingFor(ask).flatMap((t) => keyPerson(ask, bodyId, t.holder.decider_id, t.holder.id, t.office.label, t.holder.certainty)),
+      ...sittingFor(ask).flatMap((t) => keyPerson(ask, bodyId, t.holder.decider_id, `${ask.id}:${t.holder.id}`, t.office.label, t.holder.certainty)),
       ...(namedIn.get(ask.id) ?? []).flatMap((l) => keyPerson(ask, bodyId, l.decider_id, l.id, l.role_label)),
     ]
   }
@@ -292,6 +307,7 @@ export function buildTracker(c: TrackerData, asOf: string) {
     upcomingBySeat,
     recordFor,
     standingFor,
+    stanceFor,
     isOpen,
     contender,
     board,

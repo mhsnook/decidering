@@ -1,6 +1,7 @@
 import { Link, Outlet, createRootRoute, retainSearchParams } from '@tanstack/react-router'
 import { useState } from 'react'
-import { TrackerProvider } from '../lib/tracker.tsx'
+import { TrackerProvider, today } from '../lib/tracker.tsx'
+import { formatDate } from '../lib/position.ts'
 import { isEditor } from '../lib/editor.ts'
 import { Logo } from '../components/bits.tsx'
 
@@ -60,12 +61,28 @@ function Header() {
   )
 }
 
+// `as` rides along on every link, including to pages with no control for it,
+// so the day being viewed is always said here with a way back.
+function ViewedDay({ day }: { day: string }) {
+  return (
+    <p role="status" className="-mx-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b-2 border-ink bg-mixed px-5 py-2 text-sm font-semibold sm:-mx-8 sm:px-8">
+      <span>
+        Viewing {formatDate(day)}. Seats, key roles and closing dates are {day > today() ? 'as expected' : 'as they stood'} on that day.
+      </span>
+      <Link to="." search={(prev) => ({ ...prev, as: undefined })} replace className="link font-bold">
+        Back to today
+      </Link>
+    </p>
+  )
+}
+
 function Root() {
   const { as } = Route.useSearch()
   return (
     <TrackerProvider asOf={as}>
       <div className="mx-auto flex min-h-dvh max-w-[1200px] flex-col px-5 sm:px-8">
         <Header />
+        {as && as !== today() && <ViewedDay day={as} />}
         <main className="flex-1 py-8">
           <Outlet />
         </main>

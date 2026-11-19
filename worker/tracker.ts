@@ -12,10 +12,11 @@ import {
   type Source,
 } from '../shared/schema.ts'
 import { isEditorToken } from './editor.ts'
+import { alreadyProposed } from './leads.ts'
 
 const MAX_PENDING = 500
 
-// `queued` counts the items that were new. Zero means every one was already proposed from this source.
+// `queued` counts the items that were new. Zero means something already proposed from this source stood in the way of every one.
 export type SubmitResult = { ok: true; queued: number } | { ok: false; status: number; error: string }
 
 export class Tracker extends PartyDbServer<Env> {
@@ -57,11 +58,10 @@ export class Tracker extends PartyDbServer<Env> {
     let items = draft.items
     if (known) {
       const seen = await db
-        .prepare(`SELECT i.question_id, i.decider_id FROM proposal_items i JOIN proposals p ON p.id = i.proposal_id WHERE p.source_id = ?`)
+        .prepare(`SELECT i.question_id, i.decider_id, i.status, i.quote FROM proposal_items i JOIN proposals p ON p.id = i.proposal_id WHERE p.source_id = ?`)
         .bind(known.id)
-        .all<{ question_id: string; decider_id: string }>()
-      const pairs = new Set(seen.results.map((r) => stanceId(r.question_id, r.decider_id)))
-      items = items.filter((i) => !pairs.has(stanceId(i.question_id, i.decider_id)))
+        .all<Pick<ProposalItem, 'question_id' | 'decider_id' | 'status' | 'quote'>>()
+      items = items.filter((i) => !alreadyProposed(seen.results, i, origin))
     }
     if (items.length === 0) return { ok: true, queued: 0 }
 

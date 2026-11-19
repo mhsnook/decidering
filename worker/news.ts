@@ -26,17 +26,19 @@ export async function searchNews(env: Env, tracker: Submitter, now: Date = new D
   const hot = await env.DB.prepare(
     `SELECT q.id, q.short_title, q.body_id, b.name AS body_name
      FROM questions q JOIN bodies b ON b.id = q.body_id
-     WHERE q.is_hot = 1 AND b.is_demo = 0`,
-  ).all<HotQuestion>()
+     WHERE q.is_hot = 1 AND b.is_demo = 0 AND (q.status = 'open' OR q.closed_on > ?)`,
+  )
+    .bind(now.toISOString().slice(0, 10))
+    .all<HotQuestion>()
 
   const report: NewsReport = { questions: [] }
   for (const question of hot.results) {
     const roster = await env.DB.prepare(
       `SELECT DISTINCT d.id, d.name, d.sort_name
        FROM roles r JOIN seats s ON s.id = r.seat_id JOIN deciders d ON d.id = r.decider_id
-       WHERE s.body_id = ?`,
+       WHERE s.body_id = ?1 OR s.body_id IN (SELECT body_id FROM question_bodies WHERE question_id = ?2)`,
     )
-      .bind(question.body_id)
+      .bind(question.body_id, question.id)
       .all<RosterEntry>()
     const match = rosterMatcher(roster.results)
 

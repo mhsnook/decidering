@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { leadFromHit, rosterMatcher } from './leads.ts'
+import { alreadyProposed, leadFromHit, rosterMatcher } from './leads.ts'
 
 const roster = [
   { id: 'jayapal', name: 'Pramila Jayapal', sort_name: 'Jayapal, Pramila' },
@@ -47,5 +47,26 @@ describe('leadFromHit', () => {
     expect(leadFromHit({ ...hit, title: 'Health policy news', description: 'Nothing about anyone in particular.' }, 'q', 'query', match)).toBeNull()
     const crowd = 'Pramila Jayapal, Alma Adams, Adam Smith and Jason Smith all spoke.'
     expect(leadFromHit({ ...hit, description: crowd }, 'q', 'query', match)).toBeNull()
+  })
+})
+
+describe('alreadyProposed', () => {
+  const item = { question_id: 'm4a', decider_id: 'jayapal', quote: 'I will vote for it.' }
+  const earlier = (status: 'pending' | 'accepted' | 'rejected', quote = 'A search excerpt about the bill.') => [{ ...item, status, quote }]
+
+  it('turns away anything for the same person and question while an item is waiting or published', () => {
+    expect(alreadyProposed(earlier('pending'), item, 'reader')).toBe(true)
+    expect(alreadyProposed(earlier('accepted'), item, 'reader')).toBe(true)
+    expect(alreadyProposed(earlier('pending'), { ...item, decider_id: 'adams' }, 'reader')).toBe(false)
+    expect(alreadyProposed(earlier('pending'), { ...item, question_id: 'other' }, 'reader')).toBe(false)
+  })
+
+  it('lets a person bring a different quote after a rejection, and not the same one', () => {
+    expect(alreadyProposed(earlier('rejected'), item, 'reader')).toBe(false)
+    expect(alreadyProposed(earlier('rejected', item.quote), item, 'reader')).toBe(true)
+  })
+
+  it('keeps a rejected search hit rejected, however the next search excerpts it', () => {
+    expect(alreadyProposed(earlier('rejected'), item, 'news_search')).toBe(true)
   })
 })

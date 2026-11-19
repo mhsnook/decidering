@@ -36,6 +36,8 @@ function Board() {
   const rows = useMemo(() => everySeat.filter(isHeld), [everySeat])
   // Seats nobody certainly or likely holds on the day viewed, but someone may.
   const undecided = everySeat.filter((r) => !r.incumbent && r.alternates.length > 0)
+  // Seats nobody holds or may hold on the day viewed. Someone may be due to.
+  const vacant = everySeat.filter((r) => !r.incumbent && r.alternates.length === 0)
 
   if (!isReady) return <Syncing />
   if (!question || !body) return <NotFound what="question" />
@@ -162,6 +164,27 @@ function Board() {
                     {i > 0 && ' or '}
                     <Link to="/q/$slug/$decider" params={{ slug: question.slug, decider: a.decider.slug }} className="link font-medium">
                       {a.decider.name}
+                    </Link>
+                  </span>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {vacant.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-lg font-semibold">Vacant</h2>
+          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {vacant.map((row) => (
+              <li key={row.seat.id} className="rounded-xl border-2 border-dashed border-line bg-surface py-2 pr-3 pl-4">
+                <span className="block text-xs text-muted">{row.seat.label}</span>
+                {row.upcoming.length === 0 && <span className="text-sm text-muted">Nobody holds this seat.</span>}
+                {row.upcoming.map((c) => (
+                  <span key={c.role.id} className="block text-sm">
+                    <span className="text-muted">{claimTag(c.role, tracker.asOf)}:</span>{' '}
+                    <Link to="/q/$slug/$decider" params={{ slug: question.slug, decider: c.decider.slug }} className="link font-medium">
+                      {c.decider.name}
                     </Link>
                   </span>
                 ))}
