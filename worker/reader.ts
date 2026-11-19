@@ -166,6 +166,12 @@ export function quoteIsInArticle(quote: string, articleText: string): boolean {
   return needle.length >= 10 && normalise(articleText).includes(needle)
 }
 
+// More than this from one article is more than an editor can check as one
+// proposal, and more than an honest reading of one article tends to find.
+export const MAX_ACTS_PER_ARTICLE = 8
+// Dropped acts listed by name in the proposal's note; the rest are counted.
+const DROPPED_LISTED = 5
+
 export type Dropped = { act: Pick<ModelAct, 'person_id' | 'question_id' | 'quote'>; why: string }
 
 export type Reading =
@@ -207,14 +213,24 @@ export async function readArticle(
   const allowed = new Map(context.people.map((p) => [p.id, new Set(p.questions)]))
   const acts: ModelAct[] = []
   const dropped: Dropped[] = []
+  // One item per person and question, as `alreadyProposed` would allow from
+  // later articles: a second act on the same pair is a repeat, or a second
+  // reading the editor can add from the review form.
+  const taken = new Set<string>()
   for (const act of parsed.data.acts) {
+    const pair = `${act.person_id} ${act.question_id}`
     const why = !allowed.has(act.person_id)
       ? 'names someone the article was not read for'
       : !allowed.get(act.person_id)!.has(act.question_id)
         ? 'is read on a question not put to that person'
         : !quoteIsInArticle(act.quote, article.text)
           ? 'quotes words that are not in the article'
-          : null
+          : taken.has(pair)
+            ? 'repeats a person and question already listed'
+            : acts.length >= MAX_ACTS_PER_ARTICLE
+              ? `is past the limit of ${MAX_ACTS_PER_ARTICLE} acts for one article`
+              : null
+    if (!why) taken.add(pair)
     if (why) dropped.push({ act: { person_id: act.person_id, question_id: act.question_id, quote: act.quote }, why })
     else acts.push({ ...act, quote: stripOuterQuotes(act.quote).slice(0, 2000), summary: act.summary.trim().slice(0, 300), reason: act.reason.trim().slice(0, 1000) })
   }
@@ -226,7 +242,12 @@ export async function readArticle(
 export function draftFromReading(article: { url: string; title: string | null }, acts: ModelAct[], dropped: Dropped[], query: string | null): ProposalDraft {
   const lines = [
     `Read by ${MODEL}. Each quote below was found word for word in the text fetched from the article.`,
-    dropped.length ? `${dropped.length} more act${dropped.length === 1 ? ' was' : 's were'} left out: ${dropped.map((d) => `"${d.act.quote.slice(0, 80)}" ${d.why}`).join('; ')}.` : null,
+    dropped.length
+      ? `${dropped.length} more act${dropped.length === 1 ? ' was' : 's were'} left out: ${dropped
+          .slice(0, DROPPED_LISTED)
+          .map((d) => `"${d.act.quote.slice(0, 80)}" ${d.why}`)
+          .join('; ')}${dropped.length > DROPPED_LISTED ? `; and ${dropped.length - DROPPED_LISTED} more` : ''}.`
+      : null,
     query ? `Found by searching: ${query}` : null,
   ]
   return {

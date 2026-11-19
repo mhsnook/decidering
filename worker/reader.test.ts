@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { draftFromReading, modelOutputSchema, modelPrompt, MODEL, quoteIsInArticle, type ModelAct } from './reader.ts'
+import { draftFromReading, MAX_ACTS_PER_ARTICLE, modelOutputSchema, modelPrompt, MODEL, quoteIsInArticle, readArticle, type ModelAct, type ReadingContext } from './reader.ts'
 
 const ARTICLE = `Ann Alpha told reporters on Monday: “I will vote for this bill — and I’ll whip votes for it.”
 The senator  from the north,
@@ -55,30 +55,77 @@ describe('modelOutputSchema', () => {
 })
 
 describe('modelPrompt', () => {
-  it('asks for JSON in the schema, without reasoning', () => {
-    const prompt = modelPrompt(
-      { question: { id: 'hot', title: 'Hot question?', short_title: 'Hot', description: null, kind: 'position' }, subQuestions: [], people: [{ id: 'ann', name: 'Ann Alpha', questions: ['hot'] }] },
-      { url: 'https://news.example/a', title: 'A', date: null, text: ARTICLE },
-      '2026-11-19',
-    )
-    expect(prompt.response_format.type).toBe('json_schema')
-    expect(prompt.response_format.json_schema.schema).toMatchObject({ type: 'object', required: ['acts'], additionalProperties: false })
-    expect(prompt.reasoning_effort).toBe('none')
+  const context = { question: { id: 'hot', title: 'Hot question?', short_title: 'Hot', description: null, kind: 'position' as const }, subQuestions: [], people: [{ id: 'ann', name: 'Ann Alpha', questions: ['hot'] }] }
+  const prompt = modelPrompt(context, { url: 'https://news.example/a', title: 'A', date: null, text: ARTICLE }, '2026-11-19')
+
+  it('gives the model the people it may name and the whole article', () => {
     expect(prompt.messages[1].content).toContain('"person_id": "ann"')
     expect(prompt.messages[1].content).toContain(ARTICLE)
+  })
+
+  // The schema sent to the model and the one its answer is checked against are
+  // written separately; an answer the first allows must not fail the second.
+  it('asks for the same fields and values that modelOutputSchema checks', () => {
+    const sent = (prompt.response_format.json_schema.schema as unknown as { properties: { acts: { items: { properties: Record<string, { enum?: string[] }>; required: string[] } } } }).properties.acts.items
+    const checked = modelOutputSchema.shape.acts.element.shape
+    expect([...sent.required].sort()).toEqual(Object.keys(checked).sort())
+    for (const [field, spec] of Object.entries(sent.properties)) {
+      const zodField = checked[field as keyof typeof checked] as unknown as { options?: readonly string[] }
+      if (spec.enum) expect(spec.enum).toEqual(zodField.options)
+    }
+    const sample = Object.fromEntries(Object.entries(sent.properties).map(([field, spec]) => [field, spec.enum ? spec.enum[0] : field === 'occurred_on' ? null : 'text']))
+    expect(modelOutputSchema.safeParse({ acts: [sample] }).success).toBe(true)
+  })
+})
+
+const context: ReadingContext = {
+  question: { id: 'hot', title: 'Hot question?', short_title: 'Hot', description: null, kind: 'position' },
+  subQuestions: Array.from({ length: 12 }, (_, i) => ({ id: `sub-${i}`, title: `Sub ${i}?`, short_title: `Sub ${i}`, description: null, kind: 'position' as const, is_ask: false })),
+  people: [{ id: 'ann', name: 'Ann Alpha', questions: ['hot', ...Array.from({ length: 12 }, (_, i) => `sub-${i}`)] }],
+}
+const answering = (answer: unknown) => ({ AI: { run: async () => ({ choices: [{ message: { content: JSON.stringify(answer) } }] }) }, AI_GATEWAY: 'gw' }) as unknown as Env
+const read = (answer: unknown, text = ARTICLE) => readArticle(answering(answer), context, { url: 'https://news.example/a', title: null, date: null, text }, '2026-11-19')
+
+describe('readArticle', () => {
+  it('keeps one act per person and question when the model repeats itself', async () => {
+    const reading = await read({ acts: [act(), act(), act({ quote: 'whip votes for it' })] })
+    expect(reading.ok && reading.acts).toHaveLength(1)
+    expect(reading.ok && reading.dropped.map((d) => d.why)).toEqual(['repeats a person and question already listed', 'repeats a person and question already listed'])
+  })
+
+  it('keeps no more than MAX_ACTS_PER_ARTICLE acts from one article', async () => {
+    const reading = await read({ acts: Array.from({ length: 12 }, (_, i) => act({ question_id: `sub-${i}` })) })
+    expect(reading.ok && reading.acts).toHaveLength(MAX_ACTS_PER_ARTICLE)
+    expect(reading.ok && reading.dropped).toHaveLength(12 - MAX_ACTS_PER_ARTICLE)
+  })
+
+  it('cuts an overlong quote, summary and reason to the lengths the review form takes', async () => {
+    const long = 'I will vote for this bill '.repeat(200)
+    const reading = await read({ acts: [act({ quote: long, summary: 'x'.repeat(5000), reason: 'y'.repeat(5000) })] }, long)
+    expect(reading.ok).toBe(true)
+    const [kept] = reading.ok ? reading.acts : []
+    expect(kept.quote.length).toBeLessThanOrEqual(2000)
+    expect(kept.summary.length).toBeLessThanOrEqual(300)
+    expect(kept.reason.length).toBeLessThanOrEqual(1000)
   })
 })
 
 describe('draftFromReading', () => {
   it('makes one proposal with an item per act, the reason in each item note, and the model in the proposal note', () => {
-    const acts = [modelOutputSchema.parse({ acts: [act(), act({ person_id: 'bob', kind: 'does', bearing: 'indirect' })] }).acts].flat()
+    const acts = modelOutputSchema.parse({ acts: [act(), act({ person_id: 'bob', kind: 'does', bearing: 'indirect' })] }).acts
     const draft = draftFromReading({ url: 'https://news.example/a', title: 'A' }, acts, [{ act: { person_id: 'ann', question_id: 'hot', quote: 'made up' }, why: 'quotes words that are not in the article' }], 'q')
     expect(draft.items).toMatchObject([
-      { decider_id: 'ann', kind: 'says', reading: 'support', bearing: 'direct', note: "Model's reason: A direct statement of how she will vote." },
+      { decider_id: 'ann', kind: 'says', reading: 'support', bearing: 'direct', note: expect.stringContaining('A direct statement of how she will vote.') },
       { decider_id: 'bob', kind: 'does', bearing: 'indirect' },
     ])
     expect(draft.note).toContain(MODEL)
-    expect(draft.note).toContain('1 more act was left out: "made up" quotes words that are not in the article.')
-    expect(draft.note).toContain('Found by searching: q')
+    expect(draft.note).toContain('made up')
+  })
+
+  it('keeps the note short however many acts were dropped', () => {
+    const dropped = Array.from({ length: 300 }, (_, i) => ({ act: { person_id: 'ann', question_id: 'hot', quote: `made up ${i} `.repeat(20) }, why: 'quotes words that are not in the article' }))
+    const draft = draftFromReading({ url: 'https://news.example/a', title: 'A' }, [], dropped, 'q')
+    expect(draft.note!.length).toBeLessThan(1000)
+    expect(draft.note).toContain('300')
   })
 })

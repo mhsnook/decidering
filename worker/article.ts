@@ -2,7 +2,7 @@
 // for the quote check to search.
 
 // Bytes read from the response before giving up on it as too large.
-const MAX_BYTES = 3_000_000
+export const MAX_BYTES = 3_000_000
 // Characters of text kept, about 15,000 tokens. News articles fit well inside it;
 // what is cut is usually page furniture after the story.
 export const MAX_TEXT_CHARS = 60_000

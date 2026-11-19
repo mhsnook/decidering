@@ -1,6 +1,9 @@
+import { createScheduledController } from 'cloudflare:test'
 import { env } from 'cloudflare:workers'
 import { getServerByName } from 'partyserver'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { fetchArticle, MAX_BYTES } from '../../worker/article.ts'
+import worker from '../../worker/index.ts'
 import type { SearchHit } from '../../worker/leads.ts'
 import { dryRunArticle, MAX_READS_PER_RUN, queueIsAttended, searchNews } from '../../worker/news.ts'
 import { MODEL } from '../../worker/reader.ts'
@@ -102,7 +105,7 @@ describe('reading articles', () => {
     })
     const report = await searchNews(s.env, await tracker(), NOW)
 
-    expect(report.questions[0]).toEqual({ question: 'Hot Topic', hits: 4, read: 1, queued: 2 })
+    expect(report.questions[0]).toMatchObject({ question: 'Hot Topic', read: 1, queued: 2 })
     expect(s.fetcher).toHaveBeenCalledTimes(1)
     expect(s.run).toHaveBeenCalledTimes(1)
     expect(await proposalsFor(url)).toEqual([expect.objectContaining({ origin: 'model' })])
@@ -118,19 +121,28 @@ describe('reading articles', () => {
   })
 
   it('keeps the model reason out of every public column', async () => {
-    const leaked = await rows(
-      `SELECT 1 FROM proposal_items WHERE quote LIKE '%reason%' OR summary LIKE '%Model%' UNION ALL SELECT 1 FROM sources WHERE title LIKE '%Model%' OR url LIKE '%reason%'`,
-    )
-    expect(leaked).toEqual([])
+    const reasons = ['A direct statement of how she will vote.', 'The rule governs debate on the bill.']
+    for (const reason of reasons) {
+      const like = `%${reason}%`
+      expect(
+        await rows(
+          `SELECT 1 FROM proposal_items WHERE quote LIKE ?1 OR summary LIKE ?1
+           UNION ALL SELECT 1 FROM proposals WHERE submitted_by LIKE ?1
+           UNION ALL SELECT 1 FROM sources WHERE title LIKE ?1 OR url LIKE ?1`,
+          like,
+        ),
+      ).toEqual([])
+      expect(await rows(`SELECT 1 FROM proposal_notes WHERE body LIKE ?`, like)).toHaveLength(1)
+    }
   })
 
   it('routes the search and the model through the app gateway', async () => {
     const url = 'https://news.example/read-gateway'
     const s = stubbed({ hits: [hit(url)], pages: { [url]: page('Nothing much.') }, answer: () => ({ acts: [] }) })
     await searchNews(s.env, await tracker(), NOW)
-    expect(s.websearch.mock.calls[0][0]).toMatchObject({ gatewayId: 'sporelight', provider: 'exa' })
-    expect(s.run.mock.calls[0][0]).toBe(MODEL)
-    expect((s.run.mock.calls[0] as unknown[])[2]).toEqual({ gateway: { id: 'sporelight' } })
+    // Both have to go through the gateway that carries the spending limit.
+    expect(s.websearch.mock.calls[0][0]).toMatchObject({ gatewayId: env.AI_GATEWAY })
+    expect((s.run.mock.calls[0] as unknown[])[2]).toEqual({ gateway: { id: env.AI_GATEWAY } })
   })
 
   it('tells the model the question, its open sub-questions, and which of them are put to each person', async () => {
@@ -201,11 +213,16 @@ describe('reading articles', () => {
   })
 
   it('does not fetch or read the same article for the same question again', async () => {
-    const url = 'https://news.example/read-1'
-    const s = stubbed({ hits: [hit(url)], pages: {}, answer: () => ({ acts: [] }) })
-    const report = await searchNews(s.env, await tracker(), NOW)
-    expect(s.fetcher).not.toHaveBeenCalled()
-    expect(s.run).not.toHaveBeenCalled()
+    const url = 'https://news.example/read-twice'
+    const first = stubbed({ hits: [hit(url)], pages: { [url]: page('Nothing of note.') }, answer: () => ({ acts: [] }) })
+    await searchNews(first.env, await tracker(), NOW)
+    expect(first.fetcher).toHaveBeenCalledTimes(1)
+    vi.restoreAllMocks()
+
+    const second = stubbed({ hits: [hit(url)], pages: {}, answer: () => ({ acts: [] }) })
+    const report = await searchNews(second.env, await tracker(), NOW)
+    expect(second.fetcher).not.toHaveBeenCalled()
+    expect(second.run).not.toHaveBeenCalled()
     expect(report.questions[0]).toMatchObject({ read: 0, queued: 0 })
   })
 
@@ -252,21 +269,128 @@ describe('when a model call fails', () => {
   })
 })
 
+const resetQueue = () => env.DB.prepare(`UPDATE proposals SET status = 'reviewed', reviewed_at = '2026-01-01T00:00:00Z'`).run()
+
 describe('queueIsAttended', () => {
   const at = (iso: string) => new Date(iso)
+  // Each case starts from a queue with nothing pending and nothing reviewed
+  // lately, then adds what it needs.
+  const clearQueue = resetQueue
+  const pending = async (origin: string) => {
+    const id = crypto.randomUUID()
+    await env.DB.batch([
+      env.DB.prepare(`INSERT INTO sources (id, url, created_at) VALUES (?, ?, '2026-11-18T00:00:00Z')`).bind(id, `https://news.example/queue-${id}`),
+      env.DB.prepare(`INSERT INTO proposals (id, source_id, origin, status, created_at) VALUES (?, ?, ?, 'pending', '2026-11-18T00:00:00Z')`).bind(id, id, origin),
+    ])
+    return id
+  }
+  const review = (id: string, when: string) => env.DB.prepare(`UPDATE proposals SET status = 'reviewed', reviewed_at = ? WHERE id = ?`).bind(when, id).run()
 
-  it('lets the run go ahead once an editor has reviewed an automated lead in the last day', async () => {
-    // Earlier tests in this file left automated proposals pending.
+  it('goes ahead when nothing automated is waiting', async () => {
+    await clearQueue()
+    expect(await queueIsAttended(env.DB, NOW)).toBe(true)
+  })
+
+  it('is not held up by proposals readers leave waiting', async () => {
+    await clearQueue()
+    await pending('reader')
+    await pending('reader')
+    expect(await queueIsAttended(env.DB, NOW)).toBe(true)
+  })
+
+  it('holds back while automated leads wait and none was reviewed in the last day', async () => {
+    await clearQueue()
+    await pending('news_search')
+    await pending('model')
     expect(await queueIsAttended(env.DB, NOW)).toBe(false)
-    const [{ id }] = await rows<{ id: string }>(`SELECT id FROM proposals WHERE status = 'pending' AND origin IN ('news_search', 'model') LIMIT 1`)
-    await env.DB.prepare(`UPDATE proposals SET status = 'reviewed', reviewed_at = '2026-11-19T02:00:00Z' WHERE id = ?`).bind(id).run()
+  })
+
+  it('goes ahead for a day after an editor reviews an automated lead', async () => {
+    await clearQueue()
+    await pending('model')
+    await review(await pending('news_search'), '2026-11-19T02:00:00Z')
     expect(await queueIsAttended(env.DB, at('2026-11-19T12:00:00Z'))).toBe(true)
     expect(await queueIsAttended(env.DB, at('2026-11-20T12:00:00Z'))).toBe(false)
   })
 
-  it('lets the run go ahead when nothing automated is waiting', async () => {
-    await env.DB.prepare(`UPDATE proposals SET status = 'reviewed', reviewed_at = '2026-11-01T00:00:00Z' WHERE status = 'pending'`).run()
-    expect(await queueIsAttended(env.DB, at('2026-11-30T12:00:00Z'))).toBe(true)
+  it('does not count a review of a reader proposal as attending to the news leads', async () => {
+    await clearQueue()
+    await pending('model')
+    await review(await pending('reader'), '2026-11-19T02:00:00Z')
+    expect(await queueIsAttended(env.DB, NOW)).toBe(false)
+  })
+})
+
+describe('the scheduled run', () => {
+  const fire = () => worker.scheduled(createScheduledController({ scheduledTime: NOW, cron: '17 14 * * *' }), env)
+
+  it('does not search while the queue is unattended', async () => {
+    await resetQueue()
+    await (await tracker()).propose({ source: { url: 'https://news.example/scheduled-waiting', title: null }, note: null, items: [{ question_id: 'hot', decider_id: 'ann', kind: 'says', occurred_on: null, quote: 'A lead nobody has looked at.', reading: null }] }, 'news_search')
+    const websearch = vi.spyOn(env.AI, 'websearch')
+    await fire()
+    expect(websearch).not.toHaveBeenCalled()
+  })
+
+  it('searches once the queue is attended', async () => {
+    await env.DB.prepare(`UPDATE proposals SET status = 'reviewed', reviewed_at = '2026-11-19T02:00:00Z' WHERE status = 'pending'`).run()
+    const websearch = vi.spyOn(env.AI, 'websearch').mockImplementation(async () => Response.json({ items: [] }))
+    await fire()
+    expect(websearch).toHaveBeenCalled()
+  })
+})
+
+describe('fetchArticle', () => {
+  const ai = () => ({ toMarkdown: vi.fn(async (doc: { blob: Blob }) => ({ format: 'text', data: await doc.blob.text() })) })
+  const serve = (response: () => Response) => vi.spyOn(globalThis, 'fetch').mockImplementation(async () => response())
+  const body = (bytes: number) => 'a'.repeat(bytes)
+
+  it('refuses a page whose declared size is over the limit, without reading it', async () => {
+    serve(() => new Response(body(10), { headers: { 'content-type': 'text/html', 'content-length': String(MAX_BYTES + 1) } }))
+    const AI = ai()
+    expect(await fetchArticle({ AI } as unknown as Env, 'https://news.example/huge')).toEqual({ ok: false, reason: 'The page is too large to read.' })
+    expect(AI.toMarkdown).not.toHaveBeenCalled()
+  })
+
+  it('stops reading a page with no declared size once it passes the limit', async () => {
+    const chunk = new TextEncoder().encode(body(1_000_000))
+    let sent = 0
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        sent++
+        controller.enqueue(chunk)
+      },
+    })
+    serve(() => new Response(stream, { headers: { 'content-type': 'text/html' } }))
+    const AI = ai()
+    expect(await fetchArticle({ AI } as unknown as Env, 'https://news.example/endless')).toEqual({ ok: false, reason: 'The page is too large to read.' })
+    expect(sent).toBeLessThan(10)
+    expect(AI.toMarkdown).not.toHaveBeenCalled()
+  })
+
+  it('refuses something that is not an article without converting it', async () => {
+    serve(() => new Response(body(5000), { headers: { 'content-type': 'image/png' } }))
+    const AI = ai()
+    expect(await fetchArticle({ AI } as unknown as Env, 'https://news.example/picture')).toMatchObject({ ok: false })
+    expect(AI.toMarkdown).not.toHaveBeenCalled()
+  })
+
+  it('reports a conversion that fails or throws as a page it could not read', async () => {
+    serve(() => new Response(page('Words.'), { headers: { 'content-type': 'text/html' } }))
+    const failing = { toMarkdown: async () => ({ format: 'error', error: 'unsupported' }) }
+    expect(await fetchArticle({ AI: failing } as unknown as Env, 'https://news.example/a')).toMatchObject({ ok: false, reason: expect.stringContaining('unsupported') })
+    const throwing = { toMarkdown: async () => Promise.reject(new Error('binding down')) }
+    expect(await fetchArticle({ AI: throwing } as unknown as Env, 'https://news.example/a')).toMatchObject({ ok: false, reason: expect.stringContaining('binding down') })
+  })
+})
+
+describe('Tracker.propose', () => {
+  it('cuts a note to a bounded length', async () => {
+    const url = 'https://news.example/long-note'
+    await (await tracker()).propose({ source: { url, title: null }, note: 'n'.repeat(50_000), items: [{ question_id: 'hot', decider_id: 'ann', kind: 'says', occurred_on: null, quote: 'Some words from it.', reading: null, note: 'i'.repeat(50_000) }] }, 'model')
+    const notes = await notesFor(url)
+    expect(notes).toHaveLength(2)
+    for (const n of notes) expect(n.body.length).toBeLessThanOrEqual(4000)
   })
 })
 

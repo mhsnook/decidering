@@ -67,7 +67,8 @@ export default {
       const body = (await req.json().catch(() => null)) as { url?: unknown; question_id?: unknown } | null
       const target = typeof body?.url === 'string' && /^https?:\/\//.test(body.url) ? body.url : null
       if (!target || typeof body?.question_id !== 'string') return Response.json({ error: 'Expected a url and a question_id.' }, { status: 400 })
-      return Response.json(await dryRunArticle(env, target, body.question_id))
+      const result = await dryRunArticle(env, target, body.question_id)
+      return Response.json(result, { status: 'error' in result ? 404 : 200 })
     }
     return (await routePartykitRequest(req, env)) ?? new Response('not found', { status: 404 })
   },

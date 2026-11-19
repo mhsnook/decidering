@@ -15,6 +15,7 @@ import { isEditorToken } from './editor.ts'
 import { alreadyProposed } from './leads.ts'
 
 const MAX_PENDING = 500
+const MAX_NOTE_CHARS = 4000
 
 // `queued` counts the items that were new. Zero means something already proposed from this source stood in the way of every one.
 export type SubmitResult = { ok: true; queued: number } | { ok: false; status: number; error: string }
@@ -94,7 +95,7 @@ export class Tracker extends PartyDbServer<Env> {
       proposal_id: proposal.id,
       proposal_item_id: itemId,
       kind: 'submitter',
-      body,
+      body: body.slice(0, MAX_NOTE_CHARS),
       created_at: now,
     })
     const notes = [
