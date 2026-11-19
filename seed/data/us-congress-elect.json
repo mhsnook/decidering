@@ -1,0 +1,1908 @@
+{
+  "as_of": "2026-11-19",
+  "term_starts_on": "2027-01-03",
+  "source": {
+    "title": "Wikipedia: 2026 United States House of Representatives elections, and 2026 United States Senate elections",
+    "urls": [
+      "https://en.wikipedia.org/wiki/2026_United_States_House_of_Representatives_elections",
+      "https://en.wikipedia.org/wiki/2026_United_States_Senate_elections"
+    ],
+    "note": "The winner marked for each seat, which those pages take from the Associated Press. Results are uncertified. Only seats whose holder changes are listed."
+  },
+  "seats": [
+    {
+      "seat": "AL-1",
+      "chamber": "House",
+      "state": "AL",
+      "district": 1,
+      "leaving": "M001212",
+      "leaving_name": "Barry Moore",
+      "winner": {
+        "name": "Jerry Carl",
+        "party": "Republican",
+        "sort_name": "Carl, Jerry"
+      }
+    },
+    {
+      "seat": "AZ-1",
+      "chamber": "House",
+      "state": "AZ",
+      "district": 1,
+      "leaving": "S001183",
+      "leaving_name": "David Schweikert",
+      "winner": {
+        "name": "Amish Shah",
+        "party": "Democrat",
+        "sort_name": "Shah, Amish"
+      }
+    },
+    {
+      "seat": "AZ-5",
+      "chamber": "House",
+      "state": "AZ",
+      "district": 5,
+      "leaving": "B001302",
+      "leaving_name": "Andy Biggs",
+      "winner": {
+        "name": "Mark Lamb",
+        "party": "Republican",
+        "sort_name": "Lamb, Mark"
+      }
+    },
+    {
+      "seat": "AZ-6",
+      "chamber": "House",
+      "state": "AZ",
+      "district": 6,
+      "leaving": "C001133",
+      "leaving_name": "Juan Ciscomani",
+      "winner": {
+        "name": "JoAnna Mendoza",
+        "party": "Democrat",
+        "sort_name": "Mendoza, JoAnna"
+      }
+    },
+    {
+      "seat": "CA-1",
+      "chamber": "House",
+      "state": "CA",
+      "district": 1,
+      "leaving": "G000607",
+      "leaving_name": "James Gallagher",
+      "winner": {
+        "name": "Mike McGuire",
+        "party": "Democrat",
+        "sort_name": "McGuire, Mike"
+      }
+    },
+    {
+      "seat": "CA-3",
+      "chamber": "House",
+      "state": "CA",
+      "district": 3,
+      "leaving": "K000401",
+      "leaving_name": "Kevin Kiley",
+      "winner": {
+        "bioguide": "B001287",
+        "name": "Ami Bera",
+        "party": "Democrat"
+      }
+    },
+    {
+      "seat": "CA-4",
+      "chamber": "House",
+      "state": "CA",
+      "district": 4,
+      "leaving": "T000460",
+      "leaving_name": "Mike Thompson",
+      "winner": {
+        "name": "Eric Jones",
+        "party": "Democrat",
+        "sort_name": "Jones, Eric"
+      }
+    },
+    {
+      "seat": "CA-6",
+      "chamber": "House",
+      "state": "CA",
+      "district": 6,
+      "leaving": "B001287",
+      "leaving_name": "Ami Bera",
+      "winner": {
+        "name": "Richard Pan",
+        "party": "Democrat",
+        "sort_name": "Pan, Richard"
+      }
+    },
+    {
+      "seat": "CA-11",
+      "chamber": "House",
+      "state": "CA",
+      "district": 11,
+      "leaving": "P000197",
+      "leaving_name": "Nancy Pelosi",
+      "winner": {
+        "name": "Scott Wiener",
+        "party": "Democrat",
+        "sort_name": "Wiener, Scott"
+      }
+    },
+    {
+      "seat": "CA-22",
+      "chamber": "House",
+      "state": "CA",
+      "district": 22,
+      "leaving": "V000129",
+      "leaving_name": "David G. Valadao",
+      "winner": {
+        "name": "Randy Villegas",
+        "party": "Democrat",
+        "sort_name": "Villegas, Randy"
+      }
+    },
+    {
+      "seat": "CA-26",
+      "chamber": "House",
+      "state": "CA",
+      "district": 26,
+      "leaving": "B001285",
+      "leaving_name": "Julia Brownley",
+      "winner": {
+        "name": "Jacqui Irwin",
+        "party": "Democrat",
+        "sort_name": "Irwin, Jacqui"
+      }
+    },
+    {
+      "seat": "CA-34",
+      "chamber": "House",
+      "state": "CA",
+      "district": 34,
+      "leaving": "G000585",
+      "leaving_name": "Jimmy Gomez",
+      "winner": {
+        "name": "Angela Gonzales-Torres",
+        "party": "Democrat",
+        "sort_name": "Gonzales-Torres, Angela"
+      }
+    },
+    {
+      "seat": "CA-38",
+      "chamber": "House",
+      "state": "CA",
+      "district": 38,
+      "leaving": "S001156",
+      "leaving_name": "Linda T. Sánchez",
+      "winner": {
+        "name": "Hilda Solis",
+        "party": "Democrat",
+        "sort_name": "Solis, Hilda"
+      }
+    },
+    {
+      "seat": "CA-40",
+      "chamber": "House",
+      "state": "CA",
+      "district": 40,
+      "leaving": "K000397",
+      "leaving_name": "Young Kim",
+      "winner": {
+        "bioguide": "C000059",
+        "name": "Ken Calvert",
+        "party": "Republican"
+      }
+    },
+    {
+      "seat": "CA-41",
+      "chamber": "House",
+      "state": "CA",
+      "district": 41,
+      "leaving": "C000059",
+      "leaving_name": "Ken Calvert",
+      "winner": {
+        "bioguide": "S001156",
+        "name": "Linda T. Sánchez",
+        "party": "Democrat"
+      }
+    },
+    {
+      "seat": "CA-48",
+      "chamber": "House",
+      "state": "CA",
+      "district": 48,
+      "leaving": "I000056",
+      "leaving_name": "Darrell Issa",
+      "winner": {
+        "name": "Marni von Wilpert",
+        "party": "Democrat",
+        "sort_name": "von Wilpert, Marni"
+      }
+    },
+    {
+      "seat": "CO-1",
+      "chamber": "House",
+      "state": "CO",
+      "district": 1,
+      "leaving": "D000197",
+      "leaving_name": "Diana DeGette",
+      "winner": {
+        "name": "Melat Kiros",
+        "party": "Democrat",
+        "sort_name": "Kiros, Melat"
+      }
+    },
+    {
+      "seat": "CO-4",
+      "chamber": "House",
+      "state": "CO",
+      "district": 4,
+      "leaving": "B000825",
+      "leaving_name": "Lauren Boebert",
+      "winner": {
+        "name": "Eileen Laubacher",
+        "party": "Democrat",
+        "sort_name": "Laubacher, Eileen"
+      }
+    },
+    {
+      "seat": "CO-5",
+      "chamber": "House",
+      "state": "CO",
+      "district": 5,
+      "leaving": "C001137",
+      "leaving_name": "Jeff Crank",
+      "winner": {
+        "name": "Jessica Killin",
+        "party": "Democrat",
+        "sort_name": "Killin, Jessica"
+      }
+    },
+    {
+      "seat": "CO-8",
+      "chamber": "House",
+      "state": "CO",
+      "district": 8,
+      "leaving": "E000300",
+      "leaving_name": "Gabe Evans",
+      "winner": {
+        "name": "Manny Rutinel",
+        "party": "Democrat",
+        "sort_name": "Rutinel, Manny"
+      }
+    },
+    {
+      "seat": "CT-1",
+      "chamber": "House",
+      "state": "CT",
+      "district": 1,
+      "leaving": "L000557",
+      "leaving_name": "John B. Larson",
+      "winner": {
+        "name": "Luke Bronin",
+        "party": "Democrat",
+        "sort_name": "Bronin, Luke"
+      }
+    },
+    {
+      "seat": "FL-2",
+      "chamber": "House",
+      "state": "FL",
+      "district": 2,
+      "leaving": "D000628",
+      "leaving_name": "Neal P. Dunn",
+      "winner": {
+        "name": "Austin Rogers",
+        "party": "Republican",
+        "sort_name": "Rogers, Austin"
+      }
+    },
+    {
+      "seat": "FL-7",
+      "chamber": "House",
+      "state": "FL",
+      "district": 7,
+      "leaving": "M001216",
+      "leaving_name": "Cory Mills",
+      "winner": {
+        "name": "Ryan Elijah",
+        "party": "Republican",
+        "sort_name": "Elijah, Ryan"
+      }
+    },
+    {
+      "seat": "FL-11",
+      "chamber": "House",
+      "state": "FL",
+      "district": 11,
+      "leaving": "W000806",
+      "leaving_name": "Daniel Webster",
+      "winner": {
+        "name": "Joe Strada",
+        "party": "Republican",
+        "sort_name": "Strada, Joe"
+      }
+    },
+    {
+      "seat": "FL-16",
+      "chamber": "House",
+      "state": "FL",
+      "district": 16,
+      "leaving": "B001260",
+      "leaving_name": "Vern Buchanan",
+      "winner": {
+        "name": "Sydney Gruters",
+        "party": "Republican",
+        "sort_name": "Gruters, Sydney"
+      }
+    },
+    {
+      "seat": "FL-19",
+      "chamber": "House",
+      "state": "FL",
+      "district": 19,
+      "leaving": "D000032",
+      "leaving_name": "Byron Donalds",
+      "winner": {
+        "name": "Jim Schwartzel",
+        "party": "Republican",
+        "sort_name": "Schwartzel, Jim"
+      }
+    },
+    {
+      "seat": "FL-20",
+      "chamber": "House",
+      "state": "FL",
+      "district": 20,
+      "leaving": null,
+      "leaving_name": null,
+      "winner": {
+        "bioguide": "W000797",
+        "name": "Debbie Wasserman Schultz",
+        "party": "Democrat"
+      }
+    },
+    {
+      "seat": "FL-22",
+      "chamber": "House",
+      "state": "FL",
+      "district": 22,
+      "leaving": "F000462",
+      "leaving_name": "Lois Frankel",
+      "winner": {
+        "name": "Pia Dandiya",
+        "party": "Democrat",
+        "sort_name": "Dandiya, Pia"
+      }
+    },
+    {
+      "seat": "FL-23",
+      "chamber": "House",
+      "state": "FL",
+      "district": 23,
+      "leaving": "M001217",
+      "leaving_name": "Jared Moskowitz",
+      "winner": {
+        "bioguide": "F000462",
+        "name": "Lois Frankel",
+        "party": "Democrat"
+      }
+    },
+    {
+      "seat": "FL-24",
+      "chamber": "House",
+      "state": "FL",
+      "district": 24,
+      "leaving": "W000808",
+      "leaving_name": "Frederica S. Wilson",
+      "winner": {
+        "name": "Oliver Gilbert",
+        "party": "Democrat",
+        "sort_name": "Gilbert, Oliver"
+      }
+    },
+    {
+      "seat": "FL-25",
+      "chamber": "House",
+      "state": "FL",
+      "district": 25,
+      "leaving": "W000797",
+      "leaving_name": "Debbie Wasserman Schultz",
+      "winner": {
+        "bioguide": "M001217",
+        "name": "Jared Moskowitz",
+        "party": "Democrat"
+      }
+    },
+    {
+      "seat": "GA-1",
+      "chamber": "House",
+      "state": "GA",
+      "district": 1,
+      "leaving": "C001103",
+      "leaving_name": "Earl L. \"Buddy\" Carter",
+      "winner": {
+        "name": "Jim Kingston",
+        "party": "Republican",
+        "sort_name": "Kingston, Jim"
+      }
+    },
+    {
+      "seat": "GA-10",
+      "chamber": "House",
+      "state": "GA",
+      "district": 10,
+      "leaving": "C001129",
+      "leaving_name": "Mike Collins",
+      "winner": {
+        "name": "Houston Gaines",
+        "party": "Republican",
+        "sort_name": "Gaines, Houston"
+      }
+    },
+    {
+      "seat": "GA-11",
+      "chamber": "House",
+      "state": "GA",
+      "district": 11,
+      "leaving": "L000583",
+      "leaving_name": "Barry Loudermilk",
+      "winner": {
+        "name": "John Cowan",
+        "party": "Republican",
+        "sort_name": "Cowan, John"
+      }
+    },
+    {
+      "seat": "GA-13",
+      "chamber": "House",
+      "state": "GA",
+      "district": 13,
+      "leaving": "B001328",
+      "leaving_name": "Everton Blair Jr.",
+      "winner": {
+        "name": "Jasmine Clark",
+        "party": "Democrat",
+        "sort_name": "Clark, Jasmine"
+      }
+    },
+    {
+      "seat": "IL-2",
+      "chamber": "House",
+      "state": "IL",
+      "district": 2,
+      "leaving": "K000385",
+      "leaving_name": "Robin L. Kelly",
+      "winner": {
+        "name": "Donna Miller",
+        "party": "Democrat",
+        "sort_name": "Miller, Donna"
+      }
+    },
+    {
+      "seat": "IL-4",
+      "chamber": "House",
+      "state": "IL",
+      "district": 4,
+      "leaving": "G000586",
+      "leaving_name": "Jesús G. \"Chuy\" García",
+      "winner": {
+        "name": "Patty García",
+        "party": "Democrat",
+        "sort_name": "García, Patty"
+      }
+    },
+    {
+      "seat": "IL-7",
+      "chamber": "House",
+      "state": "IL",
+      "district": 7,
+      "leaving": "D000096",
+      "leaving_name": "Danny K. Davis",
+      "winner": {
+        "name": "La Shawn Ford",
+        "party": "Democrat",
+        "sort_name": "Ford, La Shawn"
+      }
+    },
+    {
+      "seat": "IL-8",
+      "chamber": "House",
+      "state": "IL",
+      "district": 8,
+      "leaving": "K000391",
+      "leaving_name": "Raja Krishnamoorthi",
+      "winner": {
+        "name": "Melissa Bean",
+        "party": "Democrat",
+        "sort_name": "Bean, Melissa"
+      }
+    },
+    {
+      "seat": "IL-9",
+      "chamber": "House",
+      "state": "IL",
+      "district": 9,
+      "leaving": "S001145",
+      "leaving_name": "Janice D. Schakowsky",
+      "winner": {
+        "name": "Daniel Biss",
+        "party": "Democrat",
+        "sort_name": "Biss, Daniel"
+      }
+    },
+    {
+      "seat": "IN-5",
+      "chamber": "House",
+      "state": "IN",
+      "district": 5,
+      "leaving": "S000929",
+      "leaving_name": "Victoria Spartz",
+      "winner": {
+        "name": "J. D. Ford",
+        "party": "Democrat",
+        "sort_name": "Ford, J. D."
+      }
+    },
+    {
+      "seat": "IA-1",
+      "chamber": "House",
+      "state": "IA",
+      "district": 1,
+      "leaving": "M001215",
+      "leaving_name": "Mariannette Miller-Meeks",
+      "winner": {
+        "name": "Christina Bohannan",
+        "party": "Democrat",
+        "sort_name": "Bohannan, Christina"
+      }
+    },
+    {
+      "seat": "IA-2",
+      "chamber": "House",
+      "state": "IA",
+      "district": 2,
+      "leaving": "H001091",
+      "leaving_name": "Ashley Hinson",
+      "winner": {
+        "name": "Lindsay James",
+        "party": "Democrat",
+        "sort_name": "James, Lindsay"
+      }
+    },
+    {
+      "seat": "IA-3",
+      "chamber": "House",
+      "state": "IA",
+      "district": 3,
+      "leaving": "N000193",
+      "leaving_name": "Zachary Nunn",
+      "winner": {
+        "name": "Sarah Trone Garriott",
+        "party": "Democrat",
+        "sort_name": "Trone Garriott, Sarah"
+      }
+    },
+    {
+      "seat": "IA-4",
+      "chamber": "House",
+      "state": "IA",
+      "district": 4,
+      "leaving": "F000446",
+      "leaving_name": "Randy Feenstra",
+      "winner": {
+        "name": "Chris McGowan",
+        "party": "Republican",
+        "sort_name": "McGowan, Chris"
+      }
+    },
+    {
+      "seat": "KY-4",
+      "chamber": "House",
+      "state": "KY",
+      "district": 4,
+      "leaving": "M001184",
+      "leaving_name": "Thomas Massie",
+      "winner": {
+        "name": "Ed Gallrein",
+        "party": "Republican",
+        "sort_name": "Gallrein, Ed"
+      }
+    },
+    {
+      "seat": "KY-6",
+      "chamber": "House",
+      "state": "KY",
+      "district": 6,
+      "leaving": "B001282",
+      "leaving_name": "Andy Barr",
+      "winner": {
+        "name": "Zach Dembo",
+        "party": "Democrat",
+        "sort_name": "Dembo, Zach"
+      }
+    },
+    {
+      "seat": "ME-2",
+      "chamber": "House",
+      "state": "ME",
+      "district": 2,
+      "leaving": "G000592",
+      "leaving_name": "Jared F. Golden",
+      "winner": {
+        "name": "Paul LePage",
+        "party": "Republican",
+        "sort_name": "LePage, Paul"
+      }
+    },
+    {
+      "seat": "MD-5",
+      "chamber": "House",
+      "state": "MD",
+      "district": 5,
+      "leaving": "H000874",
+      "leaving_name": "Steny H. Hoyer",
+      "winner": {
+        "name": "Adrian Boafo",
+        "party": "Democrat",
+        "sort_name": "Boafo, Adrian"
+      }
+    },
+    {
+      "seat": "MA-6",
+      "chamber": "House",
+      "state": "MA",
+      "district": 6,
+      "leaving": "M001196",
+      "leaving_name": "Seth Moulton",
+      "winner": {
+        "name": "Dan Koh",
+        "party": "Democrat",
+        "sort_name": "Koh, Dan"
+      }
+    },
+    {
+      "seat": "MI-4",
+      "chamber": "House",
+      "state": "MI",
+      "district": 4,
+      "leaving": "H001058",
+      "leaving_name": "Bill Huizenga",
+      "winner": {
+        "name": "Sean McCann",
+        "party": "Democrat",
+        "sort_name": "McCann, Sean"
+      }
+    },
+    {
+      "seat": "MI-7",
+      "chamber": "House",
+      "state": "MI",
+      "district": 7,
+      "leaving": "B001321",
+      "leaving_name": "Tom Barrett",
+      "winner": {
+        "name": "William Lawrence",
+        "party": "Democrat",
+        "sort_name": "Lawrence, William"
+      }
+    },
+    {
+      "seat": "MI-10",
+      "chamber": "House",
+      "state": "MI",
+      "district": 10,
+      "leaving": "J000307",
+      "leaving_name": "John James",
+      "winner": {
+        "name": "Christina Hines",
+        "party": "Democrat",
+        "sort_name": "Hines, Christina"
+      }
+    },
+    {
+      "seat": "MI-11",
+      "chamber": "House",
+      "state": "MI",
+      "district": 11,
+      "leaving": "S001215",
+      "leaving_name": "Haley M. Stevens",
+      "winner": {
+        "name": "Jeremy Moss",
+        "party": "Democrat",
+        "sort_name": "Moss, Jeremy"
+      }
+    },
+    {
+      "seat": "MI-13",
+      "chamber": "House",
+      "state": "MI",
+      "district": 13,
+      "leaving": "T000488",
+      "leaving_name": "Shri Thanedar",
+      "winner": {
+        "name": "Donavan McKinney",
+        "party": "Democrat",
+        "sort_name": "McKinney, Donavan"
+      }
+    },
+    {
+      "seat": "MN-2",
+      "chamber": "House",
+      "state": "MN",
+      "district": 2,
+      "leaving": "C001119",
+      "leaving_name": "Angie Craig",
+      "winner": {
+        "name": "Matt Little",
+        "party": "Democrat",
+        "sort_name": "Little, Matt"
+      }
+    },
+    {
+      "seat": "MO-2",
+      "chamber": "House",
+      "state": "MO",
+      "district": 2,
+      "leaving": "W000812",
+      "leaving_name": "Ann Wagner",
+      "winner": {
+        "name": "Fred Wellman",
+        "party": "Democrat",
+        "sort_name": "Wellman, Fred"
+      }
+    },
+    {
+      "seat": "MO-6",
+      "chamber": "House",
+      "state": "MO",
+      "district": 6,
+      "leaving": "G000546",
+      "leaving_name": "Sam Graves",
+      "winner": {
+        "name": "Chris Stigall",
+        "party": "Republican",
+        "sort_name": "Stigall, Chris"
+      }
+    },
+    {
+      "seat": "MT-1",
+      "chamber": "House",
+      "state": "MT",
+      "district": 1,
+      "leaving": "Z000018",
+      "leaving_name": "Ryan K. Zinke",
+      "winner": {
+        "name": "Sam Forstag",
+        "party": "Democrat",
+        "sort_name": "Forstag, Sam"
+      }
+    },
+    {
+      "seat": "NE-2",
+      "chamber": "House",
+      "state": "NE",
+      "district": 2,
+      "leaving": "B001298",
+      "leaving_name": "Don Bacon",
+      "winner": {
+        "name": "Denise Powell",
+        "party": "Democrat",
+        "sort_name": "Powell, Denise"
+      }
+    },
+    {
+      "seat": "NV-2",
+      "chamber": "House",
+      "state": "NV",
+      "district": 2,
+      "leaving": "A000369",
+      "leaving_name": "Mark E. Amodei",
+      "winner": {
+        "name": "Teresa Benitez-Thompson",
+        "party": "Democrat",
+        "sort_name": "Benitez-Thompson, Teresa"
+      }
+    },
+    {
+      "seat": "NH-1",
+      "chamber": "House",
+      "state": "NH",
+      "district": 1,
+      "leaving": "P000614",
+      "leaving_name": "Chris Pappas",
+      "winner": {
+        "name": "Stefany Shaheen",
+        "party": "Democrat",
+        "sort_name": "Shaheen, Stefany"
+      }
+    },
+    {
+      "seat": "NJ-2",
+      "chamber": "House",
+      "state": "NJ",
+      "district": 2,
+      "leaving": "V000133",
+      "leaving_name": "Jefferson Van Drew",
+      "winner": {
+        "name": "Zack Mullock",
+        "party": "Democrat",
+        "sort_name": "Mullock, Zack"
+      }
+    },
+    {
+      "seat": "NJ-7",
+      "chamber": "House",
+      "state": "NJ",
+      "district": 7,
+      "leaving": "K000398",
+      "leaving_name": "Thomas H. Kean, Jr.",
+      "winner": {
+        "name": "Rebecca Bennett",
+        "party": "Democrat",
+        "sort_name": "Bennett, Rebecca"
+      }
+    },
+    {
+      "seat": "NJ-12",
+      "chamber": "House",
+      "state": "NJ",
+      "district": 12,
+      "leaving": "W000822",
+      "leaving_name": "Bonnie Watson Coleman",
+      "winner": {
+        "name": "Adam Hamawy",
+        "party": "Democrat",
+        "sort_name": "Hamawy, Adam"
+      }
+    },
+    {
+      "seat": "NY-7",
+      "chamber": "House",
+      "state": "NY",
+      "district": 7,
+      "leaving": "V000081",
+      "leaving_name": "Nydia M. Velázquez",
+      "winner": {
+        "name": "Claire Valdez",
+        "party": "Democrat",
+        "sort_name": "Valdez, Claire"
+      }
+    },
+    {
+      "seat": "NY-10",
+      "chamber": "House",
+      "state": "NY",
+      "district": 10,
+      "leaving": "G000599",
+      "leaving_name": "Daniel S. Goldman",
+      "winner": {
+        "name": "Brad Lander",
+        "party": "Democrat",
+        "sort_name": "Lander, Brad"
+      }
+    },
+    {
+      "seat": "NY-12",
+      "chamber": "House",
+      "state": "NY",
+      "district": 12,
+      "leaving": "N000002",
+      "leaving_name": "Jerrold Nadler",
+      "winner": {
+        "name": "Micah Lasher",
+        "party": "Democrat",
+        "sort_name": "Lasher, Micah"
+      }
+    },
+    {
+      "seat": "NY-13",
+      "chamber": "House",
+      "state": "NY",
+      "district": 13,
+      "leaving": "E000297",
+      "leaving_name": "Adriano Espaillat",
+      "winner": {
+        "name": "Darializa Avila Chevalier",
+        "party": "Democrat",
+        "sort_name": "Avila Chevalier, Darializa"
+      }
+    },
+    {
+      "seat": "NY-17",
+      "chamber": "House",
+      "state": "NY",
+      "district": 17,
+      "leaving": "L000599",
+      "leaving_name": "Michael Lawler",
+      "winner": {
+        "name": "Cait Conley",
+        "party": "Democrat",
+        "sort_name": "Conley, Cait"
+      }
+    },
+    {
+      "seat": "NY-21",
+      "chamber": "House",
+      "state": "NY",
+      "district": 21,
+      "leaving": "S001196",
+      "leaving_name": "Elise M. Stefanik",
+      "winner": {
+        "name": "Anthony Constantino",
+        "party": "Republican",
+        "sort_name": "Constantino, Anthony"
+      }
+    },
+    {
+      "seat": "NC-3",
+      "chamber": "House",
+      "state": "NC",
+      "district": 3,
+      "leaving": "M001210",
+      "leaving_name": "Gregory F. Murphy",
+      "winner": {
+        "name": "Raymond Smith Jr.",
+        "party": "Democrat",
+        "sort_name": "Smith, Raymond"
+      }
+    },
+    {
+      "seat": "NC-6",
+      "chamber": "House",
+      "state": "NC",
+      "district": 6,
+      "leaving": "M001240",
+      "leaving_name": "Addison P. McDowell",
+      "winner": {
+        "name": "Cyril Jefferson",
+        "party": "Democrat",
+        "sort_name": "Jefferson, Cyril"
+      }
+    },
+    {
+      "seat": "NC-9",
+      "chamber": "House",
+      "state": "NC",
+      "district": 9,
+      "leaving": "H001067",
+      "leaving_name": "Richard Hudson",
+      "winner": {
+        "name": "Richard Ojeda",
+        "party": "Democrat",
+        "sort_name": "Ojeda, Richard"
+      }
+    },
+    {
+      "seat": "NC-11",
+      "chamber": "House",
+      "state": "NC",
+      "district": 11,
+      "leaving": "E000246",
+      "leaving_name": "Chuck Edwards",
+      "winner": {
+        "name": "Jamie Ager",
+        "party": "Democrat",
+        "sort_name": "Ager, Jamie"
+      }
+    },
+    {
+      "seat": "NC-13",
+      "chamber": "House",
+      "state": "NC",
+      "district": 13,
+      "leaving": "K000405",
+      "leaving_name": "Brad Knott",
+      "winner": {
+        "name": "Paul Barringer",
+        "party": "Democrat",
+        "sort_name": "Barringer, Paul"
+      }
+    },
+    {
+      "seat": "NC-14",
+      "chamber": "House",
+      "state": "NC",
+      "district": 14,
+      "leaving": "M001236",
+      "leaving_name": "Tim Moore",
+      "winner": {
+        "name": "LaKesha Womack",
+        "party": "Democrat",
+        "sort_name": "Womack, LaKesha"
+      }
+    },
+    {
+      "seat": "OH-7",
+      "chamber": "House",
+      "state": "OH",
+      "district": 7,
+      "leaving": "M001222",
+      "leaving_name": "Max L. Miller",
+      "winner": {
+        "name": "Brian Poindexter",
+        "party": "Democrat",
+        "sort_name": "Poindexter, Brian"
+      }
+    },
+    {
+      "seat": "OH-10",
+      "chamber": "House",
+      "state": "OH",
+      "district": 10,
+      "leaving": "T000463",
+      "leaving_name": "Michael R. Turner",
+      "winner": {
+        "name": "Kristina Knickerbocker",
+        "party": "Democrat",
+        "sort_name": "Knickerbocker, Kristina"
+      }
+    },
+    {
+      "seat": "OH-15",
+      "chamber": "House",
+      "state": "OH",
+      "district": 15,
+      "leaving": "C001126",
+      "leaving_name": "Mike Carey",
+      "winner": {
+        "name": "Don Leonard",
+        "party": "Democrat",
+        "sort_name": "Leonard, Don"
+      }
+    },
+    {
+      "seat": "OK-1",
+      "chamber": "House",
+      "state": "OK",
+      "district": 1,
+      "leaving": "H001082",
+      "leaving_name": "Kevin Hern",
+      "winner": {
+        "name": "Mark Tedford",
+        "party": "Republican",
+        "sort_name": "Tedford, Mark"
+      }
+    },
+    {
+      "seat": "PA-1",
+      "chamber": "House",
+      "state": "PA",
+      "district": 1,
+      "leaving": "F000466",
+      "leaving_name": "Brian K. Fitzpatrick",
+      "winner": {
+        "name": "Bob Harvie",
+        "party": "Democrat",
+        "sort_name": "Harvie, Bob"
+      }
+    },
+    {
+      "seat": "PA-3",
+      "chamber": "House",
+      "state": "PA",
+      "district": 3,
+      "leaving": "E000296",
+      "leaving_name": "Dwight Evans",
+      "winner": {
+        "name": "Chris Rabb",
+        "party": "Democrat",
+        "sort_name": "Rabb, Chris"
+      }
+    },
+    {
+      "seat": "PA-7",
+      "chamber": "House",
+      "state": "PA",
+      "district": 7,
+      "leaving": "M001230",
+      "leaving_name": "Ryan Mackenzie",
+      "winner": {
+        "name": "Bob Brooks",
+        "party": "Democrat",
+        "sort_name": "Brooks, Bob"
+      }
+    },
+    {
+      "seat": "PA-8",
+      "chamber": "House",
+      "state": "PA",
+      "district": 8,
+      "leaving": "B001327",
+      "leaving_name": "Robert P. Bresnahan, Jr.",
+      "winner": {
+        "name": "Paige Cognetti",
+        "party": "Democrat",
+        "sort_name": "Cognetti, Paige"
+      }
+    },
+    {
+      "seat": "PA-10",
+      "chamber": "House",
+      "state": "PA",
+      "district": 10,
+      "leaving": "P000605",
+      "leaving_name": "Scott Perry",
+      "winner": {
+        "name": "Janelle Stelson",
+        "party": "Democrat",
+        "sort_name": "Stelson, Janelle"
+      }
+    },
+    {
+      "seat": "SC-1",
+      "chamber": "House",
+      "state": "SC",
+      "district": 1,
+      "leaving": "M000194",
+      "leaving_name": "Nancy Mace",
+      "winner": {
+        "name": "Nancy Lacore",
+        "party": "Democrat",
+        "sort_name": "Lacore, Nancy"
+      }
+    },
+    {
+      "seat": "SC-5",
+      "chamber": "House",
+      "state": "SC",
+      "district": 5,
+      "leaving": "N000190",
+      "leaving_name": "Ralph Norman",
+      "winner": {
+        "name": "Wes Climer",
+        "party": "Republican",
+        "sort_name": "Climer, Wes"
+      }
+    },
+    {
+      "seat": "SD-AL",
+      "chamber": "House",
+      "state": "SD",
+      "district": 0,
+      "leaving": "J000301",
+      "leaving_name": "Dusty Johnson",
+      "winner": {
+        "name": "Marty Jackley",
+        "party": "Republican",
+        "sort_name": "Jackley, Marty"
+      }
+    },
+    {
+      "seat": "TN-4",
+      "chamber": "House",
+      "state": "TN",
+      "district": 4,
+      "leaving": "D000616",
+      "leaving_name": "Scott DesJarlais",
+      "winner": {
+        "name": "Victoria Broderick",
+        "party": "Democrat",
+        "sort_name": "Broderick, Victoria"
+      }
+    },
+    {
+      "seat": "TN-5",
+      "chamber": "House",
+      "state": "TN",
+      "district": 5,
+      "leaving": "O000175",
+      "leaving_name": "Andrew Ogles",
+      "winner": {
+        "name": "Charlie Hatcher",
+        "party": "Republican",
+        "sort_name": "Hatcher, Charlie"
+      }
+    },
+    {
+      "seat": "TN-6",
+      "chamber": "House",
+      "state": "TN",
+      "district": 6,
+      "leaving": "R000612",
+      "leaving_name": "John W. Rose",
+      "winner": {
+        "name": "Johnny Garrett",
+        "party": "Republican",
+        "sort_name": "Garrett, Johnny"
+      }
+    },
+    {
+      "seat": "TN-9",
+      "chamber": "House",
+      "state": "TN",
+      "district": 9,
+      "leaving": "C001068",
+      "leaving_name": "Steve Cohen",
+      "winner": {
+        "name": "Brent Taylor",
+        "party": "Republican",
+        "sort_name": "Taylor, Brent"
+      }
+    },
+    {
+      "seat": "TX-2",
+      "chamber": "House",
+      "state": "TX",
+      "district": 2,
+      "leaving": "C001120",
+      "leaving_name": "Dan Crenshaw",
+      "winner": {
+        "name": "Steve Toth",
+        "party": "Republican",
+        "sort_name": "Toth, Steve"
+      }
+    },
+    {
+      "seat": "TX-8",
+      "chamber": "House",
+      "state": "TX",
+      "district": 8,
+      "leaving": "L000603",
+      "leaving_name": "Morgan Luttrell",
+      "winner": {
+        "name": "Jessica Steinmann",
+        "party": "Republican",
+        "sort_name": "Steinmann, Jessica"
+      }
+    },
+    {
+      "seat": "TX-9",
+      "chamber": "House",
+      "state": "TX",
+      "district": 9,
+      "leaving": "G000553",
+      "leaving_name": "Al Green",
+      "winner": {
+        "name": "Leticia Gutierrez",
+        "party": "Democrat",
+        "sort_name": "Gutierrez, Leticia"
+      }
+    },
+    {
+      "seat": "TX-10",
+      "chamber": "House",
+      "state": "TX",
+      "district": 10,
+      "leaving": "M001157",
+      "leaving_name": "Michael T. McCaul",
+      "winner": {
+        "name": "Chris Gober",
+        "party": "Republican",
+        "sort_name": "Gober, Chris"
+      }
+    },
+    {
+      "seat": "TX-15",
+      "chamber": "House",
+      "state": "TX",
+      "district": 15,
+      "leaving": "D000594",
+      "leaving_name": "Monica De La Cruz",
+      "winner": {
+        "name": "Bobby Pulido",
+        "party": "Democrat",
+        "sort_name": "Pulido, Bobby"
+      }
+    },
+    {
+      "seat": "TX-19",
+      "chamber": "House",
+      "state": "TX",
+      "district": 19,
+      "leaving": "A000375",
+      "leaving_name": "Jodey C. Arrington",
+      "winner": {
+        "name": "Tom Sell",
+        "party": "Republican",
+        "sort_name": "Sell, Tom"
+      }
+    },
+    {
+      "seat": "TX-21",
+      "chamber": "House",
+      "state": "TX",
+      "district": 21,
+      "leaving": "R000614",
+      "leaving_name": "Chip Roy",
+      "winner": {
+        "name": "Mark Teixeira",
+        "party": "Republican",
+        "sort_name": "Teixeira, Mark"
+      }
+    },
+    {
+      "seat": "TX-22",
+      "chamber": "House",
+      "state": "TX",
+      "district": 22,
+      "leaving": "N000026",
+      "leaving_name": "Troy E. Nehls",
+      "winner": {
+        "name": "Trever Nehls",
+        "party": "Republican",
+        "sort_name": "Nehls, Trever"
+      }
+    },
+    {
+      "seat": "TX-23",
+      "chamber": "House",
+      "state": "TX",
+      "district": 23,
+      "leaving": null,
+      "leaving_name": null,
+      "winner": {
+        "name": "Katy Padilla Stout",
+        "party": "Democrat",
+        "sort_name": "Padilla Stout, Katy"
+      }
+    },
+    {
+      "seat": "TX-30",
+      "chamber": "House",
+      "state": "TX",
+      "district": 30,
+      "leaving": "C001130",
+      "leaving_name": "Jasmine Crockett",
+      "winner": {
+        "name": "Frederick Haynes III",
+        "party": "Democrat",
+        "sort_name": "Haynes, Frederick"
+      }
+    },
+    {
+      "seat": "TX-32",
+      "chamber": "House",
+      "state": "TX",
+      "district": 32,
+      "leaving": "J000310",
+      "leaving_name": "Julie Johnson",
+      "winner": {
+        "name": "Jace Yarbrough",
+        "party": "Republican",
+        "sort_name": "Yarbrough, Jace"
+      }
+    },
+    {
+      "seat": "TX-33",
+      "chamber": "House",
+      "state": "TX",
+      "district": 33,
+      "leaving": "V000131",
+      "leaving_name": "Marc A. Veasey",
+      "winner": {
+        "name": "Colin Allred",
+        "party": "Democrat",
+        "sort_name": "Allred, Colin"
+      }
+    },
+    {
+      "seat": "TX-35",
+      "chamber": "House",
+      "state": "TX",
+      "district": 35,
+      "leaving": "C001131",
+      "leaving_name": "Greg Casar",
+      "winner": {
+        "name": "Johnny Garcia",
+        "party": "Democrat",
+        "sort_name": "Garcia, Johnny"
+      }
+    },
+    {
+      "seat": "TX-37",
+      "chamber": "House",
+      "state": "TX",
+      "district": 37,
+      "leaving": "D000399",
+      "leaving_name": "Lloyd Doggett",
+      "winner": {
+        "bioguide": "C001131",
+        "name": "Greg Casar",
+        "party": "Democrat"
+      }
+    },
+    {
+      "seat": "TX-38",
+      "chamber": "House",
+      "state": "TX",
+      "district": 38,
+      "leaving": "H001095",
+      "leaving_name": "Wesley Hunt",
+      "winner": {
+        "name": "Jon Bonck",
+        "party": "Republican",
+        "sort_name": "Bonck, Jon"
+      }
+    },
+    {
+      "seat": "UT-1",
+      "chamber": "House",
+      "state": "UT",
+      "district": 1,
+      "leaving": "M001213",
+      "leaving_name": "Blake D. Moore",
+      "winner": {
+        "name": "Ben McAdams",
+        "party": "Democrat",
+        "sort_name": "McAdams, Ben"
+      }
+    },
+    {
+      "seat": "UT-2",
+      "chamber": "House",
+      "state": "UT",
+      "district": 2,
+      "leaving": "M001228",
+      "leaving_name": "Celeste Maloy",
+      "winner": {
+        "bioguide": "M001213",
+        "name": "Blake D. Moore",
+        "party": "Republican"
+      }
+    },
+    {
+      "seat": "UT-3",
+      "chamber": "House",
+      "state": "UT",
+      "district": 3,
+      "leaving": "K000403",
+      "leaving_name": "Mike Kennedy",
+      "winner": {
+        "bioguide": "M001228",
+        "name": "Celeste Maloy",
+        "party": "Republican"
+      }
+    },
+    {
+      "seat": "UT-4",
+      "chamber": "House",
+      "state": "UT",
+      "district": 4,
+      "leaving": "O000086",
+      "leaving_name": "Burgess Owens",
+      "winner": {
+        "bioguide": "K000403",
+        "name": "Mike Kennedy",
+        "party": "Republican"
+      }
+    },
+    {
+      "seat": "VA-1",
+      "chamber": "House",
+      "state": "VA",
+      "district": 1,
+      "leaving": "W000804",
+      "leaving_name": "Robert J. Wittman",
+      "winner": {
+        "name": "Shannon Taylor",
+        "party": "Democrat",
+        "sort_name": "Taylor, Shannon"
+      }
+    },
+    {
+      "seat": "VA-2",
+      "chamber": "House",
+      "state": "VA",
+      "district": 2,
+      "leaving": "K000399",
+      "leaving_name": "Jennifer A. Kiggans",
+      "winner": {
+        "name": "Elaine Luria",
+        "party": "Democrat",
+        "sort_name": "Luria, Elaine"
+      }
+    },
+    {
+      "seat": "WA-4",
+      "chamber": "House",
+      "state": "WA",
+      "district": 4,
+      "leaving": "N000189",
+      "leaving_name": "Dan Newhouse",
+      "winner": {
+        "name": "Amanda McKinney",
+        "party": "Republican",
+        "sort_name": "McKinney, Amanda"
+      }
+    },
+    {
+      "seat": "WI-1",
+      "chamber": "House",
+      "state": "WI",
+      "district": 1,
+      "leaving": "S001213",
+      "leaving_name": "Bryan Steil",
+      "winner": {
+        "name": "Mitchell Berman",
+        "party": "Democrat",
+        "sort_name": "Berman, Mitchell"
+      }
+    },
+    {
+      "seat": "WI-3",
+      "chamber": "House",
+      "state": "WI",
+      "district": 3,
+      "leaving": "V000135",
+      "leaving_name": "Derrick Van Orden",
+      "winner": {
+        "name": "Rebecca Cooke",
+        "party": "Democrat",
+        "sort_name": "Cooke, Rebecca"
+      }
+    },
+    {
+      "seat": "WI-7",
+      "chamber": "House",
+      "state": "WI",
+      "district": 7,
+      "leaving": "T000165",
+      "leaving_name": "Thomas P. Tiffany",
+      "winner": {
+        "name": "Michael Alfonso",
+        "party": "Republican",
+        "sort_name": "Alfonso, Michael"
+      }
+    },
+    {
+      "seat": "WY-AL",
+      "chamber": "House",
+      "state": "WY",
+      "district": 0,
+      "leaving": "H001096",
+      "leaving_name": "Harriet M. Hageman",
+      "winner": {
+        "name": "Chuck Gray",
+        "party": "Republican",
+        "sort_name": "Gray, Chuck"
+      }
+    },
+    {
+      "seat": "DC-AL",
+      "chamber": "House",
+      "state": "DC",
+      "district": 0,
+      "leaving": "N000147",
+      "leaving_name": "Eleanor Holmes Norton",
+      "winner": {
+        "name": "Robert White",
+        "party": "Democrat",
+        "sort_name": "White, Robert"
+      }
+    },
+    {
+      "seat": "GU-AL",
+      "chamber": "House",
+      "state": "GU",
+      "district": 0,
+      "leaving": "M001219",
+      "leaving_name": "James C. Moylan",
+      "winner": {
+        "name": "Alicia Limtiaco",
+        "party": "Democrat",
+        "sort_name": "Limtiaco, Alicia"
+      }
+    },
+    {
+      "seat": "VI-AL",
+      "chamber": "House",
+      "state": "VI",
+      "district": 0,
+      "leaving": "P000610",
+      "leaving_name": "Stacey E. Plaskett",
+      "winner": {
+        "name": "Janelle Sarauw",
+        "party": "Democrat",
+        "sort_name": "Sarauw, Janelle"
+      }
+    },
+    {
+      "seat": "OH-sen-3",
+      "chamber": "Senate",
+      "state": "OH",
+      "district": null,
+      "senate_class": 3,
+      "leaving": "H001104",
+      "leaving_name": "Jon Husted",
+      "winner": {
+        "name": "Sherrod Brown",
+        "party": "Democrat",
+        "sort_name": "Brown, Sherrod"
+      }
+    },
+    {
+      "seat": "AL-sen-2",
+      "chamber": "Senate",
+      "state": "AL",
+      "district": null,
+      "senate_class": 2,
+      "leaving": "T000278",
+      "leaving_name": "Tommy Tuberville",
+      "winner": {
+        "bioguide": "M001212",
+        "name": "Barry Moore",
+        "party": "Republican"
+      }
+    },
+    {
+      "seat": "AK-sen-2",
+      "chamber": "Senate",
+      "state": "AK",
+      "district": null,
+      "senate_class": 2,
+      "leaving": "S001198",
+      "leaving_name": "Dan Sullivan",
+      "winner": {
+        "name": "Mary Peltola",
+        "party": "Democrat",
+        "sort_name": "Peltola, Mary"
+      }
+    },
+    {
+      "seat": "IL-sen-2",
+      "chamber": "Senate",
+      "state": "IL",
+      "district": null,
+      "senate_class": 2,
+      "leaving": "D000563",
+      "leaving_name": "Richard J. Durbin",
+      "winner": {
+        "name": "Juliana Stratton",
+        "party": "Democrat",
+        "sort_name": "Stratton, Juliana"
+      }
+    },
+    {
+      "seat": "IA-sen-2",
+      "chamber": "Senate",
+      "state": "IA",
+      "district": null,
+      "senate_class": 2,
+      "leaving": "E000295",
+      "leaving_name": "Joni Ernst",
+      "winner": {
+        "name": "Josh Turek",
+        "party": "Democrat",
+        "sort_name": "Turek, Josh"
+      }
+    },
+    {
+      "seat": "KS-sen-2",
+      "chamber": "Senate",
+      "state": "KS",
+      "district": null,
+      "senate_class": 2,
+      "leaving": "M001198",
+      "leaving_name": "Roger Marshall",
+      "winner": {
+        "name": "Adam Hamilton",
+        "party": "Democrat",
+        "sort_name": "Hamilton, Adam"
+      }
+    },
+    {
+      "seat": "KY-sen-2",
+      "chamber": "Senate",
+      "state": "KY",
+      "district": null,
+      "senate_class": 2,
+      "leaving": "M000355",
+      "leaving_name": "Mitch McConnell",
+      "winner": {
+        "bioguide": "B001282",
+        "name": "Andy Barr",
+        "party": "Republican"
+      }
+    },
+    {
+      "seat": "LA-sen-2",
+      "chamber": "Senate",
+      "state": "LA",
+      "district": null,
+      "senate_class": 2,
+      "leaving": "C001075",
+      "leaving_name": "Bill Cassidy",
+      "winner": {
+        "bioguide": "L000595",
+        "name": "Julia Letlow",
+        "party": "Republican"
+      }
+    },
+    {
+      "seat": "ME-sen-2",
+      "chamber": "Senate",
+      "state": "ME",
+      "district": null,
+      "senate_class": 2,
+      "leaving": "C001035",
+      "leaving_name": "Susan M. Collins",
+      "winner": {
+        "name": "Troy Jackson",
+        "party": "Democrat",
+        "sort_name": "Jackson, Troy"
+      }
+    },
+    {
+      "seat": "MI-sen-2",
+      "chamber": "Senate",
+      "state": "MI",
+      "district": null,
+      "senate_class": 2,
+      "leaving": "P000595",
+      "leaving_name": "Gary C. Peters",
+      "winner": {
+        "name": "Abdul El-Sayed",
+        "party": "Democrat",
+        "sort_name": "El-Sayed, Abdul"
+      }
+    },
+    {
+      "seat": "MN-sen-2",
+      "chamber": "Senate",
+      "state": "MN",
+      "district": null,
+      "senate_class": 2,
+      "leaving": "S001203",
+      "leaving_name": "Tina Smith",
+      "winner": {
+        "name": "Peggy Flanagan",
+        "party": "Democrat",
+        "sort_name": "Flanagan, Peggy"
+      }
+    },
+    {
+      "seat": "MS-sen-2",
+      "chamber": "Senate",
+      "state": "MS",
+      "district": null,
+      "senate_class": 2,
+      "leaving": "H001079",
+      "leaving_name": "Cindy Hyde-Smith",
+      "winner": {
+        "name": "Scott Colom",
+        "party": "Democrat",
+        "sort_name": "Colom, Scott"
+      }
+    },
+    {
+      "seat": "MT-sen-2",
+      "chamber": "Senate",
+      "state": "MT",
+      "district": null,
+      "senate_class": 2,
+      "leaving": "D000618",
+      "leaving_name": "Steve Daines",
+      "winner": {
+        "name": "Kurt Alme",
+        "party": "Republican",
+        "sort_name": "Alme, Kurt"
+      }
+    },
+    {
+      "seat": "NH-sen-2",
+      "chamber": "Senate",
+      "state": "NH",
+      "district": null,
+      "senate_class": 2,
+      "leaving": "S001181",
+      "leaving_name": "Jeanne Shaheen",
+      "winner": {
+        "bioguide": "P000614",
+        "name": "Chris Pappas",
+        "party": "Democrat"
+      }
+    },
+    {
+      "seat": "NC-sen-2",
+      "chamber": "Senate",
+      "state": "NC",
+      "district": null,
+      "senate_class": 2,
+      "leaving": "T000476",
+      "leaving_name": "Thom Tillis",
+      "winner": {
+        "name": "Roy Cooper",
+        "party": "Democrat",
+        "sort_name": "Cooper, Roy"
+      }
+    },
+    {
+      "seat": "OK-sen-2",
+      "chamber": "Senate",
+      "state": "OK",
+      "district": null,
+      "senate_class": 2,
+      "leaving": "A000383",
+      "leaving_name": "Alan Armstrong",
+      "winner": {
+        "bioguide": "H001082",
+        "name": "Kevin Hern",
+        "party": "Republican"
+      }
+    },
+    {
+      "seat": "SC-sen-2",
+      "chamber": "Senate",
+      "state": "SC",
+      "district": null,
+      "senate_class": 2,
+      "leaving": "G000608",
+      "leaving_name": "Darline Graham",
+      "winner": {
+        "name": "Annie Andrews",
+        "party": "Democrat",
+        "sort_name": "Andrews, Annie"
+      }
+    },
+    {
+      "seat": "TX-sen-2",
+      "chamber": "Senate",
+      "state": "TX",
+      "district": null,
+      "senate_class": 2,
+      "leaving": "C001056",
+      "leaving_name": "John Cornyn",
+      "winner": {
+        "name": "James Talarico",
+        "party": "Democrat",
+        "sort_name": "Talarico, James"
+      }
+    },
+    {
+      "seat": "WY-sen-2",
+      "chamber": "Senate",
+      "state": "WY",
+      "district": null,
+      "senate_class": 2,
+      "leaving": "L000571",
+      "leaving_name": "Cynthia M. Lummis",
+      "winner": {
+        "bioguide": "H001096",
+        "name": "Harriet M. Hageman",
+        "party": "Republican"
+      }
+    }
+  ],
+  "pending": [
+    {
+      "seat": "LA-5",
+      "chamber": "House",
+      "state": "LA",
+      "district": 5,
+      "holder": "L000595",
+      "holder_name": "Julia Letlow",
+      "holder_leaves": true,
+      "note": "Runoff on December 12, 2026 between Pat Moore (Democrat) and Gabe Firment (Republican). The seat is shown empty until then."
+    },
+    {
+      "seat": "LA-6",
+      "chamber": "House",
+      "state": "LA",
+      "district": 6,
+      "holder": "F000110",
+      "holder_name": "Cleo Fields",
+      "holder_leaves": true,
+      "note": "Runoff on December 12, 2026 between Chauna Banks (Democrat) and Blake Miguez (Republican). The seat is shown empty until then."
+    },
+    {
+      "seat": "MN-1",
+      "chamber": "House",
+      "state": "MN",
+      "district": 1,
+      "holder": "F000475",
+      "holder_name": "Brad Finstad",
+      "holder_leaves": false,
+      "note": "Jake Johnson (Democrat) leads Brad Finstad by about 320 votes and a recount is expected. Not called, so the seat is left with its current holder."
+    },
+    {
+      "seat": "NC-5",
+      "chamber": "House",
+      "state": "NC",
+      "district": 5,
+      "holder": "F000450",
+      "holder_name": "Virginia Foxx",
+      "holder_leaves": false,
+      "note": "Chuck Hubbard (Democrat) leads Virginia Foxx by about 335 votes and a recount has been requested. Not called, so the seat is left with its current holder."
+    }
+  ]
+}

@@ -48,7 +48,9 @@ The news search needs the remote AI binding, which plain `pnpm dev` leaves off. 
 
 `seed/data/us-states-era.json` holds each state's action on the Equal Rights Amendment, transcribed from the National Archives' [list of state ratification actions](https://www.archives.gov/files/foia/pdf/era-list-of-state-ratification-actions-03-24-2020.pdf) of March 24, 2020. A state that ratified and later voted to rescind is recorded as mixed, with both acts on its record.
 
-`seed/data/us-congress-asks.json` holds the day the next Congress starts, the key offices with who holds them between which dates, and the asks put to those offices. It is written by hand, and an ask starts with nothing on its record. The roster of members-elect is not in it yet, so the next-term view shows today's members in their seats.
+`seed/data/us-congress-elect.json` holds the seats that change hands when the next Congress starts: who leaves each one and who was elected to it, taken from the winners marked on Wikipedia's pages for the 2026 House and Senate elections, which follow the Associated Press. Results are uncertified. Seats not yet decided are listed apart, with a note on each. Someone elected for the first time gets an id of our own, since a Bioguide id only exists once they are sworn in.
+
+`seed/data/us-congress-asks.json` holds the day the next Congress starts, the key offices with who holds them between which dates, and the asks put to those offices. It is written by hand, and an ask starts with nothing on its record.
 
 `seed/data/demo.json` is a fictional city council that shows challengers and every kind of footing, with a second fictional body that shares two of its members, a question put to both, and a role held at large. It is labelled as demo data wherever it appears.
 

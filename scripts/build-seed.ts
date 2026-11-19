@@ -9,6 +9,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 const read = (name: string) => JSON.parse(readFileSync(new URL(`../seed/data/${name}`, import.meta.url), 'utf8'))
 const congress = read('us-congress.json')
 const congressAsks = read('us-congress-asks.json')
+const congressElect = read('us-congress-elect.json')
 const era = read('us-states-era.json')
 const demo = read('demo.json')
 
@@ -100,30 +101,72 @@ insert('bodies', {
   slug: US,
   name: 'United States Congress',
   jurisdiction: 'United States',
-  description: `Members of the 119th Congress. Roster and cosponsor records as of ${congress.fetched_on}.`,
+  description: `Members of the 119th Congress, and those elected to the 120th. Roster and cosponsor records as of ${congress.fetched_on}; election results, uncertified, as of ${congressElect.as_of}.`,
   is_demo: false,
   sort: 0,
   next_term_on: congressAsks.next_term.on,
   next_term_label: congressAsks.next_term.label,
 })
 
+// Who gives up which seat when the next term starts: the holder of every seat
+// that changed hands, and of a seat going to a runoff its holder is not in.
+if (congressElect.term_starts_on !== congressAsks.next_term.on) throw new Error('the members-elect file and the asks file disagree on when the next term starts')
+const TERM = congressElect.term_starts_on
+const leaving = new Set<string>([
+  ...congressElect.seats.filter((s: any) => s.leaving).map((s: any) => `${s.seat} ${s.leaving}`),
+  ...congressElect.pending.filter((s: any) => s.holder_leaves).map((s: any) => `${s.seat} ${s.holder}`),
+])
+
+type CongressSeat = { chamber: string; state: string; district: number | null; senate_class?: number | null }
+const seatKey = (m: CongressSeat) => (m.chamber === 'House' ? `${m.state}-${m.district === 0 ? 'AL' : m.district}` : `${m.state}-sen-${m.senate_class}`)
+const NON_VOTING = new Set(['DC', 'PR', 'GU', 'VI', 'AS', 'MP'])
+function congressSeat(m: CongressSeat): string {
+  const house = m.chamber === 'House'
+  const id = `${US}:${seatKey(m)}`
+  insert('seats', {
+    id,
+    body_id: US,
+    chamber: m.chamber,
+    region: m.state,
+    label: house ? seatKey(m) : `${m.state} Senate`,
+    is_voting: !house || !NON_VOTING.has(m.state),
+    next_election_on: null,
+  })
+  return id
+}
+
 const members = new Map<string, any>()
 for (const m of congress.members) {
   members.set(m.bioguide, m)
   insert('deciders', { id: m.bioguide, slug: slugify(m.name), name: m.name, sort_name: m.sort_name, external_id: m.bioguide, url: m.url })
-  const house = m.chamber === 'House'
-  const district = m.district === 0 ? 'AL' : m.district
-  const seatId = house ? `${US}:${m.state}-${district}` : `${US}:${m.state}-sen-${m.senate_class}`
-  insert('seats', {
-    id: seatId,
-    body_id: US,
-    chamber: m.chamber,
-    region: m.state,
-    label: house ? `${m.state}-${district}` : `${m.state} Senate`,
-    is_voting: m.voting,
-    next_election_on: null,
+  const seatId = congressSeat(m)
+  insert('roles', {
+    id: `${seatId}:${m.bioguide}`,
+    seat_id: seatId,
+    decider_id: m.bioguide,
+    kind: 'incumbent',
+    contest: null,
+    affiliation: m.party,
+    starts_on: null,
+    ends_on: leaving.has(`${seatKey(m)} ${m.bioguide}`) ? TERM : null,
   })
-  insert('roles', { id: `${seatId}:${m.bioguide}`, seat_id: seatId, decider_id: m.bioguide, kind: 'incumbent', contest: null, affiliation: m.party })
+}
+
+// Those elected to a seat they do not hold now. Someone already in Congress
+// keeps their record and takes the new seat; anyone else is new here, under an
+// id that is not a Bioguide id, since they get one only when sworn in.
+for (const s of congressElect.seats) {
+  const seatId = congressSeat(s)
+  const w = s.winner
+  let deciderId = w.bioguide
+  if (deciderId) {
+    if (!members.has(deciderId)) throw new Error(`${s.seat} is won by ${deciderId}, who is not in the roster`)
+  } else {
+    const slug = slugify(w.name)
+    deciderId = `elect-${slug}`
+    insert('deciders', { id: deciderId, slug, name: w.name, sort_name: w.sort_name, external_id: null, url: null })
+  }
+  insert('roles', { id: `${seatId}:${deciderId}`, seat_id: seatId, decider_id: deciderId, kind: 'incumbent', contest: null, affiliation: w.party, starts_on: TERM, ends_on: null })
 }
 
 question({
