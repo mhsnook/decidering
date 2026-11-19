@@ -281,7 +281,7 @@ export async function archiveSources(env: Env, tracker: Archiver, now: Date = ne
       }
       if (status.kind !== 'found' && status.kind !== 'failed') continue
       report.requested--
-      report[await settle(env, tracker, source, status, new Date())]++
+      report[await settle(env, tracker, source, status, now)]++
     }
   }
   return report
