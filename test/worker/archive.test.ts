@@ -1,12 +1,13 @@
 import { createScheduledController } from 'cloudflare:test'
-import { env, exports } from 'cloudflare:workers'
+import { env } from 'cloudflare:workers'
 import { getServerByName } from 'partyserver'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ARCHIVE_CRON, archiveNow, archiveSources, MAX_ARCHIVE_SOURCES_PER_RUN } from '../../worker/archive.ts'
+import { NEWS_CRON } from '../../worker/news.ts'
 import worker from '../../worker/index.ts'
 import wranglerConfig from '../../wrangler.jsonc?raw'
 import type { Tracker } from '../../worker/tracker.ts'
-import { EDITOR_TOKEN, partySocket, rows, seed, until } from './helpers.ts'
+import { EDITOR_TOKEN, partySocket, post, rows, seed, until } from './helpers.ts'
 
 const NOW = new Date('2026-11-19T12:00:00Z')
 const HOUR = 3_600_000
@@ -253,8 +254,8 @@ describe('archiveSources', () => {
   it('keeps an address an editor already put on the source', async () => {
     await addSource('m')
     const room = await tracker()
-    expect(await room.setArchiveUrl('m', 'https://archive.ph/abc')).toBe(true)
-    expect(await room.setArchiveUrl('m', 'https://web.archive.org/web/1/x')).toBe(false)
+    expect(await room.setArchiveUrl('m', 'https://archive.ph/abc')).toBe('https://archive.ph/abc')
+    expect(await room.setArchiveUrl('m', 'https://web.archive.org/web/1/x')).toBe('https://archive.ph/abc')
     expect(await archiveUrl('m')).toBe('https://archive.ph/abc')
   })
 
@@ -318,12 +319,7 @@ describe('archiveNow', () => {
 })
 
 describe('POST /api/editor/archive', () => {
-  const call = (body: unknown, token?: string) =>
-    exports.default.fetch('http://sporelight.test/api/editor/archive', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify(body),
-    })
+  const call = (body: unknown, token?: string) => post('/api/editor/archive', body, undefined, token)
 
   it('is for editors only', async () => {
     expect((await call({ source_id: 'x' })).status).toBe(401)
@@ -343,10 +339,9 @@ describe('POST /api/editor/archive', () => {
 })
 
 describe('the scheduled run', () => {
-  it('has its own cron in wrangler.jsonc, beside the news search', () => {
+  it('runs on crons wrangler.jsonc schedules, one for each pass', () => {
     const crons = JSON.parse(`[${/"triggers":\s*\{\s*"crons":\s*\[([^\]]*)\]/.exec(wranglerConfig)?.[1] ?? ''}]`) as string[]
-    expect(crons).toContain(ARCHIVE_CRON)
-    expect(crons).toHaveLength(2)
+    expect(crons.toSorted()).toEqual([ARCHIVE_CRON, NEWS_CRON].toSorted())
   })
 
   const fire = (cron: string) => worker.scheduled(createScheduledController({ scheduledTime: NOW, cron }), env)
@@ -360,11 +355,21 @@ describe('the scheduled run', () => {
     expect(websearch).not.toHaveBeenCalled()
   })
 
+  it('runs neither pass on a cron it does not know', async () => {
+    await addSource('ab')
+    const websearch = vi.spyOn(env.AI, 'websearch')
+    const ia = archive()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    await fire('0 0 * * *')
+    expect(ia.calls).toEqual([])
+    expect(websearch).not.toHaveBeenCalled()
+  })
+
   it('does not archive on the news search cron', async () => {
     await addSource('u')
     vi.spyOn(env.AI, 'websearch').mockImplementation(async () => Response.json({ items: [] }))
     const ia = archive()
-    await fire('17 14 * * *')
+    await fire(NEWS_CRON)
     expect(ia.calls).toEqual([])
   })
 })

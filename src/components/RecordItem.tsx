@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { Act, Question, Source } from '../../shared/schema.ts'
+import { isWebAddress, type Act, type Question, type Source } from '../../shared/schema.ts'
 import { ArchiveControls } from './ArchiveControls.tsx'
 import type { RecordEntry } from '../lib/tracker.tsx'
 import { KIND_LABEL, POSITION_LABEL, STANDING_BG, formatDate, sourceLabel } from '../lib/position.ts'
@@ -62,7 +62,7 @@ export function ActWords({ kind, words }: { kind: Act['kind']; words: string }) 
 
 export function ArchivedCopy({ source }: { source: Pick<Source, 'archive_url'> }) {
   // Editors write this through the sync socket, which checks nothing about it.
-  if (!source.archive_url || !/^https?:\/\//.test(source.archive_url)) return null
+  if (!isWebAddress(source.archive_url)) return null
   return (
     <>
       {' '}

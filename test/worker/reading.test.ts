@@ -5,7 +5,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { fetchArticle, MAX_BYTES } from '../../worker/article.ts'
 import worker from '../../worker/index.ts'
 import type { SearchHit } from '../../worker/leads.ts'
-import { dryRunArticle, MAX_READS_PER_RUN, queueIsAttended, searchNews } from '../../worker/news.ts'
+import { dryRunArticle, MAX_READS_PER_RUN, NEWS_CRON, queueIsAttended, searchNews } from '../../worker/news.ts'
 import { MODEL } from '../../worker/reader.ts'
 import type { Tracker } from '../../worker/tracker.ts'
 import { rows, seed } from './helpers.ts'
@@ -349,7 +349,7 @@ describe('queueIsAttended', () => {
 })
 
 describe('the scheduled run', () => {
-  const fire = () => worker.scheduled(createScheduledController({ scheduledTime: NOW, cron: '17 14 * * *' }), env)
+  const fire = () => worker.scheduled(createScheduledController({ scheduledTime: NOW, cron: NEWS_CRON }), env)
 
   it('does not search while the queue is unattended', async () => {
     await resetQueue()

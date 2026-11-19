@@ -122,12 +122,13 @@ export class Tracker extends PartyDbServer<Env> {
   }
 
   // Goes through the sync log so open browsers show the archived copy. An
-  // address already on the source, such as one an editor pasted, is kept.
-  async setArchiveUrl(sourceId: string, archiveUrl: string): Promise<boolean> {
+  // address already on the source, such as one an editor pasted, is kept and
+  // returned instead.
+  async setArchiveUrl(sourceId: string, archiveUrl: string): Promise<string | null> {
     const row = await this.env.DB.prepare(`SELECT archive_url FROM sources WHERE id = ?`).bind(sourceId).first<{ archive_url: string | null }>()
-    if (!row || row.archive_url) return false
+    if (!row || row.archive_url) return row?.archive_url ?? null
     await this.commit([{ channel: 'sources', ops: [{ type: 'update', value: { id: sourceId, archive_url: archiveUrl } }] }])
-    return true
+    return archiveUrl
   }
 
   async comment(input: CommentInput): Promise<{ ok: true } | { ok: false; status: number; error: string }> {

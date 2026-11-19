@@ -37,10 +37,10 @@ export async function seed() {
 let ip = 0
 // The Worker limits each address to a few posts a minute, so every call comes
 // from a new one unless the test names it.
-export function post(path: string, body: unknown, from = `10.0.${Math.floor(++ip / 250)}.${ip % 250}`) {
+export function post(path: string, body: unknown, from = `10.0.${Math.floor(++ip / 250)}.${ip % 250}`, token?: string) {
   return exports.default.fetch(`http://sporelight.test${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'cf-connecting-ip': from },
+    headers: { 'content-type': 'application/json', 'cf-connecting-ip': from, ...(token ? { authorization: `Bearer ${token}` } : {}) },
     body: typeof body === 'string' ? body : JSON.stringify(body),
   })
 }

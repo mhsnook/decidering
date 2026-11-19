@@ -3,7 +3,7 @@ import { ARCHIVE_CRON, archiveNow, archiveSources } from './archive.ts'
 import { commentInputSchema, proposalInputSchema } from '../shared/schema.ts'
 import { isEditorRequest } from './editor.ts'
 import { atomResponse } from './feed.ts'
-import { dryRunArticle, queueIsAttended, searchNews } from './news.ts'
+import { dryRunArticle, NEWS_CRON, queueIsAttended, searchNews } from './news.ts'
 import type { Tracker } from './tracker.ts'
 
 export { Tracker } from './tracker.ts'
@@ -89,6 +89,7 @@ export default {
   async scheduled(controller, env) {
     const now = new Date(controller.scheduledTime)
     if (controller.cron === ARCHIVE_CRON) return console.log('archiving', await archiveSources(env, await tracker(env), now))
+    if (controller.cron !== NEWS_CRON) return console.error(`no pass runs on the cron "${controller.cron}"`)
     if (!(await queueIsAttended(env.DB, now))) return console.log('news search skipped: earlier leads are waiting and none was reviewed in the last day')
     console.log('news search', await searchNews(env, await tracker(env), now))
   },

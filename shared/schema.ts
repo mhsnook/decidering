@@ -273,6 +273,19 @@ export const proposalNoteSchema = z.object({
 })
 export type ProposalNote = z.infer<typeof proposalNoteSchema>
 
+// What the archiving pass records about a source in archive_attempts.
+export type ArchiveOutcome = 'archived' | 'requested' | 'failed' | 'no_key' | 'gave_up'
+
+// The answer to an editor's POST /api/editor/archive.
+export type ArchiveNow =
+  | { outcome: 'archived'; archive_url: string }
+  | { outcome: Exclude<ArchiveOutcome, 'archived'> | 'no_url'; detail: string | null }
+  | { error: string; status: number }
+
+// A link we will put in an href.
+export const webAddressSchema = z.url({ protocol: /^https?$/ }).max(2000)
+export const isWebAddress = (value: string | null): value is string => value !== null && webAddressSchema.safeParse(value).success
+
 // What the public form may send: one act by one person, read on one question.
 export const proposalInputSchema = z.object({
   question_id: z.string().min(1),
@@ -280,7 +293,7 @@ export const proposalInputSchema = z.object({
   kind: actKindSchema,
   reading: positionSchema,
   quote: z.string().trim().min(10).max(2000),
-  source_url: z.url({ protocol: /^https?$/ }).max(2000),
+  source_url: webAddressSchema,
   source_title: z.string().trim().max(300).nullable(),
   occurred_on: z.iso.date().nullable(),
   submitter_note: z.string().trim().max(1000).nullable(),

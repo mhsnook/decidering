@@ -1,42 +1,45 @@
 import { useId, useRef, useState } from 'react'
-import type { Source } from '../../shared/schema.ts'
+import { isWebAddress, type ArchiveNow, type Source } from '../../shared/schema.ts'
+import { db } from '../lib/db.ts'
 import { editorFetch } from '../lib/editor.ts'
-import { commit } from '../lib/review.ts'
 
-type Answer = { outcome: string; archive_url?: string; detail?: string | null } | { error: string }
+const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
 // Editors only: ask for a Wayback Machine capture of a source now, or give the
 // address of a copy kept anywhere else.
 export function ArchiveControls({ source }: { source: Pick<Source, 'id' | 'url' | 'archive_url'> }) {
   const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
+  const [note, setNote] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const input = useRef<HTMLInputElement>(null)
   const id = useId()
+  const show = (n: string | null, e: string | null = null) => {
+    setNote(n)
+    setError(e)
+  }
 
   async function archiveNow() {
     setBusy(true)
-    setMessage(null)
+    show(null)
     try {
       const res = await editorFetch('/api/editor/archive', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ source_id: source.id }) })
-      const answer = (await res.json().catch(() => ({ error: `The Worker answered ${res.status}.` }))) as Answer
-      setMessage('error' in answer ? `Not archived: ${answer.error}` : answer.outcome === 'archived' ? 'Archived.' : (answer.detail ?? answer.outcome))
+      const answer = (await res.json().catch(() => ({ error: `The Worker answered ${res.status}.`, status: res.status }))) as ArchiveNow
+      if ('error' in answer) show(null, `Not archived: ${answer.error}`)
+      else show(answer.outcome === 'archived' ? 'Archived.' : (answer.detail ?? answer.outcome))
     } catch (err) {
-      setMessage(`Not archived: ${String(err)}`)
+      show(null, `Not archived: ${errorText(err)}`)
     } finally {
       setBusy(false)
     }
   }
 
   function save() {
-    const value = (input.current?.value ?? '').trim()
-    if (value && !/^https?:\/\/\S+$/.test(value)) {
-      setMessage('An archive address starts with http:// or https://.')
-      return
-    }
-    setMessage(null)
-    commit([{ on: 'sources', type: 'update', id: source.id, changes: { archive_url: value || null } }]).then(
-      () => setMessage(value ? 'Saved.' : 'Removed.'),
-      (err: unknown) => setMessage(`Not saved: ${err instanceof Error ? err.message : String(err)}`),
+    const value = (input.current?.value ?? '').trim() || null
+    if (value !== null && !isWebAddress(value)) return show(null, 'An archive address is a full http:// or https:// link.')
+    show(null)
+    db.sources.update(source.id, (s) => void (s.archive_url = value)).isPersisted.promise.then(
+      () => show(value ? 'Saved.' : 'Removed.'),
+      (err: unknown) => show(null, `Not saved: ${errorText(err)}`),
     )
   }
 
@@ -71,7 +74,8 @@ export function ArchiveControls({ source }: { source: Pick<Source, 'id' | 'url' 
           </button>
         </span>
       </details>
-      {message && <span role="status">{message}</span>}
+      {note && <span role="status">{note}</span>}
+      {error && <span role="status" className="text-oppose">{error}</span>}
     </div>
   )
 }
