@@ -141,6 +141,32 @@ describe('0006_shared_questions_and_roles_at_large', () => {
   })
 })
 
+describe('0009_one_kind_of_claim', () => {
+  const db = database('0009')
+  db.exec(`
+    INSERT INTO bodies (id, slug, name, next_term_on) VALUES ('council', 'council', 'Council', NULL), ('house', 'house', 'House', '2027-01-03');
+    INSERT INTO deciders (id, slug, name, sort_name) VALUES ('inc', 'inc', 'Inc', 'Inc'), ('cha', 'cha', 'Cha', 'Cha'), ('pri', 'pri', 'Pri', 'Pri');
+    INSERT INTO seats (id, body_id, label, next_election_on) VALUES ('ward', 'council', 'Ward', '2027-05-04'), ('district', 'house', 'District', NULL);
+    INSERT INTO roles (id, seat_id, decider_id, kind, contest, affiliation) VALUES
+      ('r1', 'ward', 'inc', 'incumbent', NULL, 'A'), ('r2', 'ward', 'cha', 'challenger', 'general', 'B'), ('r3', 'district', 'pri', 'challenger', 'primary', 'A');
+  `)
+  db.exec(migration('0009_one_kind_of_claim.sql'))
+
+  it('turns a challenger into a possible holder from the next election or term, and leaves a holder alone', () => {
+    expect(all(db, `SELECT id, contest, starts_on, ends_on, certainty, affiliation FROM roles ORDER BY id`)).toEqual([
+      { id: 'r1', contest: null, starts_on: null, ends_on: null, certainty: 'certain', affiliation: 'A' },
+      { id: 'r2', contest: 'general', starts_on: '2027-05-04', ends_on: null, certainty: 'possible', affiliation: 'B' },
+      { id: 'r3', contest: 'primary', starts_on: '2027-01-03', ends_on: null, certainty: 'possible', affiliation: 'A' },
+    ])
+    expect(all(db, `SELECT name FROM pragma_table_info('roles') WHERE name IN ('kind', 'depends_on')`)).toEqual([])
+  })
+
+  it('accepts the stages after election day as contests', () => {
+    db.exec(`INSERT INTO roles (id, seat_id, decider_id, contest, certainty) VALUES ('r4', 'ward', 'pri', 'recount', 'likely')`)
+    expect(() => db.exec(`INSERT INTO roles (id, seat_id, decider_id, contest) VALUES ('r5', 'ward', 'pri', 'coin toss')`)).toThrow(/CHECK/)
+  })
+})
+
 describe('the seed', () => {
   let seed = ''
   beforeAll(() => {
@@ -206,7 +232,7 @@ describe('the seed', () => {
     // hold it are left out, as on the pages.
     const holders = (db: DatabaseSync, day: string, where = '1', certainty = `r.certainty <> 'possible'`) =>
       all(db, `SELECT s.id AS seat, s.chamber, r.affiliation, r.certainty, d.name FROM roles r JOIN seats s ON s.id = r.seat_id JOIN deciders d ON d.id = r.decider_id
-        WHERE s.body_id = 'us-congress' AND r.kind = 'incumbent' AND (r.starts_on IS NULL OR r.starts_on <= '${day}') AND (r.ends_on IS NULL OR '${day}' < r.ends_on) AND ${certainty} AND ${where}`)
+        WHERE s.body_id = 'us-congress' AND (r.starts_on IS NULL OR r.starts_on <= '${day}') AND (r.ends_on IS NULL OR '${day}' < r.ends_on) AND ${certainty} AND ${where}`)
     const tally = (rows: Record<string, any>[]) => rows.reduce<Record<string, number>>((n, r) => ((n[r.affiliation] = (n[r.affiliation] ?? 0) + 1), n), {})
 
     it('never puts two people in one seat, before or after the term starts', () => {
@@ -264,6 +290,7 @@ describe('the seed', () => {
         ['Brad Finstad', 'possible'],
         ['Jake Johnson', 'likely'],
       ])
+      expect(all(db, `SELECT DISTINCT contest FROM roles WHERE seat_id = 'us-congress:MN-1' AND starts_on IS NOT NULL`)).toEqual([{ contest: 'recount' }])
     })
 
     it('leaves a seat going to a runoff with nobody holding it, and both candidates possible', () => {

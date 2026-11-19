@@ -7,7 +7,7 @@
       "https://en.wikipedia.org/wiki/2026_United_States_House_of_Representatives_elections",
       "https://en.wikipedia.org/wiki/2026_United_States_Senate_elections"
     ],
-    "note": "The winner marked for each seat, which those pages take from the Associated Press. Results are uncertified. Only seats whose holder changes are listed. A seat under `pending` is not decided: `likely` is who is ahead where one side is, and `possible` is everyone else who may yet hold it, with \"holder\" standing for the current holder."
+    "note": "The winner marked for each seat, which those pages take from the Associated Press. Results are uncertified. Only seats whose holder changes are listed. A seat under `pending` is not decided: `likely` is who is ahead where one side is, and `possible` is everyone else who may yet hold it, with \"holder\" standing for the current holder. `contest` is what the seat still depends on."
   },
   "seats": [
     {
@@ -1884,7 +1884,8 @@
           "party": "Republican"
         }
       ],
-      "note": "Runoff on December 12, 2026 between Pat Moore and Gabe Firment. The current holder was elected to the Senate."
+      "note": "Runoff on December 12, 2026 between Pat Moore and Gabe Firment. The current holder was elected to the Senate.",
+      "contest": "runoff"
     },
     {
       "seat": "LA-6",
@@ -1906,7 +1907,8 @@
           "party": "Republican"
         }
       ],
-      "note": "Runoff on December 12, 2026 between Chauna Banks and Blake Miguez. The current holder did not run again."
+      "note": "Runoff on December 12, 2026 between Chauna Banks and Blake Miguez. The current holder did not run again.",
+      "contest": "runoff"
     },
     {
       "seat": "MN-1",
@@ -1923,7 +1925,8 @@
       "possible": [
         "holder"
       ],
-      "note": "Not called. Jake Johnson leads Brad Finstad by about 320 votes and a recount is expected."
+      "note": "Not called. Jake Johnson leads Brad Finstad by about 320 votes and a recount is expected.",
+      "contest": "recount"
     },
     {
       "seat": "NC-5",
@@ -1940,7 +1943,8 @@
       "possible": [
         "holder"
       ],
-      "note": "Not called. Chuck Hubbard leads Virginia Foxx by about 335 votes in the state's final tally and a recount has been requested."
+      "note": "Not called. Chuck Hubbard leads Virginia Foxx by about 335 votes in the state's final tally and a recount has been requested.",
+      "contest": "recount"
     }
   ]
 }
