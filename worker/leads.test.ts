@@ -69,4 +69,8 @@ describe('alreadyProposed', () => {
   it('keeps a rejected search hit rejected, however the next search excerpts it', () => {
     expect(alreadyProposed(earlier('rejected'), item, 'news_search')).toBe(true)
   })
+
+  it('keeps a rejected item rejected when a model reads the same article again', () => {
+    expect(alreadyProposed(earlier('rejected'), item, 'model')).toBe(true)
+  })
 })

@@ -37,32 +37,48 @@ export function rosterMatcher(roster: RosterEntry[]): (text: string) => string[]
 
 const MAX_PEOPLE_PER_HIT = 3
 
-// A hit that names more people than this is a roundup, which is no one's statement.
-// One hit is one proposal, with an item for each person it names.
-export function leadFromHit(hit: SearchHit, questionId: string, query: string, match: (text: string) => string[]): ProposalDraft | null {
-  if (!/^https?:\/\//.test(hit.url)) return null
-  const quote = (hit.description ?? hit.title).trim().slice(0, 2000)
-  if (quote.length < 10) return null
+// The roster members a hit names, or nothing if it is not worth a lead. A hit
+// that names more people than MAX_PEOPLE_PER_HIT is a roundup, which is no
+// one's statement.
+export function peopleInHit(hit: SearchHit, match: (text: string) => string[]): string[] {
+  if (!/^https?:\/\//.test(hit.url)) return []
+  if ((hit.description ?? hit.title).trim().length < 10) return []
   const people = match(`${hit.title}\n${hit.description ?? ''}`)
-  if (people.length === 0 || people.length > MAX_PEOPLE_PER_HIT) return null
+  return people.length > MAX_PEOPLE_PER_HIT ? [] : people
+}
+
+export const hitDate = (hit: SearchHit): string | null => {
   const date = hit.lastModifiedDate?.slice(0, 10)
-  const occurred_on = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null
+  return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null
+}
+
+// One hit is one proposal, with an item for each person it names. `why` is
+// added to the note, for a lead queued because the article could not be read.
+export function leadFromHit(hit: SearchHit, questionId: string, query: string, match: (text: string) => string[], why?: string): ProposalDraft | null {
+  const people = peopleInHit(hit, match)
+  if (people.length === 0) return null
+  const quote = (hit.description ?? hit.title).trim().slice(0, 2000)
+  const occurred_on = hitDate(hit)
   return {
     source: { url: hit.url, title: hit.title.slice(0, 300) || null },
-    note: `Search excerpt, not a verified quote. Found by searching: ${query}`,
+    note: `Search excerpt, not a verified quote. Found by searching: ${query}${why ? `\n${why}` : ''}`,
     items: people.map((decider_id) => ({ question_id: questionId, decider_id, kind: 'says', occurred_on, quote, reading: null })),
   }
 }
 
+// Leads nobody typed in. One an editor turned down stays turned down.
+export const isAutomated = (origin: Proposal['origin']) => origin === 'news_search' || origin === 'model'
+
 type Proposed = Pick<ProposalItem, 'question_id' | 'decider_id' | 'status' | 'quote'>
 
 // Whether an item already proposed from the same source stands in the way of a
-// new one for the same person and question. A search hit is the same lead
-// however it is excerpted, so anything earlier blocks it, rejected or not. A
+// new one for the same person and question. A search hit or a model's reading
+// is the same lead however it is worded, so anything earlier blocks it,
+// rejected or not. A
 // person can bring a better quote than one that was turned down: theirs is
 // blocked only by an item still waiting or published, or by the same words.
 export function alreadyProposed(earlier: Proposed[], item: Pick<Proposed, 'question_id' | 'decider_id' | 'quote'>, origin: Proposal['origin']): boolean {
   return earlier.some(
-    (e) => e.question_id === item.question_id && e.decider_id === item.decider_id && (origin === 'news_search' || e.status !== 'rejected' || e.quote === item.quote),
+    (e) => e.question_id === item.question_id && e.decider_id === item.decider_id && (isAutomated(origin) || e.status !== 'rejected' || e.quote === item.quote),
   )
 }

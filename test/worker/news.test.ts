@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers'
 import { getServerByName } from 'partyserver'
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SearchHit } from '../../worker/leads.ts'
 import { searchNews } from '../../worker/news.ts'
 import type { Tracker } from '../../worker/tracker.ts'
@@ -35,6 +35,15 @@ const leads = () =>
 
 beforeAll(seed)
 
+// Every article refuses the fetch, so each hit falls back to a lead built from
+// the search excerpt. Reading articles is tested in reading.test.ts.
+beforeEach(() => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('no', { status: 403 }))
+})
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
 describe('searchNews', () => {
   it('searches only open, in-the-news, non-demo questions and queues hits naming the roster', async () => {
     const { env, websearch } = stubbedEnv()
@@ -47,7 +56,7 @@ describe('searchNews', () => {
     expect(queries.filter((q) => q.includes('"Closing Topic" Congress'))).toHaveLength(4)
     expect(queries).toHaveLength(8)
     expect(queries[0]).toBe('"Hot Topic" Congress statement November 2026')
-    expect(websearch.mock.calls[0][0]).toMatchObject({ gatewayId: 'default', provider: 'exa', limit: 10 })
+    expect(websearch.mock.calls[0][0]).toMatchObject({ gatewayId: 'sporelight', provider: 'exa', limit: 10 })
 
     // The hot question is put to the Senate as well, so Bob is on its roster. The
     // closing question is put to Congress alone, so only Ann is.
@@ -61,9 +70,10 @@ describe('searchNews', () => {
     ])
     expect(report).toEqual({
       questions: [
-        { question: 'Hot Topic', hits: 24, queued: 4 },
-        { question: 'Closing Topic', hits: 24, queued: 2 },
+        { question: 'Hot Topic', hits: 24, read: 3, queued: 4 },
+        { question: 'Closing Topic', hits: 24, read: 2, queued: 2 },
       ],
+      deferred: 0,
     })
   })
 
@@ -72,8 +82,8 @@ describe('searchNews', () => {
       `SELECT n.body, s.url FROM proposal_notes n JOIN proposals p ON p.id = n.proposal_id JOIN sources s ON s.id = p.source_id WHERE s.url = 'https://news.example/ann' ORDER BY n.body`,
     )
     expect(notes.map((n) => n.body)).toEqual([
-      'Search excerpt, not a verified quote. Found by searching: "Closing Topic" Congress statement November 2026',
-      'Search excerpt, not a verified quote. Found by searching: "Hot Topic" Congress statement November 2026',
+      'Search excerpt, not a verified quote. Found by searching: "Closing Topic" Congress statement November 2026\nThe article was not read: The site answered 403.',
+      'Search excerpt, not a verified quote. Found by searching: "Hot Topic" Congress statement November 2026\nThe article was not read: The site answered 403.',
     ])
   })
 
@@ -88,7 +98,7 @@ describe('searchNews', () => {
     const { env, websearch } = stubbedEnv(() => new Response('gateway says no', { status: 502 }))
     const report = await searchNews(env, await tracker(), NOW)
     expect(websearch).toHaveBeenCalledTimes(1)
-    expect(report).toEqual({ error: 'Web search failed (502: gateway says no)', questions: [{ question: 'Hot Topic', hits: 0, queued: 0 }] })
+    expect(report).toEqual({ error: 'Web search failed (502: gateway says no)', questions: [{ question: 'Hot Topic', hits: 0, read: 0, queued: 0 }], deferred: 0 })
   })
 
   it('stops and reports a search that throws', async () => {

@@ -1,7 +1,7 @@
 import { getServerByName, routePartykitRequest } from 'partyserver'
 import { commentInputSchema, proposalInputSchema } from '../shared/schema.ts'
 import { isEditorRequest } from './editor.ts'
-import { searchNews } from './news.ts'
+import { dryRunArticle, searchNews } from './news.ts'
 import type { Tracker } from './tracker.ts'
 
 export { Tracker } from './tracker.ts'
@@ -62,10 +62,19 @@ export default {
       if (!(await isEditorRequest(req, env))) return new Response('unauthorized', { status: 401 })
       return Response.json(await searchNews(env, await tracker(env)))
     }
+    if (url.pathname === '/api/editor/read-article' && req.method === 'POST') {
+      if (!(await isEditorRequest(req, env))) return new Response('unauthorized', { status: 401 })
+      const body = (await req.json().catch(() => null)) as { url?: unknown; question_id?: unknown } | null
+      const target = typeof body?.url === 'string' && /^https?:\/\//.test(body.url) ? body.url : null
+      if (!target || typeof body?.question_id !== 'string') return Response.json({ error: 'Expected a url and a question_id.' }, { status: 400 })
+      return Response.json(await dryRunArticle(env, target, body.question_id))
+    }
     return (await routePartykitRequest(req, env)) ?? new Response('not found', { status: 404 })
   },
 
-  async scheduled(_controller, env, ctx) {
-    ctx.waitUntil(searchNews(env, await tracker(env)).then((report) => console.log('news search', report)))
+  // Awaited, not left to waitUntil: a run reads articles for minutes, and
+  // waitUntil only promises a short time after the handler returns.
+  async scheduled(_controller, env) {
+    console.log('news search', await searchNews(env, await tracker(env)))
   },
 } satisfies ExportedHandler<Env>

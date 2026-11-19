@@ -22,6 +22,16 @@ describe.each([
     const res = await call(path, method, EDITOR_TOKEN)
     expect(res.status).toBe(200)
     // This file seeds no questions, so the news search runs without searching.
-    expect(await res.json()).toEqual(path.endsWith('session') ? { ok: true } : { questions: [] })
+    expect(await res.json()).toEqual(path.endsWith('session') ? { ok: true } : { questions: [], deferred: 0 })
+  })
+})
+
+describe('/api/editor/read-article', () => {
+  it('is refused without a token', async () => {
+    expect((await call('/api/editor/read-article', 'POST')).status).toBe(401)
+  })
+
+  it('needs a web address and a question', async () => {
+    expect((await call('/api/editor/read-article', 'POST', EDITOR_TOKEN)).status).toBe(400)
   })
 })
