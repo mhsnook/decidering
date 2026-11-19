@@ -4,7 +4,7 @@ import type { Bearing, Position, Proposal, Question, Source } from '../../shared
 import type { Story, StoryItem, WaitingStory } from '../lib/feed.ts'
 import { KIND_LABEL, SPECTRUM, STANDING_COLOR, formatDate, hostOf, sourceLabel, standingLabel } from '../lib/position.ts'
 import { Token } from './bits.tsx'
-import { ActWords, IndirectTag } from './RecordItem.tsx'
+import { ActWords, ArchivedCopy, IndirectTag } from './RecordItem.tsx'
 
 // Replies shown before a reader opens the rest of a story.
 const FOLDED = 3
@@ -111,6 +111,7 @@ export function StoryCard({ story }: { story: Story }) {
             {story.isDemo && ' · demo data'}
           </p>
           <SourceLink source={story.source} />
+          <ArchivedCopy source={story.source} />
         </div>
         {people > 1 && <Dots positions={story.items.map((i) => i.readings[0].reading.position)} />}
       </header>
@@ -216,6 +217,7 @@ export function WaitingStoryCard({ story }: { story: WaitingStory }) {
                   Read the source ↗
                 </a>
               )}
+              {story.source && <ArchivedCopy source={story.source} />}
               {story.items.map(({ key, decider, claims }) => (
                 <PersonLink key={key} slug={claims[0].question.slug} decider={decider} hash="discussion" className="link">
                   Discuss {decider.name}

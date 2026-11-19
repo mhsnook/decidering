@@ -13,6 +13,7 @@ The first data set is the United States Congress and Medicare for All. Nothing i
 - **Roles held at large.** An office with no body is a role someone holds in their own right, such as leading an outside organisation. It shows with them in every body they sit in, can link to the source that says they hold it, and can have asks put to it like any other office.
 - **Questions put to several bodies.** A question is listed under one body and can be put to others as well. Its page is looked at through one body at a time, with that body's seats and chart. Positions and records belong to the person, so someone who sits in two of the bodies has one answer in both.
 - **Sources, acts, reports and readings.** A source is an article, press release, official record, transcript or post, one row per URL. An act is one thing a person did or said. A report is a mention of an act in a source, so a statement covered by five articles is one act with five reports. A reading is what an act signals on one question, and one act can read differently on two questions.
+- **Archived copies.** Every source that backs something on the record gets a copy in the Wayback Machine where one can be had, linked as "archived" beside the source wherever it is shown. A scheduled pass finds or asks for the copies (see [Archiving sources](#archiving-sources)), and an editor can ask for one or give the address of a copy kept elsewhere.
 - **Says, commits, does.** An act is one of three kinds, by how much it binds the person. Saying is words in any medium. Committing is formal, public and revocable: cosponsoring, signing a letter, taking a pledge. Doing is using the office itself: voting, scheduling, ratifying. A commitment can be withdrawn on a date. Words and uses of office cannot be taken back, only answered by a later act.
 - **Direct and indirect.** A reading also says how the act bears on the question. A vote on the bill itself is direct. A vote on something else that tells you about the question is indirect: it shows on the record as a signal, and does not put the person on the record there. This is how someone who says one thing and does another has both on their page.
 - **What counts toward the parent.** A reading on a measure or an ask says nothing about the parent question unless the sub-question says what doing it means there (`implies_on_parent`). Cosponsoring a bill is marked as support, so a supporting reading there is also written on the parent. A letter against a policy would be marked as opposition.
@@ -104,6 +105,7 @@ wrangler d1 create sporelight          # put the id in wrangler.jsonc
 wrangler d1 migrations apply DB --remote
 pnpm seed:build && wrangler d1 execute DB --remote --file seed/out/seed.sql
 wrangler secret put EDITOR_TOKEN
+wrangler secret put ARCHIVE_ORG_KEY   # optional; see Archiving sources
 ```
 
 Then connect the repo in the Cloudflare dashboard and push to `main`. Secrets persist across deploys.
@@ -162,3 +164,42 @@ A model call sends up to about 15,000 tokens of article and gets back a few hund
 ### Trying the reader on one page
 
 An editor can run the reader on one URL without queueing anything: open "Try the article reader on one page" at the top of `/editor`, paste a URL and pick a question. It fetches the page, reads it for everyone on that question's roster the page names (up to eight), and shows what would be queued, what was left out and why, or why the page could not be read. The same is available as `POST /api/editor/read-article` with `{ "url": "...", "question_id": "..." }` and the editor token. On a Preview this calls the real model and bills the account.
+
+## Archiving sources
+
+Web pages move and disappear, so each published source (one with at least one report) that has a URL gets a copy in the Internet Archive's Wayback Machine, and its address is stored in `sources.archive_url`. It shows as an "archived" link after the source on a person's page, in `/latest`, in the Atom feed (once its five-minute cache runs out), and in the editor's review form.
+
+### The scheduled pass
+
+Every six hours (`47 */6 * * *`, a cron of its own, apart from the news search's) the Worker takes the five oldest published sources with a URL and no archived copy that are due (`MAX_ARCHIVE_SOURCES_PER_RUN` in `worker/archive.ts`). For each one it:
+
+1. asks the [availability API](https://archive.org/help/wayback_api.php) for the capture closest to when we recorded the source, and stores it unless it was taken more than 30 days before then (an older capture may predate what the source says) or is a capture of a redirect (which may show wherever the page was sent);
+2. otherwise, if the Worker has an archive.org key, asks [Save Page Now 2](https://docs.google.com/document/d/1Nsv52MvSjbLb2PCpHlat0gkzw0EvtSgpKHu4mk0MnrA) for a new capture and records the job.
+
+The pass then waits 90 seconds and asks Save Page Now once how each of its jobs went. A finished capture is stored. A job still running is left for the next run, which asks Save Page Now about the job first, then looks the page up near the time the capture was asked for. The stored address is written through the Tracker room's `commit`, like a proposal, so every open browser gets it through the sync log. The pass runs whether or not the news search is skipping its runs, since it waits on no editor.
+
+The table `archive_attempts` keeps one row per source the pass has worked on: the outcome, the time, failures in a row, when it is next due, and the Save Page Now job and error. It is a plain table and is not synced to browsers. A failed capture is tried again after 12 hours, then 24, 48, 96 and 192; after six failures in a row the pass stops trying. A page the archive says it cannot capture (not found, access denied, blocked, a login wall, an address that does not resolve) is given up on at once. A source that has no URL is never picked up, and an address already on a source, such as one an editor gave, is never replaced. A copy an editor removes is not looked for again by the pass, since it would find the same one; "Archive now" still works for that source.
+
+If the availability API cannot be reached or answers 429 or a server error, or Save Page Now answers 429, refuses the key or says the account is at its limit, the run stops archiving and nothing is counted against the source it was on. Requests to the archive are spaced three seconds apart, since the availability API answered 429 to a few requests a second apart.
+
+### Requests per run
+
+Each source costs at most three outside requests: a lookup, a capture request and a status check. A run therefore makes at most 15, well under the Workers Free limit of 50, and since it has its own cron it never shares a run with the news search's article fetches. At five sources a run and four runs a day, a backlog of published sources clears at about 20 a day. The cap is kept low for Save Page Now, which allows 7 captures a minute and 30,000 a day per account, and 5 captures of one URL a day; with requests three seconds apart, five sources a run stays under the per-minute limit.
+
+### What the owner has to set up
+
+Without a key the pass only looks for captures that already exist; a source with none is marked `no_key` and looked at again a week later, or on the first run after a key is set. To have the pass ask for captures, create an archive.org account, get an S3 key pair at <https://archive.org/account/s3.php>, and store it as one secret in the form `accesskey:secret`:
+
+```sh
+wrangler secret put ARCHIVE_ORG_KEY
+```
+
+Previews take the secret with `wrangler preview base-config secret put ARCHIVE_ORG_KEY`, though Cron Triggers never fire there, so on a Preview only an editor's request archives anything. Locally it goes in `.dev.vars`.
+
+### By hand
+
+Under each source on a person's page and in the review form an editor sees "Archive now", which runs the same steps for that source at once, ignoring any back-off, and waits about half a minute for the capture before leaving it to the scheduled pass. The same is `POST /api/editor/archive` with `{ "source_id": "..." }` and the editor token. An editor can also give the address of a copy kept anywhere, such as archive.today, which is saved on the source like any other edit.
+
+### Documents with no public address
+
+A press release that arrived only by email has no URL for the Wayback Machine to fetch, so the pass leaves it alone; such a source shows with its title and no link. `sources.stored_copy` is reserved for the address of a copy we keep ourselves, which is not built yet.

@@ -12,6 +12,8 @@ const RESULTS_PER_QUERY = 10
 // rest too. Each read is one outside fetch (plus any redirects), one conversion and
 // one model call. On the Workers Free plan a run may make 50 outside requests.
 export const MAX_READS_PER_RUN = 15
+// Must match an entry in wrangler.jsonc.
+export const NEWS_CRON = '17 14 * * *'
 
 type HotQuestion = { id: string; short_title: string; body_id: string; body_name: string }
 

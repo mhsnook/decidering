@@ -7,3 +7,9 @@ interface Env extends TestBindings {}
 declare namespace Cloudflare {
   interface Env extends TestBindings {}
 }
+
+// Vite's ?raw import, for tests that read a config file.
+declare module '*?raw' {
+  const text: string
+  export default text
+}

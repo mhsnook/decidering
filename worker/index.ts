@@ -1,8 +1,9 @@
 import { getServerByName, routePartykitRequest } from 'partyserver'
+import { ARCHIVE_CRON, archiveNow, archiveSources } from './archive.ts'
 import { commentInputSchema, proposalInputSchema } from '../shared/schema.ts'
 import { isEditorRequest } from './editor.ts'
 import { atomResponse } from './feed.ts'
-import { dryRunArticle, queueIsAttended, searchNews } from './news.ts'
+import { dryRunArticle, NEWS_CRON, queueIsAttended, searchNews } from './news.ts'
 import type { Tracker } from './tracker.ts'
 
 export { Tracker } from './tracker.ts'
@@ -72,13 +73,23 @@ export default {
       const result = await dryRunArticle(env, target, body.question_id)
       return Response.json(result, { status: 'error' in result ? 404 : 200 })
     }
+    if (url.pathname === '/api/editor/archive' && req.method === 'POST') {
+      if (!(await isEditorRequest(req, env))) return new Response('unauthorized', { status: 401 })
+      const body = (await req.json().catch(() => null)) as { source_id?: unknown } | null
+      if (typeof body?.source_id !== 'string') return Response.json({ error: 'Expected a source_id.' }, { status: 400 })
+      const result = await archiveNow(env, await tracker(env), body.source_id)
+      return 'error' in result ? Response.json({ error: result.error }, { status: result.status }) : Response.json(result)
+    }
     return (await routePartykitRequest(req, env)) ?? new Response('not found', { status: 404 })
   },
 
-  // Awaited, not left to waitUntil: a run reads articles for minutes, and
-  // waitUntil only promises a short time after the handler returns.
+  // Awaited, not left to waitUntil: a run reads articles or waits on capture
+  // jobs for minutes, and waitUntil only promises a short time after the
+  // handler returns. Each cron in wrangler.jsonc runs one of the two passes.
   async scheduled(controller, env) {
     const now = new Date(controller.scheduledTime)
+    if (controller.cron === ARCHIVE_CRON) return console.log('archiving', await archiveSources(env, await tracker(env), now))
+    if (controller.cron !== NEWS_CRON) return console.error(`no pass runs on the cron "${controller.cron}"`)
     if (!(await queueIsAttended(env.DB, now))) return console.log('news search skipped: earlier leads are waiting and none was reviewed in the last day')
     console.log('news search', await searchNews(env, await tracker(env), now))
   },

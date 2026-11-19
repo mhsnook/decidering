@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react'
-import type { Act, Question } from '../../shared/schema.ts'
+import { isWebAddress, type Act, type Question, type Source } from '../../shared/schema.ts'
+import { ArchiveControls } from './ArchiveControls.tsx'
 import type { RecordEntry } from '../lib/tracker.tsx'
 import { KIND_LABEL, POSITION_LABEL, STANDING_BG, formatDate, sourceLabel } from '../lib/position.ts'
 
-export function RecordItem({ entry, question, children }: { entry: RecordEntry; question?: Question; children?: ReactNode }) {
+export function RecordItem({ entry, question, edit = false, children }: { entry: RecordEntry; question?: Question; edit?: boolean; children?: ReactNode }) {
   const { act, reading, via, reports, lapse } = entry
   return (
     <li className="rounded-xl border-2 border-ink bg-surface p-4">
@@ -33,6 +34,8 @@ export function RecordItem({ entry, question, children }: { entry: RecordEntry; 
             ) : (
               <span className="text-muted">{sourceLabel(source)}</span>
             )}
+            <ArchivedCopy source={source} />
+            {edit && <ArchiveControls source={source} />}
           </li>
         ))}
       </ul>
@@ -54,5 +57,18 @@ export function ActWords({ kind, words }: { kind: Act['kind']; words: string }) 
     <p>{words}</p>
   ) : (
     <blockquote className="border-l-2 border-accent pl-3 font-display text-lg leading-snug">“{words}”</blockquote>
+  )
+}
+
+export function ArchivedCopy({ source }: { source: Pick<Source, 'archive_url'> }) {
+  // Editors write this through the sync socket, which checks nothing about it.
+  if (!isWebAddress(source.archive_url)) return null
+  return (
+    <>
+      {' '}
+      <a href={source.archive_url} target="_blank" rel="noreferrer" className="text-xs text-muted underline decoration-dotted underline-offset-2 hover:text-ink">
+        archived
+      </a>
+    </>
   )
 }
