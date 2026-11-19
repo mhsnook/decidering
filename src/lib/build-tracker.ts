@@ -3,7 +3,7 @@ import { inEffect, isOpenOn, stanceId, type Certainty } from '../../shared/schem
 import { footingOf, type Footing } from '../../shared/standing.ts'
 import type { Standing } from './position.ts'
 
-function groupBy<T, K>(items: readonly T[], key: (item: T) => K): Map<K, T[]> {
+export function groupBy<T, K>(items: readonly T[], key: (item: T) => K): Map<K, T[]> {
   const out = new Map<K, T[]>()
   for (const item of items) {
     const k = key(item)
@@ -117,6 +117,8 @@ export function buildTracker(c: TrackerData, asOf: string) {
   const namedIn = groupBy(c.questionDeciders, (l) => l.question_id)
 
   const bodyById = indexBy(c.bodies, (b) => b.id)
+  const bodyBySlug = indexBy(c.bodies, (b) => b.slug)
+  const bodiesInOrder = [...c.bodies].sort((a, b) => Number(a.is_demo) - Number(b.is_demo) || a.sort - b.sort)
   const alsoPutTo = groupBy(c.questionBodies, (l) => l.question_id)
   // Every body a question is put to, the one it is listed under first.
   const bodyIdsOf = (question: Question): string[] => [question.body_id, ...(alsoPutTo.get(question.id) ?? []).map((l) => l.body_id).filter((id) => id !== question.body_id)]
@@ -138,15 +140,21 @@ export function buildTracker(c: TrackerData, asOf: string) {
     (q) => q.parent_id!,
   )
 
+  // Every source that reports an act, the record of the act itself first.
+  const reportsOf = (act: Act): { report: Report; source: Source }[] =>
+    (reportsByAct.get(act.id) ?? [])
+      .map((report) => ({ report, source: sourceById.get(report.source_id) }))
+      .filter((r): r is { report: Report; source: Source } => r.source !== undefined)
+      .sort((a, b) => Number(b.source.id === act.primary_source_id) - Number(a.source.id === act.primary_source_id) || a.report.created_at.localeCompare(b.report.created_at))
+
+  // Measures and asks alike: every question directly under this one.
+  const subQuestionsOf = (questionId: string): Question[] => [...(measuresOf.get(questionId) ?? []), ...(asksOf.get(questionId) ?? [])]
+
   const entriesByPair = new Map<string, RecordEntry[]>()
   for (const reading of c.readings) {
     const act = actById.get(reading.act_id)
     if (!act) continue
-    const reports = (reportsByAct.get(act.id) ?? [])
-      .map((report) => ({ report, source: sourceById.get(report.source_id) }))
-      .filter((r): r is { report: Report; source: Source } => r.source !== undefined)
-      // The record of the act itself before the sources that only report it.
-      .sort((a, b) => Number(b.source.id === act.primary_source_id) - Number(a.source.id === act.primary_source_id) || a.report.created_at.localeCompare(b.report.created_at))
+    const reports = reportsOf(act)
     const question = questionById.get(reading.question_id)
     const via = reading.via_question_id ? questionById.get(reading.via_question_id) : undefined
     // A closed question is read as it stood when it closed, so its page keeps
@@ -299,7 +307,10 @@ export function buildTracker(c: TrackerData, asOf: string) {
     tenuresOn,
     tenuresHeldBy,
     bodyById,
+    bodyBySlug,
+    bodiesInOrder,
     bodiesOf,
+    subQuestionsOf,
     appliesIn,
     questionsIn,
     measuresIn,

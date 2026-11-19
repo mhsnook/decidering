@@ -23,11 +23,16 @@ export function QuestionHeader({ question, deciderSlug }: { question: Question; 
       </p>
       <h1 className="h-section max-w-3xl">{question.title}</h1>
       {question.description && <p className="max-w-2xl text-muted">{question.description}</p>}
-      {question.reference_url && (
-        <a href={question.reference_url} target="_blank" rel="noreferrer" className="inline-block text-sm link">
-          Read the measure ↗
-        </a>
-      )}
+      <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+        {question.reference_url && (
+          <a href={question.reference_url} target="_blank" rel="noreferrer" className="link">
+            Read the measure ↗
+          </a>
+        )}
+        <Link to="/latest" search={{ question: question.slug }} className="link">
+          Latest on this question
+        </Link>
+      </p>
       {body && choices.length > 1 && <BodySwitch body={body} choices={choices} home={question.body_id} />}
       {body && <TermToggle body={body} />}
       {family.length > 1 && (

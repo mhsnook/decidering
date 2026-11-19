@@ -1,4 +1,5 @@
-import { useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useLocation } from '@tanstack/react-router'
 import { eq, useLiveQuery } from '@tanstack/react-db'
 import { stanceId, type Decider, type Question } from '../../shared/schema.ts'
 import { db } from '../lib/db.ts'
@@ -10,6 +11,12 @@ const timeFmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeSt
 
 export function Discussion({ question, decider }: { question: Question; decider: Decider }) {
   const threadId = stanceId(question.id, decider.id)
+  const hash = useLocation({ select: (l) => l.hash })
+  const section = useRef<HTMLElement>(null)
+  // The router scrolls to a hash before this page has synced and rendered the section.
+  useEffect(() => {
+    if (hash === 'discussion') section.current?.scrollIntoView()
+  }, [hash])
   // The `where` is the subscription: only this thread is loaded and listened to.
   const { data, isReady } = useLiveQuery(
     (q) =>
@@ -69,7 +76,7 @@ export function Discussion({ question, decider }: { question: Question; decider:
   }
 
   return (
-    <section>
+    <section id="discussion" ref={section} className="scroll-mt-6">
       <h2 className="mb-1 text-xl font-semibold">Discussion</h2>
       <p className="mb-4 text-sm text-muted">
         Talk about {decider.name} and this question. To add something to the record itself, use “Add to the record” so an editor can check it.

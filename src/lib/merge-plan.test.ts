@@ -37,11 +37,11 @@ describe('planMerge', () => {
     ])
   })
 
-  it('moves reports to the survivor, keeping one per source', () => {
+  it('moves reports to the survivor, keeping one per source and the words each source printed', () => {
     expect(after.reports.map((r) => [r.source_id, r.act_id, r.excerpt]).sort()).toEqual([
       ['paper', 'feb-11', 'As the paper put it.'],
-      ['release', 'feb-11', null],
-      ['wire', 'feb-11', null],
+      ['release', 'feb-11', 'feb-11-again'],
+      ['wire', 'feb-11', 'feb-11-again'],
     ])
   })
 

@@ -1,6 +1,7 @@
 import { getServerByName, routePartykitRequest } from 'partyserver'
 import { commentInputSchema, proposalInputSchema } from '../shared/schema.ts'
 import { isEditorRequest } from './editor.ts'
+import { atomResponse } from './feed.ts'
 import { dryRunArticle, queueIsAttended, searchNews } from './news.ts'
 import type { Tracker } from './tracker.ts'
 
@@ -51,8 +52,9 @@ async function handleProposal(req: Request, env: Env): Promise<Response> {
 }
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url)
+    if (url.pathname === '/feed.xml' && req.method === 'GET') return atomResponse(req, env, ctx)
     if (url.pathname === '/api/proposals' && req.method === 'POST') return handleProposal(req, env)
     if (url.pathname === '/api/comments' && req.method === 'POST') return handleComment(req, env)
     if (url.pathname === '/api/editor/session') {

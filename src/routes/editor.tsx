@@ -7,7 +7,7 @@ import { editorFetch, isEditor, signIn, signOut } from '../lib/editor.ts'
 import { commit } from '../lib/review.ts'
 import { planReview, type ItemVerdict } from '../lib/review-plan.ts'
 import { useTracker } from '../lib/tracker.tsx'
-import { KIND_CHOICE, KIND_LABEL, SIGNAL_LABEL, formatDate, hostOf, standingLabel } from '../lib/position.ts'
+import { KIND_CHOICE, KIND_LABEL, POSITION_LABEL, formatDate, hostOf, standingLabel } from '../lib/position.ts'
 import { Syncing, Token } from '../components/bits.tsx'
 import { RecordItem } from '../components/RecordItem.tsx'
 
@@ -481,7 +481,7 @@ function ItemFields({
           </div>
           {parent && question.implies_on_parent && (
             <p className="mt-2.5 text-[13px] text-faint sm:text-sm">
-              If this shows a yes here, it is also recorded as “{SIGNAL_LABEL[question.implies_on_parent]}” on “{parent.short_title}”.
+              If this shows a yes here, it is also recorded as “{POSITION_LABEL[question.implies_on_parent]}” on “{parent.short_title}”.
             </p>
           )}
         </div>
