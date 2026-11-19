@@ -1,4 +1,5 @@
 import { getServerByName, routePartykitRequest } from 'partyserver'
+import { archiveNow, archiveSources } from './archive.ts'
 import { commentInputSchema, proposalInputSchema } from '../shared/schema.ts'
 import { isEditorRequest } from './editor.ts'
 import { atomResponse } from './feed.ts'
@@ -72,14 +73,29 @@ export default {
       const result = await dryRunArticle(env, target, body.question_id)
       return Response.json(result, { status: 'error' in result ? 404 : 200 })
     }
+    if (url.pathname === '/api/editor/archive' && req.method === 'POST') {
+      if (!(await isEditorRequest(req, env))) return new Response('unauthorized', { status: 401 })
+      const body = (await req.json().catch(() => null)) as { source_id?: unknown } | null
+      if (typeof body?.source_id !== 'string') return Response.json({ error: 'Expected a source_id.' }, { status: 400 })
+      const result = await archiveNow(env, await tracker(env), body.source_id)
+      return Response.json(result, { status: 'error' in result ? 502 : 200 })
+    }
     return (await routePartykitRequest(req, env)) ?? new Response('not found', { status: 404 })
   },
 
   // Awaited, not left to waitUntil: a run reads articles for minutes, and
-  // waitUntil only promises a short time after the handler returns.
+  // waitUntil only promises a short time after the handler returns. The
+  // archiving pass runs beside the news search, and runs whether or not the
+  // search is skipped, since it does not wait on an editor.
   async scheduled(controller, env) {
     const now = new Date(controller.scheduledTime)
-    if (!(await queueIsAttended(env.DB, now))) return console.log('news search skipped: earlier leads are waiting and none was reviewed in the last day')
-    console.log('news search', await searchNews(env, await tracker(env), now))
+    const room = await tracker(env)
+    const news = async () => {
+      if (!(await queueIsAttended(env.DB, now))) return 'skipped: earlier leads are waiting and none was reviewed in the last day'
+      return searchNews(env, room, now)
+    }
+    const [searched, archived] = await Promise.allSettled([news(), archiveSources(env, room, now)])
+    console.log('news search', searched.status === 'fulfilled' ? searched.value : String(searched.reason))
+    console.log('archiving', archived.status === 'fulfilled' ? archived.value : String(archived.reason))
   },
 } satisfies ExportedHandler<Env>
