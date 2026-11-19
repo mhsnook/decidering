@@ -257,4 +257,62 @@ describe('the seed', () => {
     expect(all(db, `SELECT COUNT(*) AS n FROM question_deciders WHERE question_id = 'm4a-s1506-markup'`)[0].n).toBe(0)
     expect(all(db, `PRAGMA foreign_key_check`)).toEqual([])
   })
+
+  describe('members-elect', () => {
+    const holders = (db: DatabaseSync, day: string, where = '1') =>
+      all(db, `SELECT s.id AS seat, s.chamber, r.affiliation, d.name FROM roles r JOIN seats s ON s.id = r.seat_id JOIN deciders d ON d.id = r.decider_id
+        WHERE s.body_id = 'us-congress' AND r.kind = 'incumbent' AND (r.starts_on IS NULL OR r.starts_on <= '${day}') AND (r.ends_on IS NULL OR '${day}' < r.ends_on) AND ${where}`)
+    const tally = (rows: Record<string, any>[]) => rows.reduce<Record<string, number>>((n, r) => ((n[r.affiliation] = (n[r.affiliation] ?? 0) + 1), n), {})
+
+    it('never puts two people in one seat, before or after the term starts', () => {
+      const db = database()
+      db.exec(seed)
+      for (const day of ['2026-11-19', '2027-01-02', '2027-01-03', '2027-06-01']) {
+        const seats = holders(db, day).map((r) => r.seat)
+        expect(seats.length).toBe(new Set(seats).size)
+      }
+    })
+
+    it('never has one person holding two seats at once', () => {
+      const db = database()
+      db.exec(seed)
+      for (const day of ['2026-11-19', '2027-01-03']) {
+        const names = holders(db, day).map((r) => r.name)
+        expect(names.length).toBe(new Set(names).size)
+      }
+    })
+
+    it('fills the Senate from the day the term starts, and the House but for the seats still undecided', () => {
+      const db = database()
+      db.exec(seed)
+      expect(tally(holders(db, '2027-01-03', `s.chamber = 'Senate'`))).toEqual({ Democrat: 54, Independent: 2, Republican: 44 })
+      const house = holders(db, '2027-01-03', `s.chamber = 'House' AND s.is_voting = 1`)
+      // 435 less the two Louisiana seats that go to a runoff on December 12
+      expect(house.length).toBe(433)
+      expect(tally(house).Democrat).toBe(258)
+    })
+
+    it('leaves today as it is', () => {
+      const db = database()
+      db.exec(seed)
+      expect(tally(holders(db, '2026-11-19', `s.chamber = 'Senate'`))).toEqual({ Democrat: 45, Independent: 2, Republican: 53 })
+      expect(holders(db, '2026-11-19', `d.id LIKE 'elect-%'`)).toEqual([])
+    })
+
+    it('moves a sitting member to a new seat under the id they already have, with their record', () => {
+      const db = database()
+      db.exec(seed)
+      const seatsOf = (day: string) => holders(db, day, `d.name = 'Chris Pappas'`).map((r) => r.seat)
+      expect(seatsOf('2026-11-19')).toEqual(['us-congress:NH-1'])
+      expect(seatsOf('2027-01-03')).toEqual(['us-congress:NH-sen-2'])
+      expect(all(db, `SELECT COUNT(*) AS n FROM deciders WHERE name = 'Chris Pappas'`)[0].n).toBe(1)
+    })
+
+    it('keeps the holder of a seat in a recount, and empties a seat whose holder is not in the runoff', () => {
+      const db = database()
+      db.exec(seed)
+      expect(holders(db, '2027-01-03', `s.id = 'us-congress:MN-1'`).map((r) => r.name)).toEqual(['Brad Finstad'])
+      expect(holders(db, '2027-01-03', `s.id IN ('us-congress:LA-5', 'us-congress:LA-6')`)).toEqual([])
+    })
+  })
 })
