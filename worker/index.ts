@@ -1,5 +1,5 @@
 import { getServerByName, routePartykitRequest } from 'partyserver'
-import { commentInputSchema, submissionInputSchema } from '../shared/schema.ts'
+import { commentInputSchema, proposalInputSchema } from '../shared/schema.ts'
 import { isEditorRequest } from './editor.ts'
 import { searchNews } from './news.ts'
 import type { Tracker } from './tracker.ts'
@@ -35,24 +35,25 @@ async function handleComment(req: Request, env: Env): Promise<Response> {
   return result.ok ? Response.json({ ok: true }) : Response.json({ error: result.error }, { status: result.status })
 }
 
-async function handleSubmission(req: Request, env: Env): Promise<Response> {
+async function handleProposal(req: Request, env: Env): Promise<Response> {
   const body = await readerPost(req, env)
   if (body instanceof Response) return body
-  const parsed = submissionInputSchema.safeParse(body)
+  const parsed = proposalInputSchema.safeParse(body)
   if (!parsed.success) {
     const first = parsed.error.issues[0]
     return Response.json({ error: `${first.path.join('.')}: ${first.message}` }, { status: 400 })
   }
-  const result = await (await tracker(env)).submit(parsed.data, 'public')
+  const { source_url, source_title, submitter_note, ...item } = parsed.data
+  const result = await (await tracker(env)).propose({ source: { url: source_url, title: source_title }, note: submitter_note, items: [item] }, 'reader')
   return result.ok
-    ? Response.json({ ok: true, duplicate: result.duplicate })
+    ? Response.json({ ok: true, duplicate: result.queued === 0 })
     : Response.json({ error: result.error }, { status: result.status })
 }
 
 export default {
   async fetch(req, env) {
     const url = new URL(req.url)
-    if (url.pathname === '/api/submissions' && req.method === 'POST') return handleSubmission(req, env)
+    if (url.pathname === '/api/proposals' && req.method === 'POST') return handleProposal(req, env)
     if (url.pathname === '/api/comments' && req.method === 'POST') return handleComment(req, env)
     if (url.pathname === '/api/editor/session') {
       return (await isEditorRequest(req, env)) ? Response.json({ ok: true }) : new Response('unauthorized', { status: 401 })

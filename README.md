@@ -7,10 +7,12 @@ The first data set is the United States Congress and Medicare for All. Nothing i
 ## How it works
 
 - **Bodies, seats, roles.** A body (a legislature, a council, a board) has seats. A person holds a seat or is running for it, so challengers sit beside the incumbent they want to replace.
-- **Questions and measures.** A question asks where someone stands ("Do they support Medicare for All?"). A measure is a sub-question about one recordable act ("Have they cosponsored H.R. 3069?"). Evidence on a measure also counts toward its parent question.
-- **Evidence and footing.** Every position links to dated evidence. Footing is derived from it: on the record (a vote or formal act), fresh, established, sparse, stale, or unknown. The rules live in `shared/standing.ts`.
+- **Questions, measures and asks.** A question asks where someone stands ("Do they support Medicare for All?"). A measure is a sub-question about one recordable act, put to everyone in the body or chamber ("Have they cosponsored H.R. 3069?"). An ask is a sub-question put to named people because of the office they hold ("Will he commit to a markup?"). It has its own position scale and record, its people are shown first on the question's page, and an editor closes it when it is resolved or no longer being asked.
+- **Sources, acts, reports and readings.** A source is an article, press release, official record, transcript or post, one row per URL. An act is one thing a person did or said. A report is a mention of an act in a source, so a statement covered by five articles is one act with five reports. A reading is what an act signals on one question, and one act can read differently on two questions.
+- **What counts toward the parent.** A reading on a measure or an ask says nothing about the parent question unless the sub-question is marked as implying support (`implies_parent_support`). Cosponsoring a bill is marked that way, so a supporting reading there is also written on the parent.
+- **Footing.** Every position links to dated acts. Footing is derived from them: on the record (a vote or formal act), fresh, established, sparse, stale, or unknown. The rules live in `shared/standing.ts`.
 - **Seat charts.** A question's page draws each chamber as a hemicycle, one dot per voting seat, packed so neighbours along a row sit as far apart as the rows do, ordered from support on the left to opposition on the right with the undecided in between. A line marks how many seats carry the question: a simple majority unless the question sets its own threshold, such as 38 of 50 states. It runs between the seats with exactly that many on its left, crossing each row through a gap and curving from one gap to the next, and a bloc that reaches it has the votes. A body with no chambers gets a single chart.
-- **Review queue.** Readers send in evidence from any person's page. A scheduled news search adds leads for questions marked as in the news. Nothing is published until an editor approves it at `/editor`.
+- **Review queue.** A proposal is a suggested set of changes from one source. Each item in it is one act by one person, read on one question, with the position and summary it would leave them with. Readers send in proposals from any person's page, and a scheduled news search adds one for each result that names people on the roster. An editor at `/editor` accepts or rejects each item and publishes the accepted ones together. Nothing reaches the record until then. An editor can also merge two acts that turn out to be the same one.
 - **Discussion.** Each person-and-question page has a comment thread. A reader loads and hears only the threads they have open. Comments post under a username the reader picks the first time they post. Editors can remove comments.
 
 ## Stack
@@ -20,7 +22,7 @@ The first data set is the United States Congress and Medicare for All. Nothing i
 - TanStack Router (file-based routes in `src/routes`), TanStack DB, Tailwind
 - Cloudflare [Web Search API](https://developers.cloudflare.com/web-search/) with Exa, through AI Gateway, for the news search
 
-Editors write through the same collections with optimistic transactions. Readers get read-only access, and unreviewed submissions are only sent to editor connections. Readers post submissions and comments through the Worker, which validates them and limits each address to 6 posts a minute.
+Editors write through the same collections with optimistic transactions. Readers get read-only access. Unreviewed proposals are synced to readers too, though no page shows them yet; the notes a submitter or reviewer writes for editors are kept in a separate table that is only sent to editor connections. Readers post proposals and comments through the Worker, which validates them and limits each address to 6 posts a minute.
 
 ## Develop
 
@@ -43,11 +45,13 @@ The news search needs the remote AI binding, which plain `pnpm dev` leaves off. 
 
 `seed/data/us-states-era.json` holds each state's action on the Equal Rights Amendment, transcribed from the National Archives' [list of state ratification actions](https://www.archives.gov/files/foia/pdf/era-list-of-state-ratification-actions-03-24-2020.pdf) of March 24, 2020. A state that ratified and later voted to rescind is recorded as mixed, with both acts on its record.
 
+`seed/data/us-congress-asks.json` holds the asks of key people in Congress. It is written by hand, and an ask starts with nothing on its record.
+
 `seed/data/demo.json` is a fictional city council that shows challengers and every kind of footing. It is labelled as demo data wherever it appears.
 
 Seeding writes rows directly and skips the sync log, so seed before readers are connected.
 
-`pnpm seed:build` also writes one file per data set (`seed/out/us-congress.sql`, `us-states.sql`, `demo.sql`). Seeding replaces rows, so to add a data set to a database editors have been working in, run only its file:
+`pnpm seed:build` also writes one file per data set (`seed/out/us-congress.sql`, `us-congress-asks.sql`, `us-states.sql`, `demo.sql`). Seeding replaces rows, so to add a data set to a database editors have been working in, run only its file:
 
 ```sh
 pnpm seed:build && wrangler d1 execute DB --remote --file seed/out/us-states.sql

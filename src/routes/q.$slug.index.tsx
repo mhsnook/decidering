@@ -4,9 +4,10 @@ import type { Question } from '../../shared/schema.ts'
 import { NEEDS_ATTENTION } from '../../shared/standing.ts'
 import { isHeld, useTracker, type HeldSeat } from '../lib/tracker.tsx'
 import { SPECTRUM, STANDINGS, STANDING_BG, standingLabel, type Standing } from '../lib/position.ts'
-import { FootingTag, NotFound, StandingDot, Syncing, tally } from '../components/bits.tsx'
+import { FootingTag, NotFound, StandingDot, StandingPill, Syncing, tally } from '../components/bits.tsx'
 import { Hemicycle } from '../components/Hemicycle.tsx'
 import { QuestionHeader } from '../components/QuestionHeader.tsx'
+import { AskStatus, CloseAsk, ClosedNote, KeyPeople } from '../components/Asks.tsx'
 
 // How many of a group to list before a reader has to ask for the rest.
 const PREVIEW = 12
@@ -34,6 +35,7 @@ function Board() {
 
   if (!isReady) return <Syncing />
   if (!question) return <NotFound what="question" />
+  if (tracker.isAsk(question)) return <Ask question={question} />
 
   const set = (patch: BoardSearch) => navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true })
   const body = tracker.bodies.find((b) => b.id === question.body_id)
@@ -68,6 +70,8 @@ function Board() {
   return (
     <div className="space-y-6">
       <QuestionHeader question={question} />
+
+      <KeyPeople people={tracker.keyPeople(question)} />
 
       <div className={`grid gap-4 ${charts.length > 1 ? 'lg:grid-cols-2' : ''}`}>
         {charts.map((c) => (
@@ -162,6 +166,50 @@ function Board() {
           </section>
         )
       })}
+    </div>
+  )
+}
+
+// An ask is put to a few named people, so it gets a list in place of a seat chart.
+function Ask({ question }: { question: Question }) {
+  const { tracker } = useTracker()
+  const parent = question.parent_id ? tracker.questionById.get(question.parent_id) : undefined
+  return (
+    <div className="space-y-6">
+      <QuestionHeader question={question} />
+      <ClosedNote ask={question} />
+      <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {tracker.peopleOf(question).map(({ link, contender, seat }) => (
+          <li key={link.id}>
+            <Link
+              to="/q/$slug/$decider"
+              params={{ slug: question.slug, decider: contender.decider.slug }}
+              className="block rounded-xl border-2 border-ink bg-surface p-3 transition-transform hover:-translate-y-0.5"
+            >
+              <span className="flex items-start justify-between gap-2">
+                <span className="leading-snug font-medium">{contender.decider.name}</span>
+                <StandingPill standing={contender.standing} question={question} />
+              </span>
+              <span className="block text-xs text-muted">
+                {link.role_label ?? seat.label}
+                {contender.role.affiliation && ` · ${contender.role.affiliation}`}
+              </span>
+              <span className="mt-2 flex flex-wrap items-center gap-2">
+                {contender.footing !== 'unknown' && <FootingTag footing={contender.footing} />}
+                <AskStatus ask={question} />
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+      <div className="flex flex-wrap items-center gap-4">
+        <CloseAsk ask={question} />
+        {parent && (
+          <Link to="/q/$slug" params={{ slug: parent.slug }} className="link text-sm">
+            ← {parent.title}
+          </Link>
+        )}
+      </div>
     </div>
   )
 }

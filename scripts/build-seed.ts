@@ -3,23 +3,78 @@
 // rows editors have since changed. Seeding writes rows directly, which skips the
 // sync log: run it before anyone is connected (a page reload picks the rows up
 // from the snapshot).
+import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 
 const read = (name: string) => JSON.parse(readFileSync(new URL(`../seed/data/${name}`, import.meta.url), 'utf8'))
 const congress = read('us-congress.json')
+const congressAsks = read('us-congress-asks.json')
 const era = read('us-states-era.json')
 const demo = read('demo.json')
 
 const dataSets = new Map<string, string[]>()
 let lines: string[] = []
+let dataSetName = ''
 function dataSet(name: string) {
+  dataSetName = name
   lines = []
   dataSets.set(name, lines)
 }
+class Sql {
+  readonly text: string
+  constructor(text: string) {
+    this.text = text
+  }
+}
 const sql = (v: unknown) =>
-  v === null || v === undefined ? 'NULL' : typeof v === 'number' ? String(v) : typeof v === 'boolean' ? (v ? '1' : '0') : `'${String(v).replaceAll("'", "''")}'`
+  v instanceof Sql ? v.text : v === null || v === undefined ? 'NULL' : typeof v === 'number' ? String(v) : typeof v === 'boolean' ? (v ? '1' : '0') : `'${String(v).replaceAll("'", "''")}'`
 function insert(table: string, row: Record<string, unknown>) {
   lines.push(`INSERT OR REPLACE INTO ${table} (${Object.keys(row).join(', ')}) VALUES (${Object.values(row).map(sql).join(', ')});`)
+}
+
+type SourceRef = { url: string; title: string; kind: string }
+// A database that was migrated or edited before this seed ran already has a row
+// for the URL under another id, so rows that point at a source look it up.
+const sourceId = (url: string) => new Sql(`(SELECT id FROM sources WHERE url = ${sql(url)})`)
+function source(ref: SourceRef, created_at: string) {
+  const id = `seed-${createHash('sha1').update(ref.url).digest('hex').slice(0, 12)}`
+  lines.push(
+    `INSERT INTO sources (id, url, title, kind, created_at) VALUES (${[id, ref.url, ref.title, ref.kind, created_at].map(sql).join(', ')}) ON CONFLICT (url) DO UPDATE SET title = excluded.title, kind = excluded.kind;`,
+  )
+}
+
+const questions = new Map<string, { parent_id: string | null; implies_parent_support: boolean }>()
+function question(row: { id: string; parent_id: string | null; implies_parent_support?: boolean } & Record<string, unknown>) {
+  const full = { threshold: null, act_label: null, status: 'open', closed_on: null, closed_note: null, implies_parent_support: false, ...row }
+  questions.set(full.id, full)
+  insert('questions', full)
+}
+
+const RECORDED = new Set(['formal_act', 'vote'])
+const sourcesWritten = new Set<string>()
+// One act, the source that reports it and what it signals on one question.
+function act(a: { id: string; question_id: string; decider_id: string; kind: string; position: string; occurred_on: string; body: string; source: SourceRef }) {
+  const created_at = `${a.occurred_on}T00:00:00.000Z`
+  const key = `${dataSetName} ${a.source.url}`
+  if (!sourcesWritten.has(key)) {
+    sourcesWritten.add(key)
+    source(a.source, created_at)
+  }
+  insert('acts', {
+    id: a.id,
+    decider_id: a.decider_id,
+    kind: a.kind,
+    occurred_on: a.occurred_on,
+    body: a.body,
+    primary_source_id: RECORDED.has(a.kind) ? sourceId(a.source.url) : null,
+    created_at,
+  })
+  insert('reports', { id: a.id, source_id: sourceId(a.source.url), act_id: a.id, excerpt: null, created_at })
+  insert('readings', { id: a.id, act_id: a.id, question_id: a.question_id, position: a.position, via_question_id: null, created_at })
+  const q = questions.get(a.question_id)!
+  if (q.implies_parent_support && q.parent_id && a.position === 'support') {
+    insert('readings', { id: `${a.id}:parent`, act_id: a.id, question_id: q.parent_id, position: 'support', via_question_id: a.question_id, created_at })
+  }
 }
 
 const slugs = new Set<string>()
@@ -69,7 +124,7 @@ for (const m of congress.members) {
   insert('roles', { id: `${seatId}:${m.bioguide}`, seat_id: seatId, decider_id: m.bioguide, kind: 'incumbent', contest: null, affiliation: m.party })
 }
 
-insert('questions', {
+question({
   id: 'm4a',
   slug: 'medicare-for-all',
   body_id: US,
@@ -87,7 +142,7 @@ insert('questions', {
 let skipped = 0
 congress.bills.forEach((bill: any, i: number) => {
   const qid = `m4a-${bill.id}`
-  insert('questions', {
+  question({
     id: qid,
     slug: `medicare-for-all-${bill.id}`,
     body_id: US,
@@ -100,6 +155,7 @@ congress.bills.forEach((bill: any, i: number) => {
     chamber: bill.chamber,
     is_hot: false,
     sort: i + 1,
+    implies_parent_support: true,
   })
   const signers = [
     { bioguide: bill.sponsor, on: bill.introduced_on, act: `Introduced ${bill.label}, the ${bill.title}, as its sponsor.`, summary: `Sponsor of ${bill.label}.` },
@@ -116,22 +172,44 @@ congress.bills.forEach((bill: any, i: number) => {
       continue
     }
     const stamp = `${s.on}T00:00:00.000Z`
-    insert('evidence', {
+    act({
       id: `${qid}:${s.bioguide}`,
       question_id: qid,
       decider_id: s.bioguide,
       kind: 'formal_act',
-      signals: 'support',
-      quote: s.act,
-      source_url: `${bill.url}/cosponsors`,
-      source_title: `Congress.gov: ${bill.label} cosponsors`,
+      position: 'support',
       occurred_on: s.on,
-      submission_id: null,
-      created_at: stamp,
+      body: s.act,
+      source: { url: `${bill.url}/cosponsors`, title: `Congress.gov: ${bill.label} cosponsors`, kind: 'official_record' },
     })
     for (const q of [qid, 'm4a']) {
       insert('stances', { id: `${q}:${s.bioguide}`, question_id: q, decider_id: s.bioguide, position: 'support', summary: s.summary, updated_at: stamp })
     }
+  }
+})
+
+// ---- Asks of key people in Congress: its own file, so it can be added to a
+// database without replaying the roster and stances over an editor's changes --
+
+dataSet('us-congress-asks')
+congressAsks.asks.forEach((ask: any, i: number) => {
+  question({
+    id: ask.id,
+    slug: ask.slug,
+    body_id: US,
+    parent_id: ask.parent,
+    kind: 'position',
+    title: ask.title,
+    short_title: ask.short_title,
+    description: ask.description,
+    reference_url: null,
+    chamber: ask.chamber,
+    is_hot: false,
+    sort: 100 + i,
+  })
+  for (const d of ask.deciders) {
+    if (!members.has(d.bioguide)) throw new Error(`${ask.id} names ${d.bioguide}, who is not in the roster`)
+    insert('question_deciders', { id: `${ask.id}:${d.bioguide}`, question_id: ask.id, decider_id: d.bioguide, role_label: d.role_label })
   }
 })
 
@@ -153,7 +231,7 @@ const ratified = era.states.filter((s: any) => s.ratified_on)
 const late = ratified.filter((s: any) => s.ratified_on > era.deadline)
 const rescinded = ratified.filter((s: any) => s.rescinded_on)
 const longDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
-insert('questions', {
+question({
   id: 'era',
   slug: 'equal-rights-amendment',
   body_id: STATES,
@@ -180,23 +258,20 @@ for (const state of era.states) {
 
   const isLate = state.ratified_on > era.deadline
   const year = (iso: string) => iso.slice(0, 4)
-  const act = (suffix: string, on: string, signals: string, quote: string) =>
-    insert('evidence', {
+  const record = (suffix: string, on: string, position: string, body: string) =>
+    act({
       id: `era:${state.code}:${suffix}`,
       question_id: 'era',
       decider_id: id,
       kind: 'formal_act',
-      signals,
-      quote,
-      source_url: era.source.url,
-      source_title: era.source.title,
+      position,
       occurred_on: on,
-      submission_id: null,
-      created_at: `${on}T00:00:00.000Z`,
+      body,
+      source: { ...era.source, kind: 'official_record' },
     })
-  act('ratified', state.ratified_on, 'support', `Ratified the Equal Rights Amendment${isLate ? ', after the deadline set by Congress had passed' : ''}.`)
+  record('ratified', state.ratified_on, 'support', `Ratified the Equal Rights Amendment${isLate ? ', after the deadline set by Congress had passed' : ''}.`)
   if (state.rescinded_on) {
-    act('rescinded', state.rescinded_on, 'oppose', 'Voted to rescind its ratification of the Equal Rights Amendment. The National Archives records this as a purported rescission.')
+    record('rescinded', state.rescinded_on, 'oppose', 'Voted to rescind its ratification of the Equal Rights Amendment. The National Archives records this as a purported rescission.')
   }
   insert('stances', {
     id: `era:${id}`,
@@ -235,7 +310,7 @@ for (const seat of demo.seats) {
   }
 }
 demo.questions.forEach((q: any, i: number) => {
-  insert('questions', {
+  question({
     id: q.id,
     slug: q.id,
     body_id: D,
@@ -248,24 +323,29 @@ demo.questions.forEach((q: any, i: number) => {
     chamber: null,
     is_hot: q.is_hot ?? false,
     sort: i,
+    implies_parent_support: q.kind === 'formal_act' && !!q.parent,
+    status: q.status ?? 'open',
+    closed_on: q.closed_on ?? null,
+    closed_note: q.closed_note ?? null,
   })
+  for (const [name, role_label] of q.deciders ?? []) {
+    insert('question_deciders', { id: `${q.id}:${person(name)}`, question_id: q.id, decider_id: person(name), role_label })
+  }
 })
 for (const [q, name, position, summary] of demo.stances) {
   insert('stances', { id: `${q}:${person(name)}`, question_id: q, decider_id: person(name), position, summary, updated_at: '2026-11-01T00:00:00.000Z' })
 }
-demo.evidence.forEach(([q, name, kind, signals, on, quote, title]: string[], i: number) => {
-  insert('evidence', {
+const DEMO_SOURCE_KIND: Record<string, string> = { formal_act: 'official_record', vote: 'official_record', social: 'social_post' }
+demo.acts.forEach(([q, name, kind, position, on, body, title]: string[], i: number) => {
+  act({
     id: `demo-e${i + 1}`,
     question_id: q,
     decider_id: person(name),
     kind,
-    signals,
-    quote,
-    source_url: `https://example.com/harbor-city/${i + 1}`,
-    source_title: title,
+    position,
     occurred_on: on,
-    submission_id: null,
-    created_at: `${on}T00:00:00.000Z`,
+    body,
+    source: { url: `https://example.com/harbor-city/${i + 1}`, title, kind: DEMO_SOURCE_KIND[kind] ?? 'article' },
   })
 })
 

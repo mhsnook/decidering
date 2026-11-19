@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { leadsFromHit, rosterMatcher } from './leads.ts'
+import { leadFromHit, rosterMatcher } from './leads.ts'
 
 const roster = [
   { id: 'jayapal', name: 'Pramila Jayapal', sort_name: 'Jayapal, Pramila' },
@@ -28,16 +28,24 @@ describe('rosterMatcher', () => {
   })
 })
 
-describe('leadsFromHit', () => {
+describe('leadFromHit', () => {
   const hit = { url: 'https://example.com/a', title: 'Rep. Jayapal on single payer', description: 'Pramila Jayapal said she would reintroduce it.', lastModifiedDate: '2026-11-02T10:00:00' }
 
-  it('turns a hit into a lead with no position and the page date', () => {
-    expect(leadsFromHit(hit, 'q', 'query', match)).toMatchObject([{ decider_id: 'jayapal', signals: null, occurred_on: '2026-11-02', source_url: 'https://example.com/a' }])
+  it('turns a hit into a proposal with no reading and the page date', () => {
+    expect(leadFromHit(hit, 'q', 'query', match)).toMatchObject({
+      source: { url: 'https://example.com/a' },
+      items: [{ question_id: 'q', decider_id: 'jayapal', reading: null, occurred_on: '2026-11-02' }],
+    })
+  })
+
+  it('makes one proposal with an item for each person the hit names', () => {
+    const lead = leadFromHit({ ...hit, description: 'Pramila Jayapal and Alma Adams both spoke.' }, 'q', 'query', match)
+    expect(lead?.items.map((i) => i.decider_id)).toEqual(['jayapal', 'adams'])
   })
 
   it('drops hits that name nobody, or name a crowd', () => {
-    expect(leadsFromHit({ ...hit, title: 'Health policy news', description: 'Nothing about anyone in particular.' }, 'q', 'query', match)).toEqual([])
+    expect(leadFromHit({ ...hit, title: 'Health policy news', description: 'Nothing about anyone in particular.' }, 'q', 'query', match)).toBeNull()
     const crowd = 'Pramila Jayapal, Alma Adams, Adam Smith and Jason Smith all spoke.'
-    expect(leadsFromHit({ ...hit, description: crowd }, 'q', 'query', match)).toEqual([])
+    expect(leadFromHit({ ...hit, description: crowd }, 'q', 'query', match)).toBeNull()
   })
 })

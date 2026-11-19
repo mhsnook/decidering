@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { EVIDENCE_KINDS, POSITIONS, type Decider, type Question } from '../../shared/schema.ts'
+import { ACT_KINDS, POSITIONS, type Decider, type Question } from '../../shared/schema.ts'
 import { KIND_LABEL, SIGNAL_LABEL } from '../lib/position.ts'
 
 type State = { status: 'idle' | 'sending' } | { status: 'sent'; duplicate: boolean } | { status: 'error'; message: string }
@@ -14,14 +14,14 @@ export function SubmitEvidence({ question, decider, onDone }: { question: Questi
     const text = (name: string) => (f.get(name) as string).trim()
     setState({ status: 'sending' })
     try {
-      const res = await fetch('/api/submissions', {
+      const res = await fetch('/api/proposals', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           question_id: question.id,
           decider_id: decider.id,
           kind: f.get('kind'),
-          signals: f.get('signals'),
+          reading: f.get('reading'),
           quote: text('quote'),
           source_url: text('source_url'),
           source_title: text('source_title') || null,
@@ -94,7 +94,7 @@ export function SubmitEvidence({ question, decider, onDone }: { question: Questi
             Kind
           </label>
           <select id="kind" name="kind" className="field">
-            {EVIDENCE_KINDS.map((k) => (
+            {ACT_KINDS.map((k) => (
               <option key={k} value={k}>
                 {KIND_LABEL[k]}
               </option>
@@ -102,10 +102,10 @@ export function SubmitEvidence({ question, decider, onDone }: { question: Questi
           </select>
         </div>
         <div>
-          <label className="label" htmlFor="signals">
+          <label className="label" htmlFor="reading">
             What it shows
           </label>
-          <select id="signals" name="signals" className="field">
+          <select id="reading" name="reading" className="field">
             {POSITIONS.map((p) => (
               <option key={p} value={p}>
                 {SIGNAL_LABEL[p]}

@@ -5,10 +5,13 @@ import { stanceId } from '../../shared/schema.ts'
 import { useTracker } from '../lib/tracker.tsx'
 import { FootingTag, NotFound, StandingPill, Syncing } from '../components/bits.tsx'
 import { QuestionHeader } from '../components/QuestionHeader.tsx'
-import { EvidenceItem } from '../components/EvidenceList.tsx'
+import { RecordItem } from '../components/RecordItem.tsx'
 import { SubmitEvidence } from '../components/SubmitEvidence.tsx'
 import { Discussion } from '../components/Discussion.tsx'
 import { Modal } from '../components/Modal.tsx'
+import { AskStatus, CloseAsk, ClosedNote } from '../components/Asks.tsx'
+import { MergeAct } from '../components/MergeAct.tsx'
+import { isEditor } from '../lib/editor.ts'
 import { formatDate } from '../lib/position.ts'
 
 export const Route = createFileRoute('/q/$slug/$decider')({ component: DeciderOnQuestion })
@@ -21,12 +24,16 @@ function DeciderOnQuestion() {
 
   const question = tracker.questionBySlug.get(slug)
   const decider = tracker.deciderBySlug.get(deciderSlug)
-  const role = decider && question && (tracker.rolesByDecider.get(decider.id) ?? []).find((r) => tracker.seatById.get(r.seat_id)?.body_id === question.body_id)
+  const role = decider && question && tracker.roleIn(question, decider.id)
   const seat = role && tracker.seatById.get(role.seat_id)
   const me = question && role && tracker.contender(question, role)
-  if (!question || !decider || !seat || !me) return <NotFound what="record" />
+  if (!question || !decider || !seat || !me || !tracker.appliesTo(question, decider.id)) return <NotFound what="record" />
 
-  const measures = (tracker.childrenOf.get(question.id) ?? []).filter((m) => !m.chamber || m.chamber === seat.chamber)
+  const measures = (tracker.measuresOf.get(question.id) ?? []).filter((m) => !m.chamber || m.chamber === seat.chamber)
+  const isAsk = tracker.isAsk(question)
+  const root = (question.parent_id && tracker.questionById.get(question.parent_id)) || question
+  const asks = tracker.asksFor(root, decider.id)
+  const roleLabels = [...new Set(asks.map((k) => k.link.role_label).filter((l) => l !== null))]
   const rivals = (tracker.rolesBySeat.get(seat.id) ?? [])
     .filter((r) => r.decider_id !== decider.id)
     .map((r) => tracker.contender(question, r))
@@ -48,6 +55,7 @@ function DeciderOnQuestion() {
               {me.role.affiliation && ` · ${me.role.affiliation}`}
               {seat.next_election_on && ` · next election ${formatDate(seat.next_election_on)}`}
             </p>
+            {roleLabels.length > 0 && <p className="text-sm font-medium">{roleLabels.join(' · ')}</p>}
           </div>
           <div className="flex items-center gap-2">
             <StandingPill standing={me.standing} question={question} />
@@ -63,8 +71,26 @@ function DeciderOnQuestion() {
           </>
         )}
 
-        {measures.length > 0 && (
+        {isAsk && (
+          <div className="mt-4 space-y-3">
+            <ClosedNote ask={question} />
+            <CloseAsk ask={question} />
+          </div>
+        )}
+
+        {!isAsk && asks.length + measures.length > 0 && (
           <ul className="mt-5 divide-y divide-line border-t border-line">
+            {asks.map(({ ask, contender }) => (
+              <li key={ask.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
+                <span className="flex flex-wrap items-center gap-2">
+                  <Link to="/q/$slug/$decider" params={{ slug: ask.slug, decider: decider.slug }} className="font-medium hover:underline">
+                    {ask.title}
+                  </Link>
+                  <AskStatus ask={ask} />
+                </span>
+                <StandingPill standing={contender.standing} question={ask} />
+              </li>
+            ))}
             {measures.map((m) => (
               <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
                 <Link to="/q/$slug/$decider" params={{ slug: m.slug, decider: decider.slug }} className="hover:underline">
@@ -85,14 +111,16 @@ function DeciderOnQuestion() {
               Add to the record
             </button>
           </div>
-          {me.evidence.length === 0 ? (
+          {me.record.length === 0 ? (
             <p className="rounded-lg border border-dashed border-line p-6 text-center text-muted">
               Nothing on file. If {decider.name} has spoken about this, add it to the record.
             </p>
           ) : (
             <ol className="space-y-3">
-              {me.evidence.map((e) => (
-                <EvidenceItem key={e.id} evidence={e} question={question} />
+              {me.record.map((entry) => (
+                <RecordItem key={entry.reading.id} entry={entry} question={question}>
+                  {isEditor() && <MergeAct act={entry.act} />}
+                </RecordItem>
               ))}
             </ol>
           )}

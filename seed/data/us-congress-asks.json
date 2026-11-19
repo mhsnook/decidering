@@ -1,0 +1,14 @@
+{
+  "asks": [
+    {
+      "id": "m4a-s1506-markup",
+      "slug": "medicare-for-all-senate-markup",
+      "parent": "m4a",
+      "chamber": "Senate",
+      "title": "Will he commit to a markup?",
+      "short_title": "Senate markup",
+      "description": "A markup is the committee session where a bill is debated, amended and voted on before it can go to the floor. This asks about S. 1506, the Senate bill.",
+      "deciders": [{ "bioguide": "W000779", "role_label": "Ranking Member, Senate Finance Committee" }]
+    }
+  ]
+}

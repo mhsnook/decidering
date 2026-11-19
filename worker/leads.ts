@@ -1,4 +1,4 @@
-import type { SubmissionDraft } from '../shared/schema.ts'
+import type { ProposalDraft } from '../shared/schema.ts'
 
 export type RosterEntry = { id: string; name: string; sort_name: string }
 export type SearchHit = { url: string; title: string; description?: string; lastModifiedDate?: string }
@@ -38,22 +38,18 @@ export function rosterMatcher(roster: RosterEntry[]): (text: string) => string[]
 const MAX_PEOPLE_PER_HIT = 3
 
 // A hit that names more people than this is a roundup, which is no one's statement.
-export function leadsFromHit(hit: SearchHit, questionId: string, query: string, match: (text: string) => string[]): SubmissionDraft[] {
-  if (!/^https?:\/\//.test(hit.url)) return []
+// One hit is one proposal, with an item for each person it names.
+export function leadFromHit(hit: SearchHit, questionId: string, query: string, match: (text: string) => string[]): ProposalDraft | null {
+  if (!/^https?:\/\//.test(hit.url)) return null
   const quote = (hit.description ?? hit.title).trim().slice(0, 2000)
-  if (quote.length < 10) return []
+  if (quote.length < 10) return null
   const people = match(`${hit.title}\n${hit.description ?? ''}`)
-  if (people.length === 0 || people.length > MAX_PEOPLE_PER_HIT) return []
+  if (people.length === 0 || people.length > MAX_PEOPLE_PER_HIT) return null
   const date = hit.lastModifiedDate?.slice(0, 10)
-  return people.map((decider_id) => ({
-    question_id: questionId,
-    decider_id,
-    kind: 'statement',
-    signals: null,
-    quote,
-    source_url: hit.url,
-    source_title: hit.title.slice(0, 300) || null,
-    occurred_on: date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null,
-    submitter_note: `Search excerpt, not a verified quote. Found by searching: ${query}`,
-  }))
+  const occurred_on = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null
+  return {
+    source: { url: hit.url, title: hit.title.slice(0, 300) || null },
+    note: `Search excerpt, not a verified quote. Found by searching: ${query}`,
+    items: people.map((decider_id) => ({ question_id: questionId, decider_id, kind: 'statement', occurred_on, quote, reading: null })),
+  }
 }
