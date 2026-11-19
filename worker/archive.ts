@@ -89,7 +89,12 @@ const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 // The key is "accesskey:secret" from archive.org/account/s3.php. An empty value
 // means none.
-const keyOf = (env: Env) => (env.ARCHIVE_ORG_KEY?.includes(':') ? env.ARCHIVE_ORG_KEY : null)
+// Read through a cast because `wrangler types` declares the secret only when
+// .dev.vars has it, and the key is optional.
+function keyOf(env: Env): string | null {
+  const key = (env as { ARCHIVE_ORG_KEY?: string }).ARCHIVE_ORG_KEY
+  return key?.includes(':') ? key : null
+}
 
 const waybackStamp = (date: Date) => date.toISOString().replace(/\D/g, '').slice(0, 14)
 
