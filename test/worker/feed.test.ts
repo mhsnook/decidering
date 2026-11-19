@@ -3,14 +3,16 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { type Frame, partySocket, post, proposal, rows, seed, until } from './helpers.ts'
 
 const rowsOn = (frames: Frame[], channel: string) => frames.filter((f) => f.channel === channel).flatMap((f) => f.ops.map((op) => op.value))
+const storyIds = (xml: string) => [...xml.matchAll(/<id>urn:sporelight:story:([^:<]+):[^<]+<\/id>/g)].map((m) => m[1])
 const feed = (query = '') => exports.default.fetch(`http://sporelight.test/feed.xml${query}`)
 
 const PUBLISHED = `<b>"Medicare" & 'you'</b>\u0007 — I am for it.`
 const WAITING = 'A pending claim nobody has checked yet, with a reading.'
 const REJECTED = 'A claim an editor turned down after reading the source.'
 
-// Two published acts: one by Ann on the hot question and its measure, one by
-// Ann on the cold question. A pending proposal and a rejected one sit beside them.
+// Two published stories. The first source reports Ann on the hot question and
+// its measure, and Bob on the hot question. The second reports Ann on the cold
+// question. A pending proposal and a rejected one sit beside them.
 beforeAll(async () => {
   await seed()
   await env.DB.batch(
@@ -22,13 +24,16 @@ beforeAll(async () => {
         ('src-2', 'https://news.example/b', NULL, '2026-11-11T00:00:00.000Z')`,
       `INSERT INTO acts (id, decider_id, kind, occurred_on, body, created_at) VALUES
         ('act-hot', 'ann', 'says', '2026-11-09', ?1, '2026-11-10T09:00:00.000Z'),
-        ('act-cold', 'ann', 'does', '2026-11-01', 'Voted to table the cold motion.', '2026-11-11T09:00:00.000Z')`,
+        ('act-cold', 'ann', 'does', '2026-11-01', 'Voted to table the cold motion.', '2026-11-11T09:00:00.000Z'),
+        ('act-bob', 'bob', 'says', '2026-11-08', 'I will vote against it.', '2026-11-10T09:00:00.000Z')`,
       `INSERT INTO reports (id, source_id, act_id, created_at) VALUES
-        ('rep-1', 'src-1', 'act-hot', '2026-11-10T09:00:00.000Z'), ('rep-2', 'src-2', 'act-cold', '2026-11-11T09:00:00.000Z')`,
+        ('rep-1', 'src-1', 'act-hot', '2026-11-10T09:00:00.000Z'), ('rep-2', 'src-2', 'act-cold', '2026-11-11T09:00:00.000Z'),
+        ('rep-3', 'src-1', 'act-bob', '2026-11-10T09:00:00.000Z')`,
       `INSERT INTO readings (id, act_id, question_id, position, bearing, via_question_id, created_at) VALUES
         ('rd-1', 'act-hot', 'hot-bill', 'support', 'direct', NULL, '2026-11-10T09:00:00.000Z'),
         ('rd-2', 'act-hot', 'hot', 'support', 'direct', 'hot-bill', '2026-11-10T09:00:00.000Z'),
-        ('rd-3', 'act-cold', 'cold', 'oppose', 'direct', NULL, '2026-11-11T09:00:00.000Z')`,
+        ('rd-3', 'act-cold', 'cold', 'oppose', 'direct', NULL, '2026-11-11T09:00:00.000Z'),
+        ('rd-4', 'act-bob', 'hot', 'oppose', 'direct', NULL, '2026-11-10T09:00:00.000Z')`,
     ].map((sql) => (sql.includes('?1') ? env.DB.prepare(sql).bind(PUBLISHED) : env.DB.prepare(sql))),
   )
   for (const [quote, url] of [
@@ -41,16 +46,17 @@ beforeAll(async () => {
 })
 
 describe('GET /feed.xml', () => {
-  it('serves Atom with every published act, newest into the record first', async () => {
+  it('serves Atom with one entry per story, newest into the record first', async () => {
     const res = await feed()
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toBe('application/atom+xml; charset=utf-8')
     const xml = await res.text()
     expect(xml).toMatch(/^<\?xml version="1.0" encoding="utf-8"\?>\n<feed xmlns="http:\/\/www.w3.org\/2005\/Atom">/)
-    const ids = [...xml.matchAll(/<id>urn:sporelight:act:([^<]+)<\/id>/g)].map((m) => m[1])
-    expect(ids).toEqual(['act-cold', 'act-hot'])
+    expect(storyIds(xml)).toEqual(['src-2', 'src-1'])
     expect(xml).toContain('<updated>2026-11-11T09:00:00.000Z</updated>')
-    expect(xml).toContain('<link rel="alternate" type="text/html" href="http://sporelight.test/q/hot-bill/ann-alpha"/>')
+    expect(xml).toContain('<title>Ann &lt;signs&gt; on (2 people)</title>')
+    expect(xml).toContain('<link rel="related" type="text/html" title="Ann Alpha" href="http://sporelight.test/q/hot-bill/ann-alpha"/>')
+    expect(xml).toContain('<link rel="related" type="text/html" title="Bob Beta" href="http://sporelight.test/q/hot/bob-beta"/>')
   })
 
   it('carries nothing that is waiting for review or was rejected', async () => {
@@ -71,18 +77,21 @@ describe('GET /feed.xml', () => {
     expect(xml).not.toContain('\u0007')
   })
 
-  it('says each question an act is read on', async () => {
+  it('says who is in each story and what each act shows on each question', async () => {
     const xml = await (await feed()).text()
-    expect(xml).toContain('Bill: Signed on\nHot Topic: Signals support (through Bill)')
+    expect(xml).toContain('Bill: Signed on\nHot Topic: Signals support (through Bill)\nhttp://sporelight.test/q/hot-bill/ann-alpha')
+    expect(xml).toContain('Bob Beta, statement on 2026-11-08:\n“I will vote against it.”\nHot Topic: Signals opposition')
   })
 
   it('takes a question and everything under it', async () => {
-    const ids = async (query: string) => [...(await (await feed(query)).text()).matchAll(/<id>urn:sporelight:act:([^<]+)<\/id>/g)].map((m) => m[1])
-    expect(await ids('?question=hot')).toEqual(['act-hot'])
-    expect(await ids('?question=hot-bill')).toEqual(['act-hot'])
-    expect(await ids('?question=cold')).toEqual(['act-cold'])
-    expect(await ids('?body=congress')).toEqual(['act-cold', 'act-hot'])
+    const ids = async (query: string) => storyIds(await (await feed(query)).text())
+    expect(await ids('?question=hot')).toEqual(['src-1'])
+    expect(await ids('?question=hot-bill')).toEqual(['src-1'])
+    expect(await ids('?question=cold')).toEqual(['src-2'])
+    expect(await ids('?body=congress')).toEqual(['src-2', 'src-1'])
     expect(await ids('?body=demo')).toEqual([])
+    // Bob sits in the Senate, so a Congress-only feed leaves him out of the story.
+    expect(await (await feed('?body=congress')).text()).not.toContain('Bob Beta')
   })
 
   it('names the selection and links back to the same slice of the page', async () => {

@@ -69,7 +69,7 @@ export function Discussion({ question, decider }: { question: Question; decider:
   }
 
   return (
-    <section>
+    <section id="discussion" className="scroll-mt-6">
       <h2 className="mb-1 text-xl font-semibold">Discussion</h2>
       <p className="mb-4 text-sm text-muted">
         Talk about {decider.name} and this question. To add something to the record itself, use “Add to the record” so an editor can check it.

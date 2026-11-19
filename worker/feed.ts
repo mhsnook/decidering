@@ -1,12 +1,14 @@
 import { D1Adapter } from 'party-db/server'
 import { publicCollections } from '../shared/schema.ts'
 import { buildTracker, type TrackerData } from '../src/lib/build-tracker.ts'
-import { FEED_PAGE, atomHref, buildFeed } from '../src/lib/feed.ts'
+import { STORY_PAGE, atomHref, buildStories } from '../src/lib/feed.ts'
 import { atomFeed } from './atom.ts'
 
-// Only the public collections: proposals and their notes are never read here.
+// The published tables the feed reads. Proposals and their notes are never read here.
+const FEED_TABLES = new Set(['bodies', 'deciders', 'seats', 'roles', 'questions', 'question_bodies', 'sources', 'acts', 'reports', 'readings'])
+
 async function loadRecord(db: D1Database): Promise<TrackerData> {
-  const adapter = new D1Adapter(db, [...publicCollections])
+  const adapter = new D1Adapter(db, publicCollections.filter((c) => FEED_TABLES.has(c.name)))
   await adapter.init()
   const rows = new Map((await adapter.snapshot()).map((batch) => [batch.channel, batch.ops.map((op) => op.value)]))
   const of = <T,>(channel: string) => (rows.get(channel) ?? []) as T[]
@@ -45,9 +47,9 @@ export async function atomResponse(req: Request, env: Env, ctx: ExecutionContext
   const body = bodySlug ? tracker.bodyBySlug.get(bodySlug) : undefined
   if ((questionSlug && !question) || (bodySlug && !body)) return new Response('No such question or body.', { status: 404 })
 
-  const entries = buildFeed(tracker, { questionId: question?.id, bodyId: body?.id }).slice(0, FEED_PAGE)
+  const stories = buildStories(tracker, { questionId: question?.id, bodyId: body?.id }).slice(0, STORY_PAGE)
   const filtered = [question?.short_title, body?.name].filter(Boolean).join(', ')
-  const xml = atomFeed(entries, {
+  const xml = atomFeed(stories, {
     origin: url.origin,
     title: `Sporelight: latest on the record${filtered ? ` (${filtered})` : ''}`,
     self,

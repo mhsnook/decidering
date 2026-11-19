@@ -1,4 +1,4 @@
-import type { FeedEntry } from '../src/lib/feed.ts'
+import type { Story, StoryItem } from '../src/lib/feed.ts'
 import { KIND_LABEL, readingLabel } from '../src/lib/position.ts'
 
 // XML 1.0 allows no control characters but tab, newline and carriage return,
@@ -23,40 +23,41 @@ export type AtomMeta = {
   page: string
 }
 
-const pageOf = (origin: string, entry: FeedEntry) =>
-  `${origin}/q/${encodeURIComponent(entry.readings[0].question.slug)}/${encodeURIComponent(entry.decider.slug)}`
+const personPage = (origin: string, item: StoryItem) =>
+  `${origin}/q/${encodeURIComponent(item.readings[0].question.slug)}/${encodeURIComponent(item.decider.slug)}`
 
-function entryText(entry: FeedEntry): string {
-  const { act } = entry
-  const lines = [
-    act.kind === 'says' ? `“${act.body}”` : act.body,
-    '',
-    ...entry.readings.map(
-      ({ reading, question, via }) =>
-        `${question.short_title}: ${readingLabel(reading.position, question)}${via ? ` (through ${via.short_title})` : ''}${reading.bearing === 'indirect' ? ' (indirect)' : ''}`,
-    ),
-    '',
-    `${KIND_LABEL[act.kind]} on ${act.occurred_on}${act.withdrawn_on ? `, withdrawn ${act.withdrawn_on}` : ''}.`,
-    ...entry.reports.map(({ source }) => (source.url ? `Source: ${source.title ? `${source.title} ` : ''}${source.url}` : `Source: ${source.title ?? 'a document with no public link'}`)),
-    ...(entry.isDemo ? ['Demo data, not real.'] : []),
-  ]
-  return lines.join('\n')
+const sourceTitle = (story: Story) => story.source.title ?? story.source.url ?? 'A document with no public link'
+
+function storyText(story: Story, origin: string): string {
+  const people = story.items.map((item) => {
+    const { act } = item
+    return [
+      `${item.decider.name}, ${KIND_LABEL[act.kind].toLowerCase()} on ${act.occurred_on}${act.withdrawn_on ? `, withdrawn ${act.withdrawn_on}` : ''}${item.isNew ? '' : ', already on the record'}:`,
+      act.kind === 'says' ? `“${item.words}”` : item.words,
+      ...item.readings.map(
+        ({ reading, question, via }) =>
+          `${question.short_title}: ${readingLabel(reading.position, question)}${via ? ` (through ${via.short_title})` : ''}${reading.bearing === 'indirect' ? ' (indirect)' : ''}`,
+      ),
+      personPage(origin, item),
+    ].join('\n')
+  })
+  return [...people, `Source: ${sourceTitle(story)}${story.source.url && story.source.title ? ` ${story.source.url}` : ''}`, ...(story.isDemo ? ['Demo data, not real.'] : [])].join('\n\n')
 }
 
-export function atomFeed(entries: FeedEntry[], meta: AtomMeta): string {
+export function atomFeed(stories: Story[], meta: AtomMeta): string {
   const x = xmlEscape
-  const updated = entries.reduce((latest, e) => (e.enteredAt > latest ? e.enteredAt : latest), '1970-01-01T00:00:00.000Z')
-  const body = entries.map((entry) => {
-    const topics = [...new Set(entry.readings.map((r) => r.question.short_title))].join(', ')
+  const updated = stories.reduce((latest, s) => (s.at > latest ? s.at : latest), '1970-01-01T00:00:00.000Z')
+  const body = stories.map((story) => {
+    const people = story.items.length
     return [
       '  <entry>',
-      `    <id>urn:sporelight:act:${x(encodeURIComponent(entry.act.id))}</id>`,
-      `    <title>${x(`${entry.decider.name}: ${KIND_LABEL[entry.act.kind].toLowerCase()} on ${topics}`)}</title>`,
-      `    <link rel="alternate" type="text/html" href="${x(pageOf(meta.origin, entry))}"/>`,
-      ...entry.reports.flatMap(({ source }) => (source.url ? [`    <link rel="related" href="${x(source.url)}"/>`] : [])),
-      `    <published>${x(entry.enteredAt)}</published>`,
-      `    <updated>${x(entry.enteredAt)}</updated>`,
-      `    <content type="text">${x(entryText(entry))}</content>`,
+      `    <id>urn:sporelight:story:${x(encodeURIComponent(story.source.id))}:${x(story.at)}</id>`,
+      `    <title>${x(`${sourceTitle(story)} (${people} ${people === 1 ? 'person' : 'people'})`)}</title>`,
+      `    <link rel="alternate" type="text/html" href="${x(story.source.url ?? personPage(meta.origin, story.items[0]))}"/>`,
+      ...story.items.map((item) => `    <link rel="related" type="text/html" title="${x(item.decider.name)}" href="${x(personPage(meta.origin, item))}"/>`),
+      `    <published>${x(story.at)}</published>`,
+      `    <updated>${x(story.at)}</updated>`,
+      `    <content type="text">${x(storyText(story, meta.origin))}</content>`,
       '  </entry>',
     ].join('\n')
   })

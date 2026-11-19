@@ -1,38 +1,60 @@
-import type { Act, Decider, Proposal, ProposalItem, Question, Reading, Report, Source } from '../../shared/schema.ts'
+import type { Act, Decider, Proposal, ProposalItem, Question, Reading, Source } from '../../shared/schema.ts'
 import { groupBy, type Tracker } from './build-tracker.ts'
 
-// One published act, with every question it is read on.
-export type FeedEntry = {
+// `question` keeps stories with a reading on that question or anything under
+// it. `body` keeps people with a seat in that body, on questions put to it.
+export type FeedFilter = { questionId?: string; bodyId?: string }
+
+export type StoryReading = { reading: Reading; question: Question; via: Question | undefined }
+
+// One person's act as one source reports it.
+export type StoryItem = {
   act: Act
   decider: Decider
-  // When the act entered the record: the time it was published.
-  enteredAt: string
-  readings: { reading: Reading; question: Question; via: Question | undefined }[]
-  reports: { report: Report; source: Source }[]
+  readings: StoryReading[]
+  // The source's own words for the act. They differ from the act's when an
+  // earlier source put the act on file.
+  words: string
+  // False when the source reports an act already on the record.
+  isNew: boolean
+}
+
+// A source entering the record: everything an editor published from it in one
+// review. Its reports share the source and the moment they were written.
+export type Story = {
+  key: string
+  source: Source
+  at: string
+  items: StoryItem[]
   isDemo: boolean
 }
 
-// One act a proposal claims, with the readings it claims for it. Nobody has
-// checked it.
-export type WaitingEntry = {
+// One act a waiting proposal claims, with the readings it claims for it.
+export type WaitingItem = {
   key: string
-  proposal: Proposal
   decider: Decider
   // The first claim's item carries the act's kind, date and words.
   claims: { item: ProposalItem; question: Question; reading: NonNullable<ProposalItem['reading']> }[]
+}
+
+// A proposal waiting for review: its source and the acts it claims. Nobody has
+// checked any of it.
+export type WaitingStory = {
+  key: string
+  at: string
+  proposal: Proposal
+  source: Source | undefined
+  items: WaitingItem[]
   isDemo: boolean
 }
 
-// `question` keeps entries read on that question or anything under it. `body`
-// keeps entries by someone with a seat in that body, read on a question put to it.
-export type FeedFilter = { questionId?: string; bodyId?: string }
-
-export const FEED_PAGE = 50
+export const STORY_PAGE = 20
 
 // A question and every question under it, at any depth.
 export function questionFamily(tracker: Pick<Tracker, 'measuresOf' | 'asksOf'>, questionId: string): Set<string> {
   const family = new Set<string>()
   const visit = (id: string) => {
+    if (family.has(id)) return
     family.add(id)
     for (const child of [...(tracker.measuresOf.get(id) ?? []), ...(tracker.asksOf.get(id) ?? [])]) visit(child.id)
   }
@@ -53,16 +75,17 @@ function matcher(tracker: Tracker, filter: FeedFilter) {
 
 const isDemoQuestion = (tracker: Tracker, question: Question) => tracker.bodyById.get(question.body_id)?.is_demo === true
 
-// The published record as a feed, newest first. One act read on several
-// questions is one entry.
-export function buildFeed(tracker: Tracker, filter: FeedFilter = {}): FeedEntry[] {
+// The published record as stories, newest first. A story keeps only the people
+// the filter keeps, and each person's readings that match it come first.
+export function buildStories(tracker: Tracker, filter: FeedFilter = {}): Story[] {
   const match = matcher(tracker, filter)
   const readingsByAct = groupBy(tracker.readings, (r) => r.act_id)
-
-  const entries: FeedEntry[] = []
-  for (const act of tracker.acts) {
-    const decider = tracker.deciderById.get(act.decider_id)
-    if (!decider || !match.person(decider.id)) continue
+  const byKey = new Map<string, Story>()
+  for (const report of tracker.reports) {
+    const act = tracker.actById.get(report.act_id)
+    const source = tracker.sourceById.get(report.source_id)
+    const decider = act && tracker.deciderById.get(act.decider_id)
+    if (!act || !source || !decider || !match.person(decider.id)) continue
     const readings = (readingsByAct.get(act.id) ?? [])
       .flatMap((reading) => {
         const question = tracker.questionById.get(reading.question_id)
@@ -70,71 +93,72 @@ export function buildFeed(tracker: Tracker, filter: FeedFilter = {}): FeedEntry[
         const via = reading.via_question_id ? tracker.questionById.get(reading.via_question_id) : undefined
         return [{ reading, question, via }]
       })
-      // The question read directly before any it was written on by implication.
-      .sort((a, b) => Number(a.via !== undefined) - Number(b.via !== undefined) || a.question.sort - b.question.sort)
-    if (!readings.some((r) => match.question(r.question))) continue
-    entries.push({ act, decider, enteredAt: act.created_at, readings, reports: tracker.reportsOf(act), isDemo: readings.some((r) => isDemoQuestion(tracker, r.question)) })
+      .sort(
+        (a, b) =>
+          Number(match.question(b.question)) - Number(match.question(a.question)) ||
+          Number(a.via !== undefined) - Number(b.via !== undefined) ||
+          a.question.sort - b.question.sort,
+      )
+    if (!readings[0] || !match.question(readings[0].question)) continue
+    const item: StoryItem = { act, decider, readings, words: report.excerpt ?? act.body, isNew: act.created_at >= report.created_at }
+    const isDemo = readings.some((r) => isDemoQuestion(tracker, r.question))
+    const key = `${source.id}@${report.created_at}`
+    const story = byKey.get(key)
+    if (story) {
+      story.items.push(item)
+      story.isDemo ||= isDemo
+    } else byKey.set(key, { key, source, at: report.created_at, items: [item], isDemo })
   }
-  return entries.sort(
-    (a, b) => b.enteredAt.localeCompare(a.enteredAt) || b.act.occurred_on.localeCompare(a.act.occurred_on) || a.act.id.localeCompare(b.act.id),
-  )
+  for (const story of byKey.values()) story.items.sort((a, b) => Number(b.isNew) - Number(a.isNew) || a.decider.sort_name.localeCompare(b.decider.sort_name))
+  return [...byKey.values()].sort((a, b) => b.at.localeCompare(a.at) || a.key.localeCompare(b.key))
 }
 
-// What is waiting for review that claims something: pending items with a
-// reading. Rejected items, and search leads that only name someone, are left
-// out. Items of one proposal that share an act are one entry.
-export function buildWaiting(tracker: Tracker, proposals: Proposal[], items: ProposalItem[], filter: FeedFilter = {}): WaitingEntry[] {
+// What is waiting for review that claims something, one story per proposal,
+// newest first. Only pending items with a reading count: rejected items, and
+// search leads that only name someone, are left out. Items of one proposal
+// that share an act are one item.
+export function buildWaiting(tracker: Tracker, proposals: Proposal[], items: ProposalItem[], filter: FeedFilter = {}): WaitingStory[] {
   const match = matcher(tracker, filter)
   const proposalById = new Map(proposals.map((p) => [p.id, p]))
-  const byKey = new Map<string, WaitingEntry>()
+  const stories = new Map<string, WaitingStory>()
   for (const item of [...items].sort((a, b) => a.sort - b.sort)) {
     if (item.status !== 'pending' || item.reading === null) continue
     const proposal = proposalById.get(item.proposal_id)
     const decider = tracker.deciderById.get(item.decider_id)
     const question = tracker.questionById.get(item.question_id)
     if (!proposal || proposal.status !== 'pending' || !decider || !question || !match.person(decider.id) || !match.question(question)) continue
+    let story = stories.get(proposal.id)
+    if (!story) {
+      story = { key: `proposal:${proposal.id}`, at: proposal.created_at, proposal, source: tracker.sourceById.get(proposal.source_id), items: [], isDemo: false }
+      stories.set(proposal.id, story)
+    }
+    story.isDemo ||= isDemoQuestion(tracker, question)
     const key = `${proposal.id}:${item.act_id}`
     const claim = { item, question, reading: item.reading }
-    const entry = byKey.get(key)
-    if (entry) {
-      entry.claims.push(claim)
-      entry.isDemo ||= isDemoQuestion(tracker, question)
-      continue
-    }
-    byKey.set(key, {
-      key,
-      proposal,
-      decider,
-      claims: [claim],
-      isDemo: isDemoQuestion(tracker, question),
-    })
+    const existing = story.items.find((i) => i.key === key)
+    if (existing) existing.claims.push(claim)
+    else story.items.push({ key, decider, claims: [claim] })
   }
-  return [...byKey.values()].sort((a, b) => b.proposal.created_at.localeCompare(a.proposal.created_at) || a.key.localeCompare(b.key))
+  return [...stories.values()].sort((a, b) => b.proposal.created_at.localeCompare(a.proposal.created_at) || a.proposal.id.localeCompare(b.proposal.id))
 }
 
-// One page of the feed: the entries after `before` (an act id), or the newest
-// if it is missing or no longer in the feed. `older` is the cursor for the next
-// page, if there is one.
-export function feedPage(entries: FeedEntry[], before: string | undefined, size = FEED_PAGE): { entries: FeedEntry[]; older: string | undefined; isFirst: boolean } {
-  const at = before ? entries.findIndex((e) => e.act.id === before) : -1
-  const start = at + 1
-  const page = entries.slice(start, start + size)
-  return { entries: page, older: start + size < entries.length ? page[page.length - 1].act.id : undefined, isFirst: start === 0 }
+// The record and what is waiting, in one stream by when each entered it.
+export type FeedStory = { kind: 'published'; story: Story } | { kind: 'waiting'; story: WaitingStory }
+
+export function mergeFeed(stories: Story[], waiting: WaitingStory[]): FeedStory[] {
+  const all: FeedStory[] = [...stories.map((story) => ({ kind: 'published' as const, story })), ...waiting.map((story) => ({ kind: 'waiting' as const, story }))]
+  return all.sort((a, b) => b.story.at.localeCompare(a.story.at) || a.story.key.localeCompare(b.story.key))
 }
 
-// Consecutive entries that entered the record on the same UTC day.
-export function byDay<T>(entries: T[], at: (entry: T) => string): { day: string; entries: T[] }[] {
-  const days: { day: string; entries: T[] }[] = []
-  for (const entry of entries) {
-    const day = at(entry).slice(0, 10)
-    const last = days[days.length - 1]
-    if (last?.day === day) last.entries.push(entry)
-    else days.push({ day, entries: [entry] })
-  }
-  return days
+// One page of a feed: the stories after `before` (a story key), or the newest
+// if it is missing or no longer in the feed. `older` is the cursor for the next page.
+export function feedPage<T extends { story: { key: string } }>(feed: T[], before: string | undefined, size = STORY_PAGE): { page: T[]; older: string | undefined; isFirst: boolean } {
+  const start = (before ? feed.findIndex((f) => f.story.key === before) : -1) + 1
+  const page = feed.slice(start, start + size)
+  return { page, older: start + size < feed.length ? page[page.length - 1].story.key : undefined, isFirst: start === 0 }
 }
 
-// The Atom feed of the same selection. It carries published entries only.
+// The Atom feed of the same selection. It carries published stories only.
 export function atomHref(filter: { question?: string; body?: string }) {
   const params = new URLSearchParams()
   if (filter.question) params.set('question', filter.question)

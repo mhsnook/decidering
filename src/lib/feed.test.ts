@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { buildFeed, buildWaiting, byDay, feedPage, questionFamily } from './feed.ts'
+import { buildStories, buildWaiting, feedPage, mergeFeed, questionFamily } from './feed.ts'
 import { act, data, decider, item, proposal, question, reading, report, role, seat, source, track } from './fixtures.ts'
 
-const at = (day: string) => `${day}T12:00:00.000Z`
+const at = (day: string, time = '12:00') => `${day}T${time}:00.000Z`
 
 const policy = question('policy')
 const bill = question('bill', { parent_id: 'policy', kind: 'formal_act', implies_on_parent: 'support', sort: 1 })
@@ -15,131 +15,130 @@ const bodies = [
   { id: 'council', slug: 'council', name: 'Council', jurisdiction: null, description: null, is_demo: true, sort: 1, next_term_on: null, next_term_label: null },
 ]
 
+// One act and its first report share the moment an editor published them, as planReview writes them.
+const published = (id: string, deciderId: string, sourceId: string, when: string, over: Parameters<typeof act>[2] = {}) => ({
+  act: act(id, deciderId, { created_at: when, ...over }),
+  report: report(sourceId, id, { created_at: when }),
+})
+
+const article = [
+  published('ann-says', 'ann', 'paper', at('2026-11-12')),
+  published('bob-says', 'bob', 'paper', at('2026-11-12'), { occurred_on: '2026-11-10' }),
+]
+const cosponsor = published('cosponsor', 'ann', 'record', at('2026-11-10'), { kind: 'commits', occurred_on: '2026-03-01' })
+const councilVote = published('council-vote', 'cy', 'minutes', at('2026-11-15'), { kind: 'does' })
+const aside = published('aside', 'ann', 'blog', at('2026-11-14'))
+// A later article reporting an act already on file, with its own excerpt.
+const followUp = report('wire', 'bob-says', { created_at: at('2026-11-16'), excerpt: 'Bob said it again.' })
+
 const tracker = track({
   bodies,
   deciders: [decider('ann'), decider('bob'), decider('cy')],
   seats: [seat('s1'), seat('s2'), seat('c1', { body_id: 'council' })],
   roles: [role('s1', 'ann'), role('s2', 'bob'), role('c1', 'cy')],
   questions: [policy, bill, markup, other, elsewhere],
-  sources: [source('paper'), source('release'), source('minutes')],
-  acts: [
-    act('cosponsor', 'ann', { kind: 'commits', occurred_on: '2026-03-01', created_at: at('2026-11-10'), primary_source_id: 'release' }),
-    act('speech', 'bob', { occurred_on: '2026-11-01', created_at: at('2026-11-12') }),
-    act('old-vote', 'bob', { kind: 'does', occurred_on: '2025-06-01', created_at: at('2026-11-12') }),
-    act('aside', 'ann', { occurred_on: '2026-10-01', created_at: at('2026-11-14') }),
-    act('council-vote', 'cy', { kind: 'does', occurred_on: '2026-09-01', created_at: at('2026-11-15') }),
-    act('unread', 'ann', { created_at: at('2026-11-16') }),
-  ],
-  reports: [
-    report('paper', 'cosponsor', { created_at: at('2026-11-09') }),
-    report('release', 'cosponsor', { created_at: at('2026-11-10') }),
-    report('paper', 'speech'),
-    report('minutes', 'council-vote'),
-  ],
+  sources: ['paper', 'record', 'minutes', 'blog', 'wire', 'unread'].map((id) => source(id)),
+  acts: [...article.map((p) => p.act), cosponsor.act, councilVote.act, aside.act, act('unread', 'ann', { created_at: at('2026-11-17') })],
+  reports: [...article.map((p) => p.report), cosponsor.report, councilVote.report, aside.report, followUp, report('unread', 'unread', { created_at: at('2026-11-17') })],
   readings: [
+    reading('ann-says', 'policy', 'support'),
+    reading('bob-says', 'policy', 'oppose'),
+    reading('bob-says', 'markup', 'oppose'),
     reading('cosponsor', 'bill', 'support'),
     reading('cosponsor', 'policy', 'support', 'bill'),
-    reading('speech', 'policy', 'oppose'),
-    reading('old-vote', 'markup', 'oppose'),
     reading('aside', 'other', 'mixed'),
     reading('council-vote', 'elsewhere', 'support'),
   ],
 })
 
-const ids = (entries: { act: { id: string } }[]) => entries.map((e) => e.act.id)
+const keys = (stories: { source: { id: string } }[]) => stories.map((s) => s.source.id)
+const people = (story: { items: { decider: { id: string } }[] }) => story.items.map((i) => i.decider.id)
 
-describe('the published feed', () => {
-  const feed = buildFeed(tracker)
+describe('stories', () => {
+  const stories = buildStories(tracker)
 
-  it('lists each act once, newest into the record first, then by when it happened', () => {
-    expect(ids(feed)).toEqual(['council-vote', 'aside', 'speech', 'old-vote', 'cosponsor'])
+  it('are one per source and publishing moment, newest first', () => {
+    expect(keys(stories)).toEqual(['wire', 'minutes', 'blog', 'paper', 'record'])
   })
 
-  it('leaves out an act with no reading, which says nothing on any question', () => {
-    expect(ids(feed)).not.toContain('unread')
+  it('gather everyone a source reports in one story', () => {
+    expect(people(stories.find((s) => s.source.id === 'paper')!)).toEqual(['ann', 'bob'])
   })
 
-  it('says every question one act is read on, the direct reading before the implied one', () => {
-    const cosponsor = feed.find((e) => e.act.id === 'cosponsor')!
-    expect(cosponsor.readings.map((r) => [r.question.id, r.reading.position, r.via?.id])).toEqual([
+  it('leave out an act with no reading, which says nothing on any question', () => {
+    expect(keys(stories)).not.toContain('unread')
+  })
+
+  it('say every question an act is read on, the direct reading before the implied one', () => {
+    const [item] = stories.find((s) => s.source.id === 'record')!.items
+    expect(item.readings.map((r) => [r.question.id, r.reading.position, r.via?.id])).toEqual([
       ['bill', 'support', undefined],
       ['policy', 'support', 'bill'],
     ])
   })
 
-  it('lists the record of the act itself before the sources that report it', () => {
-    expect(feed.find((e) => e.act.id === 'cosponsor')!.reports.map((r) => r.source.id)).toEqual(['release', 'paper'])
+  it('mark a later report of an act already on file, with that source’s own words', () => {
+    const [item] = stories.find((s) => s.source.id === 'wire')!.items
+    expect(item.isNew).toBe(false)
+    expect(item.words).toBe('Bob said it again.')
+    const [first] = stories.find((s) => s.source.id === 'paper')!.items
+    expect(first.isNew).toBe(true)
+    expect(first.words).toBe('ann-says')
   })
 
-  it('marks entries read on a question in a demo body', () => {
-    expect(feed.filter((e) => e.isDemo).map((e) => e.act.id)).toEqual(['council-vote'])
+  it('are marked as demo data when read on a question in a demo body', () => {
+    expect(stories.filter((s) => s.isDemo).map((s) => s.source.id)).toEqual(['minutes'])
   })
 })
 
 describe('filters', () => {
-  it('takes a question and everything under it, at any depth', () => {
+  it('take a question and everything under it, at any depth', () => {
     expect([...questionFamily(tracker, 'policy')].sort()).toEqual(['bill', 'markup', 'policy'])
-    expect(ids(buildFeed(tracker, { questionId: 'policy' }))).toEqual(['speech', 'old-vote', 'cosponsor'])
-    expect(ids(buildFeed(tracker, { questionId: 'bill' }))).toEqual(['old-vote', 'cosponsor'])
-    expect(ids(buildFeed(tracker, { questionId: 'markup' }))).toEqual(['old-vote'])
+    expect(keys(buildStories(tracker, { questionId: 'policy' }))).toEqual(['wire', 'paper', 'record'])
+    expect(keys(buildStories(tracker, { questionId: 'markup' }))).toEqual(['wire', 'paper'])
   })
 
-  it('takes a body: people seated in it, on questions put to it', () => {
-    expect(ids(buildFeed(tracker, { bodyId: 'council' }))).toEqual(['council-vote'])
-    expect(ids(buildFeed(tracker, { bodyId: 'body' }))).toEqual(['aside', 'speech', 'old-vote', 'cosponsor'])
+  it('keep only the people in a story the filter keeps, and put their matching readings first', () => {
+    const paper = buildStories(tracker, { questionId: 'markup' }).find((s) => s.source.id === 'paper')!
+    expect(people(paper)).toEqual(['bob'])
+    expect(paper.items[0].readings.map((r) => r.question.id)).toEqual(['markup', 'policy'])
   })
 
-  it('combines a question and a body', () => {
-    expect(ids(buildFeed(tracker, { questionId: 'policy', bodyId: 'council' }))).toEqual([])
-    expect(ids(buildFeed(tracker, { questionId: 'elsewhere', bodyId: 'council' }))).toEqual(['council-vote'])
+  it('take a body: people seated in it, on questions put to it', () => {
+    expect(keys(buildStories(tracker, { bodyId: 'council' }))).toEqual(['minutes'])
+    expect(keys(buildStories(tracker, { questionId: 'policy', bodyId: 'council' }))).toEqual([])
+  })
+
+  it('survive two questions that name each other as parent', () => {
+    const loop = track({ questions: [question('a', { parent_id: 'b' }), question('b', { parent_id: 'a' })] })
+    expect([...questionFamily(loop, 'a')].sort()).toEqual(['a', 'b'])
   })
 })
 
 describe('paging', () => {
-  const feed = buildFeed(tracker)
+  const feed = mergeFeed(buildStories(tracker), [])
+  const ids = (page: typeof feed) => page.map((f) => (f.kind === 'published' ? f.story.source.id : f.story.proposal.id))
 
   it('starts at the newest and gives a cursor while more remain', () => {
     const first = feedPage(feed, undefined, 2)
-    expect(ids(first.entries)).toEqual(['council-vote', 'aside'])
-    expect(first.older).toBe('aside')
+    expect(ids(first.page)).toEqual(['wire', 'minutes'])
     expect(first.isFirst).toBe(true)
     const second = feedPage(feed, first.older, 2)
-    expect(ids(second.entries)).toEqual(['speech', 'old-vote'])
+    expect(ids(second.page)).toEqual(['blog', 'paper'])
     const last = feedPage(feed, second.older, 2)
-    expect(ids(last.entries)).toEqual(['cosponsor'])
+    expect(ids(last.page)).toEqual(['record'])
     expect(last.older).toBeUndefined()
-    expect(last.isFirst).toBe(false)
   })
 
   it('goes back to the newest when the cursor is no longer in the feed', () => {
-    expect(feedPage(feed, 'merged-away', 2).isFirst).toBe(true)
-  })
-
-  it('does not skip entries that entered at the same moment', () => {
-    const seen = []
-    let cursor: string | undefined
-    do {
-      const page = feedPage(feed, cursor, 1)
-      seen.push(...ids(page.entries))
-      cursor = page.older
-    } while (cursor)
-    expect(seen).toEqual(ids(feed))
-  })
-
-  it('groups consecutive entries by the day they entered', () => {
-    expect(byDay(feed, (e) => e.enteredAt).map((d) => [d.day, ids(d.entries)])).toEqual([
-      ['2026-11-15', ['council-vote']],
-      ['2026-11-14', ['aside']],
-      ['2026-11-12', ['speech', 'old-vote']],
-      ['2026-11-10', ['cosponsor']],
-    ])
+    expect(feedPage(feed, 'gone@2026', 2).isFirst).toBe(true)
   })
 })
 
 describe('what is waiting for review', () => {
   const proposals = [
     proposal('from-reader', 'paper', { created_at: at('2026-11-17') }),
-    proposal('from-model', 'release', { origin: 'model', created_at: at('2026-11-18') }),
+    proposal('from-model', 'record', { origin: 'model', created_at: at('2026-11-18') }),
     proposal('lead', 'minutes', { origin: 'news_search', created_at: at('2026-11-18') }),
     proposal('done', 'paper', { status: 'reviewed', created_at: at('2026-11-01') }),
   ]
@@ -148,33 +147,48 @@ describe('what is waiting for review', () => {
     item('turned-down', 'from-reader', 'bob', 'policy', { reading: 'oppose', status: 'rejected' }),
     item('on-bill', 'from-model', 'bob', 'bill', { reading: 'support', act_id: 'one-act', sort: 0 }),
     item('on-policy', 'from-model', 'bob', 'policy', { reading: 'support', act_id: 'one-act', sort: 1 }),
-    item('second-act', 'from-model', 'bob', 'other', { reading: 'mixed', act_id: 'two' }),
+    item('second-act', 'from-model', 'ann', 'other', { reading: 'mixed', act_id: 'two' }),
     item('bare-lead', 'lead', 'cy', 'elsewhere'),
     item('published', 'done', 'ann', 'policy', { reading: 'support', status: 'accepted' }),
     item('unknown-person', 'from-reader', 'nobody', 'policy', { reading: 'support' }),
   ]
   const waiting = buildWaiting(tracker, proposals, items)
-  const claimed = (entries: typeof waiting) => entries.map((e) => [e.proposal.id, e.claims.map((c) => c.item.id)])
+  const claimed = (stories: typeof waiting) => stories.map((s) => [s.proposal.id, s.items.map((i) => i.claims.map((c) => c.item.id))])
 
-  it('shows only pending items that claim a reading, newest proposal first', () => {
+  it('is one story per proposal with pending items that claim a reading, newest first', () => {
     expect(claimed(waiting)).toEqual([
-      ['from-model', ['on-bill', 'on-policy']],
-      ['from-model', ['second-act']],
-      ['from-reader', ['claim']],
+      ['from-model', [['on-bill', 'on-policy'], ['second-act']]],
+      ['from-reader', [['claim']]],
     ])
   })
 
   it('never shows a rejected item, a bare search lead or anything already reviewed', () => {
-    const shown = waiting.flatMap((e) => e.claims.map((c) => c.item.id))
+    const shown = waiting.flatMap((s) => s.items.flatMap((i) => i.claims.map((c) => c.item.id)))
     for (const id of ['turned-down', 'bare-lead', 'published', 'unknown-person']) expect(shown).not.toContain(id)
   })
 
   it('takes the same filters as the record', () => {
-    expect(claimed(buildWaiting(tracker, proposals, items, { questionId: 'bill' }))).toEqual([['from-model', ['on-bill']]])
+    expect(claimed(buildWaiting(tracker, proposals, items, { questionId: 'bill' }))).toEqual([['from-model', [['on-bill']]]])
     expect(claimed(buildWaiting(tracker, proposals, items, { bodyId: 'council' }))).toEqual([])
   })
 
-  it('keeps who put it forward', () => {
-    expect(waiting.map((e) => e.proposal.origin)).toEqual(['model', 'model', 'reader'])
+  it('sits in the feed beside the record, by when it was put forward', () => {
+    const merged = mergeFeed(buildStories(tracker), waiting)
+    expect(merged.map((f) => (f.kind === 'published' ? f.story.source.id : `waiting:${f.story.proposal.id}`))).toEqual([
+      'waiting:from-model',
+      'waiting:from-reader',
+      'wire',
+      'minutes',
+      'blog',
+      'paper',
+      'record',
+    ])
+  })
+
+  it('keeps who put it forward and its source', () => {
+    expect(waiting.map((s) => [s.proposal.origin, s.source?.id])).toEqual([
+      ['model', 'record'],
+      ['reader', 'paper'],
+    ])
   })
 })

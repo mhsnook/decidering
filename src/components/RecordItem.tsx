@@ -45,7 +45,7 @@ export function ActWords({ kind, words }: { kind: Act['kind']; words: string }) 
   )
 }
 
-export function SourceLinks({ sources }: { sources: { key: string; source: Pick<Source, 'url' | 'title'> }[] }) {
+function SourceLinks({ sources }: { sources: { key: string; source: Pick<Source, 'url' | 'title'> }[] }) {
   return (
     <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
       {sources.map(({ key, source }) => (
