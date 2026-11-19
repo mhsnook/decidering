@@ -9,7 +9,8 @@ import { planReview, type ItemVerdict } from '../lib/review-plan.ts'
 import { useTracker } from '../lib/tracker.tsx'
 import { KIND_CHOICE, KIND_LABEL, POSITION_LABEL, formatDate, hostOf, standingLabel } from '../lib/position.ts'
 import { Syncing, Token } from '../components/bits.tsx'
-import { RecordItem } from '../components/RecordItem.tsx'
+import { ArchivedCopy, RecordItem } from '../components/RecordItem.tsx'
+import { ArchiveControls } from '../components/ArchiveControls.tsx'
 
 export const Route = createFileRoute('/editor')({ component: Editor })
 
@@ -275,6 +276,8 @@ function Review({ proposal, items, notes, behind }: { proposal: Proposal; items:
                 {source.url} ↗
               </a>
             )}
+            <ArchivedCopy source={source} />
+            <ArchiveControls source={source} />
             {submitterNotes.filter((n) => !n.proposal_item_id).map((n) => (
               <p key={n.id} className="mt-2 text-sm">
                 {proposal.origin === 'reader' ? 'Reader’s note' : 'Note'}: {n.body}

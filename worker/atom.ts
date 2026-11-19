@@ -41,7 +41,7 @@ function storyText(story: Story, origin: string): string {
       personPage(origin, item),
     ].join('\n')
   })
-  return [...people, `Source: ${sourceTitle(story)}${story.source.url && story.source.title ? ` ${story.source.url}` : ''}`, ...(story.isDemo ? ['Demo data, not real.'] : [])].join('\n\n')
+  return [...people, `Source: ${sourceTitle(story)}${story.source.url && story.source.title ? ` ${story.source.url}` : ''}${story.source.archive_url ? ` (archived: ${story.source.archive_url})` : ''}`, ...(story.isDemo ? ['Demo data, not real.'] : [])].join('\n\n')
 }
 
 export function atomFeed(stories: Story[], meta: AtomMeta): string {
