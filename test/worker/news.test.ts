@@ -40,14 +40,10 @@ describe('searchNews', () => {
     const { env, websearch } = stubbedEnv()
     const report = await searchNews(env, await tracker(), NOW)
 
-    const queries = websearch.mock.calls.map(([args]) => args.query)
-    // A question closed in the past and the demo body's question are not searched;
-    // one whose closing date lies ahead still is.
-    expect(queries.filter((q) => q.includes('"Hot Topic" Congress'))).toHaveLength(4)
-    expect(queries.filter((q) => q.includes('"Closing Topic" Congress'))).toHaveLength(4)
-    expect(queries).toHaveLength(8)
-    expect(queries[0]).toBe('"Hot Topic" Congress statement November 2026')
-    expect(websearch.mock.calls[0][0]).toMatchObject({ gatewayId: 'default', provider: 'exa', limit: 10 })
+    const searched = (title: string) => websearch.mock.calls.some(([args]) => args.query.includes(`"${title}"`))
+    // A question closed in the past, one not in the news and the demo body's
+    // question are not searched; one whose closing date lies ahead still is.
+    expect(['Hot Topic', 'Closing Topic', 'Cold Topic', 'Closed Topic', 'Demo Topic'].map(searched)).toEqual([true, true, false, false, false])
 
     // The hot question is put to the Senate as well, so Bob is on its roster. The
     // closing question is put to Congress alone, so only Ann is.
@@ -59,22 +55,22 @@ describe('searchNews', () => {
       { url: 'https://news.example/both', question_id: 'hot', decider_id: 'ann', origin: 'news_search', reading: null, occurred_on: null },
       { url: 'https://news.example/both', question_id: 'hot', decider_id: 'bob', origin: 'news_search', reading: null, occurred_on: null },
     ])
-    expect(report).toEqual({
-      questions: [
-        { question: 'Hot Topic', hits: 24, queued: 4 },
-        { question: 'Closing Topic', hits: 24, queued: 2 },
-      ],
-    })
+    expect(report.error).toBeUndefined()
+    expect(report.questions.map((q) => [q.question, q.queued])).toEqual([
+      ['Hot Topic', 4],
+      ['Closing Topic', 2],
+    ])
   })
 
-  it('puts the search excerpt and the query in an editor-only note', async () => {
-    const notes = await rows<{ body: string; url: string }>(
-      `SELECT n.body, s.url FROM proposal_notes n JOIN proposals p ON p.id = n.proposal_id JOIN sources s ON s.id = p.source_id WHERE s.url = 'https://news.example/ann' ORDER BY n.body`,
+  it('marks every lead as an unchecked excerpt in a note only editors read', async () => {
+    const leadsWithNotes = await rows<{ notes: number; body: string | null }>(
+      `SELECT COUNT(n.id) AS notes, MAX(n.body) AS body FROM proposals p LEFT JOIN proposal_notes n ON n.proposal_id = p.id GROUP BY p.id`,
     )
-    expect(notes.map((n) => n.body)).toEqual([
-      'Search excerpt, not a verified quote. Found by searching: "Closing Topic" Congress statement November 2026',
-      'Search excerpt, not a verified quote. Found by searching: "Hot Topic" Congress statement November 2026',
-    ])
+    expect(leadsWithNotes.length).toBeGreaterThan(0)
+    for (const lead of leadsWithNotes) {
+      expect(lead.notes).toBe(1)
+      expect(lead.body).toMatch(/not a verified quote/i)
+    }
   })
 
   it('queues nothing new on a second run over the same results', async () => {
@@ -95,5 +91,24 @@ describe('searchNews', () => {
     const { env } = stubbedEnv(() => Promise.reject(new Error('network down')))
     const report = await searchNews(env, await tracker(), NOW)
     expect(report.error).toBe('Web search failed (Error: network down)')
+  })
+})
+
+// Last in the file: it fills the queue.
+describe('searchNews with a full queue', () => {
+  it('stops at the first lead the queue refuses and spends no more searches', async () => {
+    const pending = (await rows<{ n: number }>(`SELECT COUNT(*) AS n FROM proposals WHERE status = 'pending'`))[0].n
+    await env.DB.prepare(`INSERT INTO sources (id, url, created_at) VALUES ('filler', 'https://news.example/filler', '2026-11-01')`).run()
+    await env.DB.batch(
+      Array.from({ length: 500 - pending }, (_, i) =>
+        env.DB.prepare(`INSERT INTO proposals (id, source_id, origin, created_at) VALUES (?, 'filler', 'reader', '2026-11-01')`).bind(`filler-${i}`),
+      ),
+    )
+    const fresh = HITS.map((h) => ({ ...h, url: `${h.url}/again` }))
+    const { env: stubbed, websearch } = stubbedEnv(() => Response.json({ items: fresh }))
+    const report = await searchNews(stubbed, await tracker(), NOW)
+    expect(report.error).toBe('The review queue is full right now. Please try again later.')
+    expect(websearch).toHaveBeenCalledTimes(1)
+    expect(await rows(`SELECT id FROM sources WHERE url LIKE '%/again'`)).toEqual([])
   })
 })

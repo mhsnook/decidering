@@ -1,3 +1,4 @@
+import { env } from 'cloudflare:workers'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { post, rows, seed } from './helpers.ts'
 
@@ -34,6 +35,16 @@ describe('POST /api/comments', () => {
     const res = await post('/api/comments', { ...comment(), website: 'x' })
     expect(await res.json()).toEqual({ ok: true })
     expect(await count()).toBe(0)
+  })
+
+  it('ignores an id, thread or timestamp the reader sends', async () => {
+    const res = await post('/api/comments', comment({ id: 'forged', thread_id: 'cold:bob', created_at: '2001-01-01T00:00:00Z', body: 'Forged fields.' }))
+    expect(await res.json()).toEqual({ ok: true })
+    const [row] = await rows<{ id: string; thread_id: string; created_at: string }>(`SELECT id, thread_id, created_at FROM comments WHERE body = 'Forged fields.'`)
+    expect(row.id).not.toBe('forged')
+    expect(row.thread_id).toBe('hot:ann')
+    expect(row.created_at.startsWith('2001')).toBe(false)
+    await env.DB.prepare(`DELETE FROM comments`).run()
   })
 
   it('writes a trimmed comment to the thread for that person and question', async () => {
