@@ -2,13 +2,23 @@ import { Link } from '@tanstack/react-router'
 import { useState, type ReactNode } from 'react'
 import type { Bearing, Position, Proposal, Question, Source } from '../../shared/schema.ts'
 import type { Story, StoryItem, WaitingStory } from '../lib/feed.ts'
-import { KIND_LABEL, SPECTRUM, formatDate, hostOf, readingLabel, sourceLabel } from '../lib/position.ts'
+import { KIND_LABEL, SPECTRUM, STANDING_COLOR, formatDate, hostOf, readingLabel, sourceLabel, standingLabel } from '../lib/position.ts'
 import { Token } from './bits.tsx'
 import { ActWords, IndirectTag } from './RecordItem.tsx'
 
 // Replies shown before a reader opens the rest of a story.
 const FOLDED = 3
 const DOTS = 24
+// Claims a folded waiting story lists under its source line.
+const CLAIM_LINES = 2
+
+// Who put a proposal forward, in the few words the folded line has room for.
+const FROM: Record<Proposal['origin'], string> = {
+  reader: 'from a reader',
+  news_search: 'from the news search',
+  partner: 'from a partner',
+  model: 'from a model',
+}
 
 const ORIGIN: Record<Proposal['origin'], string> = {
   reader: 'Sent in by a reader',
@@ -17,7 +27,7 @@ const ORIGIN: Record<Proposal['origin'], string> = {
   model: 'Read from the article by a model',
 }
 
-// "Nduka, Calloway" as "C. Nduka", for the one-line summary of what is waiting.
+// "Nduka, Calloway" as "C. Nduka", for the folded summary of what is waiting.
 const shortName = (d: StoryItem['decider']) => {
   const [last, first] = d.sort_name.split(', ')
   return first ? `${first[0]}. ${last}` : d.name
@@ -143,18 +153,32 @@ export function StoryCard({ story }: { story: Story }) {
 // Unchecked, so it stays one line until a reader opens it, and then asks them to check it.
 export function WaitingStoryCard({ story }: { story: WaitingStory }) {
   const [open, setOpen] = useState(false)
-  const names = [...new Set(story.items.map((i) => shortName(i.decider)))]
-  const claims = story.items.reduce((n, i) => n + i.claims.length, 0)
+  const claims = story.items.flatMap(({ decider, claims }) => claims.map((claim) => ({ decider, claim })))
   return (
     <article className="rounded-lg border-2 border-dashed border-line bg-paper/70 text-sm" aria-label={`Not checked yet: ${story.source ? sourceLabel(story.source) : 'a proposal'}`} data-waiting>
-      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex w-full cursor-pointer items-baseline gap-x-2 px-3 py-1.5 text-left text-xs">
-        <span className="tag shrink-0 text-[11px]">Not checked yet</span>
-        <span className="line-clamp-2 min-w-0 flex-1 text-muted sm:line-clamp-1">
-          <span className="font-semibold text-ink">{names.join(', ')}</span> · {claims} {claims === 1 ? 'claim' : 'claims'}
-          {story.source && ` in ${hostOf(story.source.url)}: ${sourceLabel(story.source)}`}
-          {story.isDemo && ' · demo'}
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="block w-full cursor-pointer space-y-0.5 px-3 py-2 text-left text-xs">
+        <span className="flex items-baseline gap-x-2">
+          <span className="tag shrink-0 text-[11px]">Not checked yet</span>
+          <span className="min-w-0 flex-1 truncate text-muted">
+            {story.isDemo && 'demo · '}
+            {story.source?.url && `${hostOf(story.source.url)} · `}
+            {FROM[story.proposal.origin]}
+          </span>
+          <span className="shrink-0 font-bold">{open ? 'Hide' : 'Review'}</span>
         </span>
-        <span className="shrink-0 font-bold">{open ? 'Hide' : 'Review'}</span>
+        <span className="block truncate text-sm font-semibold">{story.source ? sourceLabel(story.source) : 'A source with no link'}</span>
+        {!open &&
+          claims.slice(0, CLAIM_LINES).map(({ decider, claim }) => (
+            <span key={claim.item.id} className="flex items-center gap-x-1.5 truncate">
+              <span className="size-2.5 shrink-0 rounded-full border-2 border-dashed" style={{ borderColor: STANDING_COLOR[claim.reading] }} />
+              <span className="font-semibold">{shortName(decider)}</span>
+              <span>{readingLabel(claim.reading, claim.question).toLowerCase()}</span>
+              <span className="text-muted">
+                on {claim.question.short_title} · now {standingLabel(claim.now, claim.question).toLowerCase()}
+              </span>
+            </span>
+          ))}
+        {!open && claims.length > CLAIM_LINES && <span className="block text-muted">+{claims.length - CLAIM_LINES} more</span>}
       </button>
       {open && (
         <div className="border-t-2 border-dashed border-ink">

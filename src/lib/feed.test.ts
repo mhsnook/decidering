@@ -191,6 +191,16 @@ describe('what is waiting for review', () => {
     ])
   })
 
+  it('says where each person stands today on the question a claim is about', () => {
+    const bob = waiting[0].items[0]
+    expect(bob.claims.map((c) => [c.question.id, c.now])).toEqual([
+      ['bill', 'unknown'],
+      ['policy', 'unknown'],
+    ])
+    const signed = buildWaiting(tracker, proposals, [item('again', 'from-reader', 'ann', 'bill', { reading: 'support' })])
+    expect(signed[0].items[0].claims[0].now).toBe('support')
+  })
+
   it('keeps who put it forward and its source', () => {
     expect(waiting.map((s) => [s.proposal.origin, s.source?.id])).toEqual([
       ['model', 'record'],

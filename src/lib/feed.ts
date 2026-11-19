@@ -1,5 +1,6 @@
 import type { Act, Decider, Proposal, ProposalItem, Question, Reading, Source } from '../../shared/schema.ts'
 import { groupBy, type Tracker } from './build-tracker.ts'
+import type { Standing } from './position.ts'
 
 // `question` keeps stories with a reading on that question or anything under
 // it. `body` keeps people with a seat in that body, on questions put to it.
@@ -35,7 +36,8 @@ export type WaitingItem = {
   key: string
   decider: Decider
   // The first claim's item carries the act's kind, date and words.
-  claims: { item: ProposalItem; question: Question; reading: NonNullable<ProposalItem['reading']> }[]
+  // `now` is where the person stands on the question today, before any of this is checked.
+  claims: { item: ProposalItem; question: Question; reading: NonNullable<ProposalItem['reading']>; now: Standing }[]
 }
 
 // A proposal waiting for review: its source and the acts it claims. Nobody has
@@ -129,7 +131,7 @@ export function buildWaiting(tracker: Tracker, proposals: Proposal[], items: Pro
       stories.set(proposal.id, story)
     }
     story.isDemo ||= isDemoQuestion(tracker, question)
-    const claim = { item, question, reading: item.reading }
+    const claim = { item, question, reading: item.reading, now: tracker.standingFor(question, decider.id) }
     const existing = story.items.find((i) => i.key === item.act_id)
     if (existing) existing.claims.push(claim)
     else story.items.push({ key: item.act_id, decider, claims: [claim] })
