@@ -68,6 +68,15 @@ test('the feed lists the record newest first, and its filters live in the URL', 
   await expect(published.getByRole('link', { name: 'Back to the newest' })).toBeVisible()
 })
 
+test('a feed link to a question that does not exist says so instead of showing everything', async ({ page }) => {
+  await page.goto('/latest?question=no-such-question')
+  await expect(page.getByText('No question here.')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'On the record' })).toHaveCount(0)
+  await page.getByRole('link', { name: 'See everything that is new' }).click()
+  await expect(page).toHaveURL(/\/latest$/)
+  await expect(page.getByRole('region', { name: 'On the record' })).toBeVisible()
+})
+
 test('the Atom feed is linked from the page and carries the published record', async ({ page, request }) => {
   await page.goto('/latest?question=free-ferry')
   await expect(page.locator('head link[rel="alternate"][type="application/atom+xml"]')).toHaveAttribute('href', '/feed.xml?question=free-ferry')

@@ -2,8 +2,8 @@ import type { FeedEntry } from '../src/lib/feed.ts'
 import { KIND_LABEL, readingLabel } from '../src/lib/position.ts'
 
 // XML 1.0 allows no control characters but tab, newline and carriage return,
-// even escaped, so they are dropped rather than escaped.
-const INVALID_XML = /[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g
+// and no unpaired surrogates, even escaped, so they are dropped rather than escaped.
+const INVALID_XML = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g
 
 export function xmlEscape(text: string): string {
   return text

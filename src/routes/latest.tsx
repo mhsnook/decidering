@@ -41,6 +41,16 @@ function Latest() {
   const feed = useMemo(() => buildFeed(tracker, filter), [tracker, filter.questionId, filter.bodyId])
 
   if (!isReady) return <Syncing />
+  if ((search.question && !question) || (bodySlug && !body)) {
+    return (
+      <div className="space-y-4 py-16 text-center">
+        <p className="text-muted">No {search.question && !question ? 'question' : 'body'} here.</p>
+        <Link to="/latest" search={{ body: undefined }} className="link">
+          See everything that is new
+        </Link>
+      </div>
+    )
+  }
 
   const page = feedPage(feed, search.before)
   const set = (patch: Partial<typeof search>) => navigate({ search: (prev) => ({ ...prev, before: undefined, ...patch }), replace: true })
@@ -92,7 +102,7 @@ function Latest() {
       </p>
 
       <div className={search.waiting ? 'grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]' : ''}>
-        {search.waiting && <Waiting filter={filter} />}
+        {search.waiting && <Waiting key={`${filter.questionId}:${filter.bodyId}`} filter={filter} />}
         <section aria-labelledby="published" className="lg:row-start-1">
           <h2 id="published" className="mb-3 text-xl font-semibold">
             On the record

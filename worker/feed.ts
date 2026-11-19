@@ -32,7 +32,9 @@ async function loadRecord(db: D1Database) {
 }
 
 // GET /feed.xml, with the same `question` and `body` filters as /latest.
-export async function atomResponse(req: Request, env: Env): Promise<Response> {
+export async function atomResponse(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const cached = await caches.default.match(req)
+  if (cached) return cached
   const url = new URL(req.url)
   const questionSlug = url.searchParams.get('question') || undefined
   const bodySlug = url.searchParams.get('body') || undefined
@@ -50,5 +52,7 @@ export async function atomResponse(req: Request, env: Env): Promise<Response> {
     self: `/feed.xml${query ? `?${query}` : ''}`,
     page: `/latest${query ? `?${query}` : ''}`,
   })
-  return new Response(xml, { headers: { 'content-type': 'application/atom+xml; charset=utf-8', 'cache-control': 'public, max-age=300' } })
+  const res = new Response(xml, { headers: { 'content-type': 'application/atom+xml; charset=utf-8', 'cache-control': 'public, max-age=300' } })
+  ctx.waitUntil(caches.default.put(req, res.clone()))
+  return res
 }
