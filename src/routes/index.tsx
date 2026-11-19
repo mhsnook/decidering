@@ -273,12 +273,12 @@ function RunYourOwn() {
         <p className="mb-[18px] leading-[1.55] sm:mb-5 sm:text-[17px]">
           Run your own copy. Choose the questions and the people that matter to your class, and track what they say and do.
         </p>
-        <a href="https://github.com/mhsnook/decidering#readme" target="_blank" rel="noreferrer" className="btn w-full shadow-hard-md sm:w-auto">
+        <a href="https://github.com/mhsnook/sporelight#readme" target="_blank" rel="noreferrer" className="btn w-full shadow-hard-md sm:w-auto">
           Read the guide
         </a>
       </div>
       <pre className="flex flex-col justify-center overflow-x-auto border-t-2 border-ink bg-terminal px-5 py-[18px] font-mono text-[13px] leading-[1.9] text-[oklch(0.88_0.12_150)] sm:px-7 sm:py-8 sm:text-[15px] md:border-t-0 md:border-l-2">
-        {['git clone github.com/mhsnook/decidering', 'pnpm install', 'pnpm db:reset', 'pnpm dev'].map((command) => (
+        {['git clone github.com/mhsnook/sporelight', 'pnpm install', 'pnpm db:reset', 'pnpm dev'].map((command) => (
           <span key={command}>
             <span className="text-[oklch(0.65_0.08_150)] select-none">$ </span>
             {command}
