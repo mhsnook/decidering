@@ -16,6 +16,7 @@
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
     "test:worker": "vitest run --project worker",
+    "test:e2e": "pnpm db:reset && playwright test",
     "db:migrate": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote --config wrangler.jsonc",
     "seed:build": "node scripts/build-seed.ts",
@@ -47,6 +48,7 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.69.1",
     "@cloudflare/vitest-plugin": "^1.8.5",
+    "@playwright/test": "1.63.0",
     "@tailwindcss/vite": "^4.3.5",
     "@tanstack/router-plugin": "^1.169.0",
     "@types/node": "^26.6.6",
