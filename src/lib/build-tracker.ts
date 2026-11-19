@@ -14,7 +14,7 @@ export function groupBy<T, K>(items: readonly T[], key: (item: T) => K): Map<K, 
   return out
 }
 
-export const indexBy = <T, K>(items: readonly T[], key: (item: T) => K) => new Map(items.map((i) => [key(i), i] as const))
+const indexBy = <T, K>(items: readonly T[], key: (item: T) => K) => new Map(items.map((i) => [key(i), i] as const))
 
 // One act as it bears on one question: what it signals there, and every source
 // that reports it.
@@ -146,6 +146,9 @@ export function buildTracker(c: TrackerData, asOf: string) {
       .map((report) => ({ report, source: sourceById.get(report.source_id) }))
       .filter((r): r is { report: Report; source: Source } => r.source !== undefined)
       .sort((a, b) => Number(b.source.id === act.primary_source_id) - Number(a.source.id === act.primary_source_id) || a.report.created_at.localeCompare(b.report.created_at))
+
+  // Measures and asks alike: every question directly under this one.
+  const subQuestionsOf = (questionId: string): Question[] => [...(measuresOf.get(questionId) ?? []), ...(asksOf.get(questionId) ?? [])]
 
   const entriesByPair = new Map<string, RecordEntry[]>()
   for (const reading of c.readings) {
@@ -307,7 +310,7 @@ export function buildTracker(c: TrackerData, asOf: string) {
     bodyBySlug,
     bodiesInOrder,
     bodiesOf,
-    reportsOf,
+    subQuestionsOf,
     appliesIn,
     questionsIn,
     measuresIn,

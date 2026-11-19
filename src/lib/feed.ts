@@ -5,7 +5,7 @@ import { groupBy, type Tracker } from './build-tracker.ts'
 // it. `body` keeps people with a seat in that body, on questions put to it.
 export type FeedFilter = { questionId?: string; bodyId?: string }
 
-export type StoryReading = { reading: Reading; question: Question; via: Question | undefined }
+type StoryReading = { reading: Reading; question: Question; via: Question | undefined }
 
 // One person's act as one source reports it.
 export type StoryItem = {
@@ -31,6 +31,7 @@ export type Story = {
 
 // One act a waiting proposal claims, with the readings it claims for it.
 export type WaitingItem = {
+  // The act the claims describe, unique within one proposal.
   key: string
   decider: Decider
   // The first claim's item carries the act's kind, date and words.
@@ -51,12 +52,12 @@ export type WaitingStory = {
 export const STORY_PAGE = 20
 
 // A question and every question under it, at any depth.
-export function questionFamily(tracker: Pick<Tracker, 'measuresOf' | 'asksOf'>, questionId: string): Set<string> {
+export function questionFamily(tracker: Pick<Tracker, 'subQuestionsOf'>, questionId: string): Set<string> {
   const family = new Set<string>()
   const visit = (id: string) => {
     if (family.has(id)) return
     family.add(id)
-    for (const child of [...(tracker.measuresOf.get(id) ?? []), ...(tracker.asksOf.get(id) ?? [])]) visit(child.id)
+    for (const child of tracker.subQuestionsOf(id)) visit(child.id)
   }
   visit(questionId)
   return family
@@ -91,16 +92,11 @@ export function buildStories(tracker: Tracker, filter: FeedFilter = {}): Story[]
         const question = tracker.questionById.get(reading.question_id)
         if (!question) return []
         const via = reading.via_question_id ? tracker.questionById.get(reading.via_question_id) : undefined
-        return [{ reading, question, via }]
+        return [{ reading, question, via, matches: match.question(question) }]
       })
-      .sort(
-        (a, b) =>
-          Number(match.question(b.question)) - Number(match.question(a.question)) ||
-          Number(a.via !== undefined) - Number(b.via !== undefined) ||
-          a.question.sort - b.question.sort,
-      )
-    if (!readings[0] || !match.question(readings[0].question)) continue
-    const item: StoryItem = { act, decider, readings, words: report.excerpt ?? act.body, isNew: act.created_at >= report.created_at }
+      .sort((a, b) => Number(b.matches) - Number(a.matches) || Number(a.via !== undefined) - Number(b.via !== undefined) || a.question.sort - b.question.sort)
+    if (!readings[0]?.matches) continue
+    const item: StoryItem = { act, decider, readings: readings.map(({ matches: _, ...r }) => r), words: report.excerpt ?? act.body, isNew: act.created_at >= report.created_at }
     const isDemo = readings.some((r) => isDemoQuestion(tracker, r.question))
     const key = `${source.id}@${report.created_at}`
     const story = byKey.get(key)
@@ -133,11 +129,10 @@ export function buildWaiting(tracker: Tracker, proposals: Proposal[], items: Pro
       stories.set(proposal.id, story)
     }
     story.isDemo ||= isDemoQuestion(tracker, question)
-    const key = `${proposal.id}:${item.act_id}`
     const claim = { item, question, reading: item.reading }
-    const existing = story.items.find((i) => i.key === key)
+    const existing = story.items.find((i) => i.key === item.act_id)
     if (existing) existing.claims.push(claim)
-    else story.items.push({ key, decider, claims: [claim] })
+    else story.items.push({ key: item.act_id, decider, claims: [claim] })
   }
   return [...stories.values()].sort((a, b) => b.proposal.created_at.localeCompare(a.proposal.created_at) || a.proposal.id.localeCompare(b.proposal.id))
 }
@@ -150,12 +145,22 @@ export function mergeFeed(stories: Story[], waiting: WaitingStory[]): FeedStory[
   return all.sort((a, b) => b.story.at.localeCompare(a.story.at) || a.story.key.localeCompare(b.story.key))
 }
 
-// One page of a feed: the stories after `before` (a story key), or the newest
-// if it is missing or no longer in the feed. `older` is the cursor for the next page.
-export function feedPage<T extends { story: { key: string } }>(feed: T[], before: string | undefined, size = STORY_PAGE): { page: T[]; older: string | undefined; isFirst: boolean } {
-  const start = (before ? feed.findIndex((f) => f.story.key === before) : -1) + 1
-  const page = feed.slice(start, start + size)
-  return { page, older: start + size < feed.length ? page[page.length - 1].story.key : undefined, isFirst: start === 0 }
+// A cursor names a place in the feed's order, not a story, so it still works
+// after the story it was taken from is reviewed, merged or removed.
+const cursorOf = (f: FeedStory) => `${f.story.at}|${f.story.key}`
+const isAfter = (f: FeedStory, cursor: string) => {
+  const cut = cursor.indexOf('|')
+  const at = cursor.slice(0, cut)
+  return f.story.at < at || (f.story.at === at && f.story.key > cursor.slice(cut + 1))
+}
+
+// One page of the feed: what comes after `before` in its order, or the newest.
+// `older` is the cursor for the next page.
+export function feedPage(feed: FeedStory[], before: string | undefined, size = STORY_PAGE): { page: FeedStory[]; older: string | undefined; isFirst: boolean } {
+  const start = before && before.includes('|') ? feed.findIndex((f) => isAfter(f, before)) : 0
+  const from = start === -1 ? feed.length : start
+  const page = feed.slice(from, from + size)
+  return { page, older: from + size < feed.length ? cursorOf(page[page.length - 1]) : undefined, isFirst: from === 0 }
 }
 
 // The Atom feed of the same selection. It carries published stories only.

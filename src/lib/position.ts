@@ -64,6 +64,9 @@ export const KIND_CHOICE: Record<ActKind, string> = {
 const dateFmt = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })
 export const formatDate = (iso: string) => dateFmt.format(new Date(iso))
 
+// What to call a source in a list or a heading.
+export const sourceLabel = (source: { title: string | null; url: string | null }) => source.title ?? (source.url ? hostOf(source.url) : 'A document with no public link')
+
 export function hostOf(url: string | null): string {
   try {
     return url ? new URL(url).hostname : 'No link'

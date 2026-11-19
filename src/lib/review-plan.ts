@@ -72,7 +72,8 @@ export type Verdict = {
 const APPROVAL_ORDER: (keyof Rows)[] = ['sources', 'acts', 'reports', 'readings', 'stances', 'proposal_items', 'proposal_notes', 'proposals']
 
 // Everything publishing one reviewed proposal changes, as a list of writes for
-// a single transaction. Each accepted item publishes its act (unless it is on
+// a single transaction. Every row it writes is stamped with the same `now`:
+// the feed groups reports of one source with one timestamp into one story. Each accepted item publishes its act (unless it is on
 // file), a report of it in the proposal's source, its reading on the item's
 // question, and the stance the editor set. Rejected items only change status.
 export function planReview(

@@ -1,5 +1,5 @@
 import type { Story, StoryItem } from '../src/lib/feed.ts'
-import { KIND_LABEL, readingLabel } from '../src/lib/position.ts'
+import { KIND_LABEL, readingLabel, sourceLabel } from '../src/lib/position.ts'
 
 // XML 1.0 allows no control characters but tab, newline and carriage return,
 // and no unpaired surrogates, even escaped, so they are dropped rather than escaped.
@@ -26,7 +26,7 @@ export type AtomMeta = {
 const personPage = (origin: string, item: StoryItem) =>
   `${origin}/q/${encodeURIComponent(item.readings[0].question.slug)}/${encodeURIComponent(item.decider.slug)}`
 
-const sourceTitle = (story: Story) => story.source.title ?? story.source.url ?? 'A document with no public link'
+const sourceTitle = (story: Story) => sourceLabel(story.source)
 
 function storyText(story: Story, origin: string): string {
   const people = story.items.map((item) => {

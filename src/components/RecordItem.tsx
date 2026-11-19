@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
-import type { Act, Question, Source } from '../../shared/schema.ts'
+import type { Act, Question } from '../../shared/schema.ts'
 import type { RecordEntry } from '../lib/tracker.tsx'
-import { KIND_LABEL, SIGNAL_LABEL, STANDING_BG, formatDate, hostOf } from '../lib/position.ts'
+import { KIND_LABEL, SIGNAL_LABEL, STANDING_BG, formatDate, sourceLabel } from '../lib/position.ts'
 
 export function RecordItem({ entry, question, children }: { entry: RecordEntry; question?: Question; children?: ReactNode }) {
   const { act, reading, via, reports, lapse } = entry
@@ -23,7 +23,19 @@ export function RecordItem({ entry, question, children }: { entry: RecordEntry; 
         </span>
       </div>
       <ActWords kind={act.kind} words={act.body} />
-      <SourceLinks sources={reports.map((r) => ({ key: r.report.id, source: r.source }))} />
+      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+        {reports.map(({ report, source }) => (
+          <li key={report.id}>
+            {source.url ? (
+              <a href={source.url} target="_blank" rel="noreferrer" className="link">
+                {sourceLabel(source)} ↗
+              </a>
+            ) : (
+              <span className="text-muted">{sourceLabel(source)}</span>
+            )}
+          </li>
+        ))}
+      </ul>
       {children}
     </li>
   )
@@ -42,23 +54,5 @@ export function ActWords({ kind, words }: { kind: Act['kind']; words: string }) 
     <p>{words}</p>
   ) : (
     <blockquote className="border-l-2 border-accent pl-3 font-display text-lg leading-snug">“{words}”</blockquote>
-  )
-}
-
-function SourceLinks({ sources }: { sources: { key: string; source: Pick<Source, 'url' | 'title'> }[] }) {
-  return (
-    <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-      {sources.map(({ key, source }) => (
-        <li key={key}>
-          {source.url ? (
-            <a href={source.url} target="_blank" rel="noreferrer" className="link">
-              {source.title ?? hostOf(source.url)} ↗
-            </a>
-          ) : (
-            <span className="text-muted">{source.title ?? 'A document with no public link'}</span>
-          )}
-        </li>
-      ))}
-    </ul>
   )
 }

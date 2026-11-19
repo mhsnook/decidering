@@ -1,8 +1,8 @@
 import { Link } from '@tanstack/react-router'
 import { useState, type ReactNode } from 'react'
-import type { Position, Proposal, Source } from '../../shared/schema.ts'
-import type { Story, StoryItem, StoryReading, WaitingStory } from '../lib/feed.ts'
-import { KIND_LABEL, STANDING_COLOR, formatDate, hostOf, readingLabel } from '../lib/position.ts'
+import type { Bearing, Position, Proposal, Question, Source } from '../../shared/schema.ts'
+import type { Story, StoryItem, WaitingStory } from '../lib/feed.ts'
+import { KIND_LABEL, SPECTRUM, formatDate, hostOf, readingLabel, sourceLabel } from '../lib/position.ts'
 import { Token } from './bits.tsx'
 import { ActWords, IndirectTag } from './RecordItem.tsx'
 
@@ -17,40 +17,44 @@ const ORIGIN: Record<Proposal['origin'], string> = {
   model: 'Read from the article by a model',
 }
 
-const SPECTRUM: Position[] = ['support', 'lean_support', 'mixed', 'lean_oppose', 'oppose']
-
-const sourceTitle = (source: Pick<Source, 'title' | 'url'>) => source.title ?? hostOf(source.url)
+// "Nduka, Calloway" as "C. Nduka", for the one-line summary of what is waiting.
+const shortName = (d: StoryItem['decider']) => {
+  const [last, first] = d.sort_name.split(', ')
+  return first ? `${first[0]}. ${last}` : d.name
+}
 
 function SourceLink({ source }: { source: Pick<Source, 'title' | 'url'> }) {
   const className = 'h-card mt-0.5 block'
   return source.url ? (
     <a href={source.url} target="_blank" rel="noreferrer" className={`${className} hover:underline`}>
-      {sourceTitle(source)} ↗
+      {sourceLabel(source)} ↗
     </a>
   ) : (
-    <span className={className}>{sourceTitle(source)}</span>
+    <span className={className}>{sourceLabel(source)}</span>
   )
 }
 
-function PersonLink({ slug, decider }: { slug: string; decider: StoryItem['decider'] }) {
+// A person's page on one question.
+function PersonLink({ slug, decider, hash, className = 'font-bold hover:underline', children }: { slug: string; decider: StoryItem['decider']; hash?: string; className?: string; children?: ReactNode }) {
   return (
-    <Link to="/q/$slug/$decider" params={{ slug, decider: decider.slug }} className="font-bold hover:underline">
-      {decider.name}
+    <Link to="/q/$slug/$decider" params={{ slug, decider: decider.slug }} hash={hash} className={className}>
+      {children ?? decider.name}
     </Link>
   )
 }
 
-function ReadingLine({ decider, reading, question, via }: StoryReading & { decider: StoryItem['decider'] }) {
+// What one reading, published or claimed, shows on one question. `lead` goes first: a token, or "Claimed:".
+function ReadingLine({ decider, position, question, via, bearing, lead }: { decider: StoryItem['decider']; position: Position; question: Question; via?: Question; bearing: Bearing; lead: ReactNode }) {
   return (
     <li className="flex flex-wrap items-center gap-x-1.5">
-      <Token standing={reading.position} className="size-3" />
-      <span className="font-semibold">{readingLabel(reading.position, question)}</span>
+      {lead}
+      <span className="font-semibold">{readingLabel(position, question)}</span>
       <span className="text-muted">on</span>
-      <Link to="/q/$slug/$decider" params={{ slug: question.slug, decider: decider.slug }} className="link">
+      <PersonLink slug={question.slug} decider={decider} className="link">
         {question.short_title}
-      </Link>
+      </PersonLink>
       {via && <span className="text-muted">through {via.short_title}</span>}
-      {reading.bearing === 'indirect' && (
+      {bearing === 'indirect' && (
         <span className="text-xs text-muted">
           <IndirectTag />
         </span>
@@ -89,7 +93,7 @@ function Folded<T>({ items, render }: { items: T[]; render: (item: T) => ReactNo
 export function StoryCard({ story }: { story: Story }) {
   const people = story.items.length
   return (
-    <article className="card overflow-hidden" aria-label={sourceTitle(story.source)}>
+    <article className="card overflow-hidden" aria-label={sourceLabel(story.source)}>
       <header className="flex items-start justify-between gap-4 border-b-2 border-ink bg-paper/60 px-4 py-3">
         <div className="min-w-0">
           <p className="tag text-muted">
@@ -116,8 +120,16 @@ export function StoryCard({ story }: { story: Story }) {
               </p>
               <ActWords kind={item.act.kind} words={item.words} />
               <ul className="space-y-0.5 text-sm">
-                {item.readings.map((r) => (
-                  <ReadingLine key={r.reading.id} decider={item.decider} {...r} />
+                {item.readings.map(({ reading, question, via }) => (
+                  <ReadingLine
+                    key={reading.id}
+                    decider={item.decider}
+                    position={reading.position}
+                    question={question}
+                    via={via}
+                    bearing={reading.bearing}
+                    lead={<Token standing={reading.position} className="size-3" />}
+                  />
                 ))}
               </ul>
             </div>
@@ -131,25 +143,18 @@ export function StoryCard({ story }: { story: Story }) {
 // Unchecked, so it stays one line until a reader opens it, and then asks them to check it.
 export function WaitingStoryCard({ story }: { story: WaitingStory }) {
   const [open, setOpen] = useState(false)
-  const names = [...new Set(story.items.map((i) => i.decider.name))]
+  const names = [...new Set(story.items.map((i) => shortName(i.decider)))]
+  const claims = story.items.reduce((n, i) => n + i.claims.length, 0)
   return (
-    <article className="rounded-xl border-2 border-dashed border-ink bg-paper/70 text-sm" aria-label={`Not checked yet: ${story.source ? sourceTitle(story.source) : 'a proposal'}`} data-waiting>
-      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex w-full cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-left">
-        <span className="tag">Not checked yet</span>
-        <span className="min-w-0 flex-1">
-          <span className="font-semibold">{names.join(', ')}</span>
-          <span className="text-muted">
-            {' '}
-            in {story.source ? sourceTitle(story.source) : 'a source'} · {ORIGIN[story.proposal.origin].toLowerCase()}
-            {story.isDemo && ' · demo data'}
-          </span>
+    <article className="rounded-lg border-2 border-dashed border-line bg-paper/70 text-sm" aria-label={`Not checked yet: ${story.source ? sourceLabel(story.source) : 'a proposal'}`} data-waiting>
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex w-full cursor-pointer items-baseline gap-x-2 px-3 py-1.5 text-left text-xs">
+        <span className="tag shrink-0 text-[11px]">Not checked yet</span>
+        <span className="line-clamp-2 min-w-0 flex-1 text-muted sm:line-clamp-1">
+          <span className="font-semibold text-ink">{names.join(', ')}</span> · {claims} {claims === 1 ? 'claim' : 'claims'}
+          {story.source && ` in ${hostOf(story.source.url)}: ${sourceLabel(story.source)}`}
+          {story.isDemo && ' · demo'}
         </span>
-        <span className="flex gap-1" aria-hidden="true">
-          {story.items.flatMap((i) => i.claims).map((c) => (
-            <span key={c.item.id} className="size-3.5 rounded-full border-2 border-dashed bg-surface" style={{ borderColor: STANDING_COLOR[c.reading] }} />
-          ))}
-        </span>
-        <span className="font-bold">{open ? 'Hide' : 'Show'}</span>
+        <span className="shrink-0 font-bold">{open ? 'Hide' : 'Review'}</span>
       </button>
       {open && (
         <div className="border-t-2 border-dashed border-ink">
@@ -168,14 +173,7 @@ export function WaitingStoryCard({ story }: { story: WaitingStory }) {
                   <ActWords kind={kind} words={quote} />
                   <ul className="space-y-0.5">
                     {claims.map(({ item, question, reading }) => (
-                      <li key={item.id} className="flex flex-wrap items-center gap-x-1.5">
-                        <span className="text-muted">Claimed:</span>
-                        <span className="font-semibold">{readingLabel(reading, question)}</span>
-                        <span className="text-muted">on</span>
-                        <Link to="/q/$slug/$decider" params={{ slug: question.slug, decider: decider.slug }} className="link">
-                          {question.short_title}
-                        </Link>
-                      </li>
+                      <ReadingLine key={item.id} decider={decider} position={reading} question={question} bearing={item.bearing} lead={<span className="text-muted">Claimed:</span>} />
                     ))}
                   </ul>
                 </li>
@@ -195,9 +193,9 @@ export function WaitingStoryCard({ story }: { story: WaitingStory }) {
                 </a>
               )}
               {story.items.map(({ key, decider, claims }) => (
-                <Link key={key} to="/q/$slug/$decider" params={{ slug: claims[0].question.slug, decider: decider.slug }} hash="discussion" className="link">
+                <PersonLink key={key} slug={claims[0].question.slug} decider={decider} hash="discussion" className="link">
                   Discuss {decider.name}
-                </Link>
+                </PersonLink>
               ))}
             </p>
           </div>

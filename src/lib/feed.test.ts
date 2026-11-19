@@ -130,8 +130,14 @@ describe('paging', () => {
     expect(last.older).toBeUndefined()
   })
 
-  it('goes back to the newest when the cursor is no longer in the feed', () => {
-    expect(feedPage(feed, 'gone@2026', 2).isFirst).toBe(true)
+  it('goes back to the newest when the cursor is not one', () => {
+    expect(feedPage(feed, 'not-a-cursor', 2).isFirst).toBe(true)
+  })
+
+  it('carries on from the same place after the story the cursor came from is gone', () => {
+    const { older } = feedPage(feed, undefined, 2)
+    const withoutMinutes = feed.filter((f) => f.kind !== 'published' || f.story.source.id !== 'minutes')
+    expect(ids(feedPage(withoutMinutes, older, 2).page)).toEqual(['blog', 'paper'])
   })
 })
 

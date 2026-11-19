@@ -5,7 +5,7 @@ import type { Question } from '../../shared/schema.ts'
 import { db } from '../lib/db.ts'
 import { atomHref, buildStories, buildWaiting, feedPage, mergeFeed, type FeedFilter, type FeedStory, type Story } from '../lib/feed.ts'
 import { useTracker, type Tracker } from '../lib/tracker.tsx'
-import { Syncing } from '../components/bits.tsx'
+import { NotFound, Syncing } from '../components/bits.tsx'
 import { StoryCard, WaitingStoryCard } from '../components/Story.tsx'
 
 type FeedSearch = { question?: string; recordOnly?: true; before?: string }
@@ -32,8 +32,8 @@ function Latest() {
   if (!isReady) return <Syncing />
   if ((search.question && !question) || (bodySlug && !body)) {
     return (
-      <div className="space-y-4 py-16 text-center">
-        <p className="text-muted">No {search.question && !question ? 'question' : 'body'} here.</p>
+      <div className="pb-16 text-center">
+        <NotFound what={search.question && !question ? 'question' : 'body'} />
         <Link to="/latest" search={{ body: undefined }} className="link">
           See everything that is new
         </Link>
@@ -137,8 +137,6 @@ function WithWaiting({ stories, filter, before }: { stories: Story[]; filter: Fe
   const items = useLiveQuery((q) => q.from({ row: db.proposal_items }))
   const ready = proposals.isReady && items.isReady
   const waiting = useMemo(() => (ready ? buildWaiting(tracker, proposals.data, items.data, filter) : []), [ready, tracker, proposals.data, items.data, filter.questionId, filter.bodyId])
-  // A cursor can name a waiting story, which is not in the feed until proposals load.
-  if (before && !ready) return <Syncing />
   return <Feed feed={mergeFeed(stories, waiting)} before={before} />
 }
 
@@ -152,7 +150,7 @@ function QuestionOptions({ tracker }: { tracker: Tracker }) {
         {' '.repeat(depth)}
         {depth ? q.short_title : q.title}
       </option>,
-      ...[...(tracker.measuresOf.get(q.id) ?? []), ...(tracker.asksOf.get(q.id) ?? [])].flatMap((c) => option(c, depth + 1)),
+      ...tracker.subQuestionsOf(q.id).flatMap((c) => option(c, depth + 1)),
     ]
   }
   return tracker.bodiesInOrder.map((b) => {
