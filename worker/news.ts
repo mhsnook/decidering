@@ -26,8 +26,10 @@ export async function searchNews(env: Env, tracker: Submitter, now: Date = new D
   const hot = await env.DB.prepare(
     `SELECT q.id, q.short_title, q.body_id, b.name AS body_name
      FROM questions q JOIN bodies b ON b.id = q.body_id
-     WHERE q.is_hot = 1 AND b.is_demo = 0`,
-  ).all<HotQuestion>()
+     WHERE q.is_hot = 1 AND b.is_demo = 0 AND (q.status = 'open' OR q.closed_on > ?)`,
+  )
+    .bind(now.toISOString().slice(0, 10))
+    .all<HotQuestion>()
 
   const report: NewsReport = { questions: [] }
   for (const question of hot.results) {
