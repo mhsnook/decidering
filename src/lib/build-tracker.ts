@@ -252,7 +252,7 @@ export function buildTracker(c: TrackerData, asOf: string) {
   // The people an ask is put to on the day viewed: office holders, then anyone named.
   function peopleOf(ask: Question, bodyId: string = ask.body_id): KeyPerson[] {
     return [
-      ...sittingFor(ask).flatMap((t) => keyPerson(ask, bodyId, t.holder.decider_id, t.holder.id, t.office.label, t.holder.certainty)),
+      ...sittingFor(ask).flatMap((t) => keyPerson(ask, bodyId, t.holder.decider_id, `${ask.id}:${t.holder.id}`, t.office.label, t.holder.certainty)),
       ...(namedIn.get(ask.id) ?? []).flatMap((l) => keyPerson(ask, bodyId, l.decider_id, l.id, l.role_label)),
     ]
   }

@@ -148,6 +148,14 @@ describe('viewing a body on a day', () => {
     expect(next.board(markup).map((r) => r.incumbent?.decider.id)).toEqual(['wyden'])
   })
 
+  it('gives each ask its own entry when two are put to one office', () => {
+    const hearing = question('hearing', { parent_id: 'policy', sort: 1 })
+    const both = track({ ...rows, questions: [...rows.questions, hearing], questionOffices: [...rows.questionOffices, { id: 'hearing:chair', question_id: 'hearing', office_id: 'chair' }] })
+    const people = both.keyPeople(policy)
+    expect(people.map((k) => [k.ask.id, k.contender.decider.id])).toEqual([['markup', 'crapo'], ['hearing', 'crapo']])
+    expect(new Set(people.map((k) => k.key)).size).toBe(2)
+  })
+
   it('keeps each holder their own position on the ask, and knows when they hold the office', () => {
     expect(next.stanceById.get('markup:crapo')?.position).toBe('oppose')
     expect(now.tenuresOn(markup, 'wyden').map((t) => [t.office.label, t.holder.starts_on])).toEqual([['Chair, Finance', TERM]])
