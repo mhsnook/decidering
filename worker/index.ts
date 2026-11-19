@@ -78,7 +78,7 @@ export default {
       const body = (await req.json().catch(() => null)) as { source_id?: unknown } | null
       if (typeof body?.source_id !== 'string') return Response.json({ error: 'Expected a source_id.' }, { status: 400 })
       const result = await archiveNow(env, await tracker(env), body.source_id)
-      return Response.json(result, { status: 'error' in result ? 502 : 200 })
+      return 'error' in result ? Response.json({ error: result.error }, { status: result.status }) : Response.json(result)
     }
     return (await routePartykitRequest(req, env)) ?? new Response('not found', { status: 404 })
   },

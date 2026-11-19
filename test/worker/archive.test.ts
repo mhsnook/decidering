@@ -277,7 +277,8 @@ describe('POST /api/editor/archive', () => {
     expect(await res.json()).toEqual({ outcome: 'archived', archive_url: 'https://web.archive.org/web/20261102000000/https://news.example/s' })
   })
 
-  it('answers 400 without a source id', async () => {
+  it('answers 400 without a source id and 404 for one that does not exist', async () => {
     expect((await call({}, EDITOR_TOKEN)).status).toBe(400)
+    expect((await call({ source_id: 'nope' }, EDITOR_TOKEN)).status).toBe(404)
   })
 })

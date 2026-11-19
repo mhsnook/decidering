@@ -290,7 +290,7 @@ export async function archiveSources(env: Env, tracker: Archiver, now: Date = ne
 export type ArchiveNow =
   | { outcome: 'archived'; archive_url: string }
   | { outcome: 'requested' | 'no_key' | 'failed' | 'gave_up' | 'no_url'; detail: string | null }
-  | { error: string }
+  | { error: string; status: number }
 
 // An editor's request to archive one source now. It ignores any back-off, and
 // waits a little for the capture before leaving it to the scheduled pass.
@@ -298,19 +298,19 @@ export async function archiveNow(env: Env, tracker: Archiver, sourceId: string, 
   const row = await env.DB.prepare(`SELECT ${CANDIDATE_COLUMNS}, s.archive_url FROM sources s LEFT JOIN archive_attempts a ON a.source_id = s.id WHERE s.id = ?`)
     .bind(sourceId)
     .first<Candidate & { url: string | null; archive_url: string | null }>()
-  if (!row) return { error: 'Unknown source.' }
+  if (!row) return { error: 'Unknown source.', status: 404 }
   if (row.archive_url) return { outcome: 'archived', archive_url: row.archive_url }
   if (!row.url) return { outcome: 'no_url', detail: 'This source has no public address to archive.' }
   const source: Candidate = { ...row, url: row.url, outcome: null }
   const key = keyOf(env)
 
   let result = await step(source, key, () => wait(REQUEST_SPACING_MS))
-  if (result.kind === 'stop') return { error: result.reason }
+  if (result.kind === 'stop') return { error: result.reason, status: 502 }
   if (result.kind === 'requested' && key) {
     for (let i = 0; i < EDITOR_POLLS; i++) {
       await wait(EDITOR_POLL_MS)
       const status = await captureStatus(result.jobId, key)
-      if (status.kind === 'stop') return { error: status.reason }
+      if (status.kind === 'stop') return { error: status.reason, status: 502 }
       if (status.kind === 'found' || status.kind === 'failed') {
         result = status
         break

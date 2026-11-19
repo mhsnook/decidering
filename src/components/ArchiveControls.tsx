@@ -43,31 +43,34 @@ export function ArchiveControls({ source }: { source: Pick<Source, 'id' | 'url' 
   return (
     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
       {source.url && !source.archive_url && (
-        <button type="button" className="btn py-1 text-xs" disabled={busy} onClick={archiveNow}>
+        <button type="button" className="underline underline-offset-2" disabled={busy} onClick={archiveNow}>
           {busy ? 'Archiving…' : 'Archive now'}
         </button>
       )}
       {/* Not a form: this sits inside the editor's review form. */}
-      <span className="flex flex-wrap items-center gap-2">
-        <label htmlFor={id}>Archived copy</label>
-        <input
-          ref={input}
-          id={id}
-          inputMode="url"
-          defaultValue={source.archive_url ?? ''}
-          key={source.archive_url ?? ''}
-          placeholder="https://web.archive.org/web/…"
-          className="field w-64 max-w-full py-1 text-xs"
-          onKeyDown={(e) => {
-            if (e.key !== 'Enter') return
-            e.preventDefault()
-            save()
-          }}
-        />
-        <button type="button" className="btn py-1 text-xs" onClick={save}>
-          Save
-        </button>
-      </span>
+      <details>
+        <summary className="cursor-pointer">{source.archive_url ? 'Change archived copy' : 'Give an archived copy'}</summary>
+        <span className="mt-1 flex flex-wrap items-center gap-2">
+          <label htmlFor={id}>Archived copy</label>
+          <input
+            ref={input}
+            id={id}
+            inputMode="url"
+            defaultValue={source.archive_url ?? ''}
+            key={source.archive_url ?? ''}
+            placeholder="https://web.archive.org/web/…"
+            className="field w-72 max-w-full py-1 text-xs"
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return
+              e.preventDefault()
+              save()
+            }}
+          />
+          <button type="button" className="underline underline-offset-2" onClick={save}>
+            Save
+          </button>
+        </span>
+      </details>
       {message && <span role="status">{message}</span>}
     </div>
   )
