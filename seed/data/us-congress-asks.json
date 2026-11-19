@@ -1,13 +1,23 @@
 {
-  "next_term": { "on": "2027-01-03", "label": "120th Congress" },
+  "next_term": {
+    "on": "2027-01-03",
+    "label": "120th Congress"
+  },
   "offices": [
     {
       "id": "us-senate-finance-chair",
       "chamber": "Senate",
       "label": "Chair, Senate Finance Committee",
       "holders": [
-        { "bioguide": "C000880", "ends_on": "2027-01-03" },
-        { "bioguide": "W000779", "starts_on": "2027-01-03" }
+        {
+          "bioguide": "C000880",
+          "ends_on": "2027-01-03"
+        },
+        {
+          "bioguide": "W000779",
+          "starts_on": "2027-01-03",
+          "certainty": "likely"
+        }
       ]
     }
   ],
@@ -20,7 +30,9 @@
       "title": "Will they commit to a markup?",
       "short_title": "Senate markup",
       "description": "A markup is the committee session where a bill is debated, amended and voted on before it can go to the floor. This is asked of whoever chairs the Senate Finance Committee.",
-      "offices": ["us-senate-finance-chair"]
+      "offices": [
+        "us-senate-finance-chair"
+      ]
     }
   ]
 }

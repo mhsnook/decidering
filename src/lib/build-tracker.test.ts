@@ -221,3 +221,53 @@ describe('a question put to more than one body', () => {
     expect(asked.keyPeople(pledge, 'board').map((k) => [k.contender.decider.id, k.roleLabel, k.seat.id])).toEqual([['ann', 'Fundraiser', 'b1']])
   })
 })
+
+describe('a seat or office whose holder is not settled', () => {
+  const policy = question('policy')
+  const ask = question('ask', { parent_id: 'policy' })
+  const TERM = '2027-01-03'
+  const rows = {
+    deciders: [decider('holder'), decider('leader'), decider('a'), decider('b'), decider('chair')],
+    seats: [seat('recount'), seat('runoff'), seat('safe')],
+    roles: [
+      role('recount', 'holder', { ends_on: TERM }),
+      role('recount', 'holder', { id: 'again', starts_on: TERM, certainty: 'possible' }),
+      role('recount', 'leader', { starts_on: TERM, certainty: 'likely' }),
+      role('runoff', 'a', { starts_on: TERM, certainty: 'possible' }),
+      role('runoff', 'b', { starts_on: TERM, certainty: 'possible' }),
+      role('safe', 'chair'),
+    ],
+    questions: [policy, ask],
+    offices: [office('gavel', { label: 'Chair' })],
+    officeHolders: [holder('gavel', 'chair', TERM, null, 'likely')],
+    questionOffices: [{ id: 'ask:gavel', question_id: 'ask', office_id: 'gavel' }],
+  }
+  const seatOf = (t: ReturnType<typeof track>, id: string) => t.board(policy).find((r) => r.seat.id === id)!
+  const now = track(rows)
+  const next = track(rows, '2027-01-31')
+
+  it('is certain today', () => {
+    expect([seatOf(now, 'recount').incumbent?.decider.id, seatOf(now, 'recount').incumbent?.role.certainty, seatOf(now, 'recount').alternates.length]).toEqual(['holder', 'certain', 0])
+  })
+
+  it('shows whoever is likely as the holder, with the others who may hold it beside them', () => {
+    const seat = seatOf(next, 'recount')
+    expect([seat.incumbent?.decider.id, seat.incumbent?.role.certainty]).toEqual(['leader', 'likely'])
+    expect(seat.alternates.map((a) => a.decider.id)).toEqual(['holder'])
+  })
+
+  it('shows nobody as the holder when everyone is only possible', () => {
+    const seat = seatOf(next, 'runoff')
+    expect(seat.incumbent).toBeUndefined()
+    expect(seat.alternates.map((a) => a.decider.id)).toEqual(['a', 'b'])
+  })
+
+  it('carries how sure an office holder is onto the ask put to them', () => {
+    expect(next.keyPeople(policy).map((k) => [k.contender.decider.id, k.certainty])).toEqual([['chair', 'likely']])
+  })
+
+  it("finds someone's surest seat first", () => {
+    expect(next.roleIn(policy, 'holder')?.certainty).toBe('possible')
+    expect(now.roleIn(policy, 'holder')?.certainty).toBe('certain')
+  })
+})

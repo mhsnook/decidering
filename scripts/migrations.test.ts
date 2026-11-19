@@ -202,9 +202,11 @@ describe('the seed', () => {
   })
 
   describe('members-elect', () => {
-    const holders = (db: DatabaseSync, day: string, where = '1') =>
-      all(db, `SELECT s.id AS seat, s.chamber, r.affiliation, d.name FROM roles r JOIN seats s ON s.id = r.seat_id JOIN deciders d ON d.id = r.decider_id
-        WHERE s.body_id = 'us-congress' AND r.kind = 'incumbent' AND (r.starts_on IS NULL OR r.starts_on <= '${day}') AND (r.ends_on IS NULL OR '${day}' < r.ends_on) AND ${where}`)
+    // Whoever certainly or likely holds each seat on a day. Those who only may
+    // hold it are left out, as on the pages.
+    const holders = (db: DatabaseSync, day: string, where = '1', certainty = `r.certainty <> 'possible'`) =>
+      all(db, `SELECT s.id AS seat, s.chamber, r.affiliation, r.certainty, d.name FROM roles r JOIN seats s ON s.id = r.seat_id JOIN deciders d ON d.id = r.decider_id
+        WHERE s.body_id = 'us-congress' AND r.kind = 'incumbent' AND (r.starts_on IS NULL OR r.starts_on <= '${day}') AND (r.ends_on IS NULL OR '${day}' < r.ends_on) AND ${certainty} AND ${where}`)
     const tally = (rows: Record<string, any>[]) => rows.reduce<Record<string, number>>((n, r) => ((n[r.affiliation] = (n[r.affiliation] ?? 0) + 1), n), {})
 
     it('never puts two people in one seat, before or after the term starts', () => {
@@ -232,7 +234,9 @@ describe('the seed', () => {
       const house = holders(db, '2027-01-03', `s.chamber = 'House' AND s.is_voting = 1`)
       // 435 less the two Louisiana seats that go to a runoff on December 12
       expect(house.length).toBe(433)
-      expect(tally(house).Democrat).toBe(258)
+      // 258 called, and two more who lead in a recount
+      expect(tally(house).Democrat).toBe(260)
+      expect(house.filter((r) => r.certainty === 'likely').map((r) => r.name).sort()).toEqual(['Chuck Hubbard', 'Jake Johnson'])
     })
 
     it('leaves today as it is', () => {
@@ -251,11 +255,34 @@ describe('the seed', () => {
       expect(all(db, `SELECT COUNT(*) AS n FROM deciders WHERE name = 'Chris Pappas'`)[0].n).toBe(1)
     })
 
-    it('keeps the holder of a seat in a recount, and empties a seat whose holder is not in the runoff', () => {
+    it('gives a seat in a recount to whoever leads, as likely, with the holder as possible', () => {
       const db = database()
       db.exec(seed)
-      expect(holders(db, '2027-01-03', `s.id = 'us-congress:MN-1'`).map((r) => r.name)).toEqual(['Brad Finstad'])
+      const claims = (day: string) => holders(db, day, `s.id = 'us-congress:MN-1'`, '1').map((r) => [r.name, r.certainty]).sort()
+      expect(claims('2026-11-19')).toEqual([['Brad Finstad', 'certain']])
+      expect(claims('2027-01-03')).toEqual([
+        ['Brad Finstad', 'possible'],
+        ['Jake Johnson', 'likely'],
+      ])
+    })
+
+    it('leaves a seat going to a runoff with nobody holding it, and both candidates possible', () => {
+      const db = database()
+      db.exec(seed)
       expect(holders(db, '2027-01-03', `s.id IN ('us-congress:LA-5', 'us-congress:LA-6')`)).toEqual([])
+      expect(holders(db, '2027-01-03', `s.id = 'us-congress:LA-5'`, '1').map((r) => [r.name, r.certainty]).sort()).toEqual([
+        ['Gabe Firment', 'possible'],
+        ['Pat Moore', 'possible'],
+      ])
+    })
+
+    it('marks the incoming committee chair as likely', () => {
+      const db = database()
+      db.exec(seed)
+      expect(all(db, `SELECT d.name, h.certainty FROM office_holders h JOIN deciders d ON d.id = h.decider_id WHERE h.office_id = 'us-senate-finance-chair' ORDER BY h.starts_on IS NOT NULL`)).toEqual([
+        { name: 'Mike Crapo', certainty: 'certain' },
+        { name: 'Ron Wyden', certainty: 'likely' },
+      ])
     })
   })
 })

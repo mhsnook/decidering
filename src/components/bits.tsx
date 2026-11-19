@@ -1,4 +1,4 @@
-import type { Question } from '../../shared/schema.ts'
+import type { Certainty, Question } from '../../shared/schema.ts'
 import { FOOTING_HINT, FOOTING_LABEL, type Footing } from '../../shared/standing.ts'
 import { SPECTRUM, STANDING_BG, STANDING_COLOR, standingLabel, type Standing } from '../lib/position.ts'
 
@@ -101,4 +101,17 @@ export function Syncing() {
 
 export function NotFound({ what }: { what: string }) {
   return <p className="py-16 text-center text-muted">No {what} here.</p>
+}
+
+// Marks a seat or office whose holder on the day viewed is not settled.
+export function CertaintyTag({ certainty }: { certainty: Certainty }) {
+  if (certainty === 'certain') return null
+  return (
+    <span
+      className="rounded border-2 border-dashed border-line px-1.5 py-px text-[11px] font-semibold whitespace-nowrap text-muted"
+      title={certainty === 'likely' ? 'Expected, not yet settled.' : 'One of those who may yet hold it.'}
+    >
+      {certainty === 'likely' ? 'Likely' : 'Possible'}
+    </span>
+  )
 }

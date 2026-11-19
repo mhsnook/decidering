@@ -4,7 +4,7 @@ import type { Question } from '../../shared/schema.ts'
 import { NEEDS_ATTENTION } from '../../shared/standing.ts'
 import { isHeld, useTracker, useViewedBody, type HeldSeat } from '../lib/tracker.tsx'
 import { SPECTRUM, STANDINGS, STANDING_BG, formatDate, standingLabel, type Standing } from '../lib/position.ts'
-import { FootingTag, NotFound, StandingDot, StandingPill, Syncing, tally } from '../components/bits.tsx'
+import { CertaintyTag, FootingTag, NotFound, StandingDot, StandingPill, Syncing, tally } from '../components/bits.tsx'
 import { Hemicycle } from '../components/Hemicycle.tsx'
 import { QuestionHeader } from '../components/QuestionHeader.tsx'
 import { AskStatus, CloseAsk, ClosedNote, KeyPeople } from '../components/Asks.tsx'
@@ -32,7 +32,10 @@ function Board() {
   const { tracker, isReady } = useTracker()
   const question = tracker.questionBySlug.get(slug)
   const { body } = useViewedBody(question)
-  const rows = useMemo(() => (question && body ? tracker.board(question, body.id).filter(isHeld) : []), [tracker, question, body])
+  const everySeat = useMemo(() => (question && body ? tracker.board(question, body.id) : []), [tracker, question, body])
+  const rows = useMemo(() => everySeat.filter(isHeld), [everySeat])
+  // Seats nobody certainly or likely holds on the day viewed, but someone may.
+  const undecided = everySeat.filter((r) => !r.incumbent && r.alternates.length > 0)
 
   if (!isReady) return <Syncing />
   if (!question || !body) return <NotFound what="question" />
@@ -144,6 +147,26 @@ function Board() {
       </div>
 
       {groups.length === 0 && <p className="py-8 text-center text-muted">Nobody matches those filters.</p>}
+      {undecided.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-lg font-semibold">Not decided yet</h2>
+          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {undecided.map((row) => (
+              <li key={row.seat.id} className="rounded-xl border-2 border-dashed border-line bg-surface py-2 pr-3 pl-4">
+                <span className="block text-xs text-muted">{row.seat.label}</span>
+                {row.alternates.map((a, i) => (
+                  <span key={a.decider.id}>
+                    {i > 0 && ' or '}
+                    <Link to="/q/$slug/$decider" params={{ slug: question.slug, decider: a.decider.slug }} className="link font-medium">
+                      {a.decider.name}
+                    </Link>
+                  </span>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {groups.map((group) => {
         const shown = search.standing || needle ? group.rows : group.rows.slice(0, PREVIEW)
         return (
@@ -181,7 +204,7 @@ function Ask({ question, bodyId }: { question: Question; bodyId: string }) {
       <ClosedNote ask={question} />
       {people.length === 0 && <p className="text-muted">Nobody holds the role this is asked of on {formatDate(tracker.asOf)}.</p>}
       <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {people.map(({ key, roleLabel, contender, seat }) => (
+        {people.map(({ key, roleLabel, certainty, contender, seat }) => (
           <li key={key}>
             <Link
               to="/q/$slug/$decider"
@@ -198,6 +221,7 @@ function Ask({ question, bodyId }: { question: Question; bodyId: string }) {
               </span>
               <span className="mt-2 flex flex-wrap items-center gap-2">
                 {contender.footing !== 'unknown' && <FootingTag footing={contender.footing} />}
+                <CertaintyTag certainty={certainty} />
                 <AskStatus ask={question} />
               </span>
             </Link>
@@ -232,7 +256,10 @@ function SeatCard({ row, question }: { row: HeldSeat; question: Question }) {
       <Link to="/q/$slug/$decider" params={{ slug: question.slug, decider: inc.decider.slug }} className="block py-2 pr-3 pl-4 hover:bg-paper">
         <span className="flex items-start justify-between gap-2">
           <span className="leading-snug font-medium">{inc.decider.name}</span>
-          {inc.footing !== 'unknown' && <FootingTag footing={inc.footing} />}
+          <span className="flex shrink-0 flex-wrap justify-end gap-1">
+            <CertaintyTag certainty={inc.role.certainty} />
+            {inc.footing !== 'unknown' && <FootingTag footing={inc.footing} />}
+          </span>
         </span>
         <span className="block text-xs text-muted">
           {row.seat.label}
@@ -240,6 +267,19 @@ function SeatCard({ row, question }: { row: HeldSeat; question: Question }) {
           {!row.seat.is_voting && ' · non-voting'}
         </span>
       </Link>
+      {row.alternates.length > 0 && (
+        <p className="border-t border-line py-1.5 pr-3 pl-4 text-xs text-muted">
+          or{' '}
+          {row.alternates.map((a, i) => (
+            <span key={a.decider.id}>
+              {i > 0 && ', '}
+              <Link to="/q/$slug/$decider" params={{ slug: question.slug, decider: a.decider.slug }} className="link text-ink">
+                {a.decider.name}
+              </Link>
+            </span>
+          ))}
+        </p>
+      )}
       {row.challengers.length > 0 && (
         <ul className="border-t border-line py-1.5 pr-3 pl-4 text-xs">
           {row.challengers.map((c) => (
