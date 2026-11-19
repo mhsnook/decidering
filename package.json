@@ -4,6 +4,7 @@
   "license": "MIT",
   "version": "0.0.1",
   "type": "module",
+  "packageManager": "pnpm@12.21.0",
   "scripts": {
     "dev": "vite",
     "dev:remote": "REMOTE_BINDINGS=1 vite",
