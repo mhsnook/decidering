@@ -220,7 +220,9 @@ export function planMerge(published: Pick<Published, 'acts' | 'reports' | 'readi
   for (const report of published.reports.filter((r) => r.act_id === dropId)) {
     const kept = keptReports.get(report.source_id)
     if (!kept) {
-      writes.push({ on: 'reports', type: 'update', id: report.id, changes: { act_id: keepId } })
+      // Keeps the words this source printed, which may not be the survivor's.
+      const excerpt = report.excerpt ?? (drop.body !== keep.body ? drop.body : null)
+      writes.push({ on: 'reports', type: 'update', id: report.id, changes: excerpt === report.excerpt ? { act_id: keepId } : { act_id: keepId, excerpt } })
       continue
     }
     writes.push({ on: 'reports', type: 'delete', id: report.id })

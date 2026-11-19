@@ -137,6 +137,8 @@ function WithWaiting({ stories, filter, before }: { stories: Story[]; filter: Fe
   const items = useLiveQuery((q) => q.from({ row: db.proposal_items }))
   const ready = proposals.isReady && items.isReady
   const waiting = useMemo(() => (ready ? buildWaiting(tracker, proposals.data, items.data, filter) : []), [ready, tracker, proposals.data, items.data, filter.questionId, filter.bodyId])
+  // A cursor can name a waiting story, which is not in the feed until proposals load.
+  if (before && !ready) return <Syncing />
   return <Feed feed={mergeFeed(stories, waiting)} before={before} />
 }
 

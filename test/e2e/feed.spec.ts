@@ -174,6 +174,11 @@ test('what is waiting shows in the feed as a short unchecked line that opens to 
   expect(frames.rowsOn('proposals')).toEqual([])
   expect(frames.rowsOn('proposal_items')).toEqual([])
   await expect(stories.locator('[data-waiting]')).toHaveCount(0)
+  // In the URL, so a reload keeps it.
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Show only what is on the record', pressed: true })).toBeVisible()
+  await expect(stories.getByRole('article').first()).toBeVisible()
+  await expect(stories.locator('[data-waiting]')).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Show only what is on the record' }).click()
   await expect(page).not.toHaveURL(/recordOnly/)

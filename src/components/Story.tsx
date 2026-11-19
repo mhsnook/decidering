@@ -185,8 +185,8 @@ export function WaitingStoryCard({ story }: { story: WaitingStory }) {
           <div className="space-y-2 border-t-2 border-dashed border-ink bg-mint/50 px-4 py-3">
             <p className="font-bold">Can you review this?</p>
             <p>
-              {ORIGIN[story.proposal.origin]} on {formatDate(story.proposal.created_at)}, and no editor has checked it yet. Read the source: are these the words, and do they show
-              what is claimed? If something is wrong or missing, say so in the discussion on that person’s page, where editors read it.
+              {ORIGIN[story.proposal.origin]} on {formatDate(story.proposal.created_at)}. No editor has checked it yet, and it does not count toward anyone’s position until one
+              does. Read the source: are these the words, and do they show what is claimed? If something is wrong or missing, say so in the discussion on that person’s page.
             </p>
             <p className="flex flex-wrap gap-x-4 gap-y-1">
               {story.source?.url && (
