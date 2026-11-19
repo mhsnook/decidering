@@ -5,7 +5,7 @@ import { db } from '../lib/db.ts'
 import { isEditor } from '../lib/editor.ts'
 import { formatDate } from '../lib/position.ts'
 import { today, useTracker, type KeyPerson } from '../lib/tracker.tsx'
-import { StandingPill } from './bits.tsx'
+import { CertaintyTag, StandingPill } from './bits.tsx'
 import { Modal } from './Modal.tsx'
 
 const CLOSED_LABEL = { resolved: 'Resolved', lapsed: 'Lapsed' } as const
@@ -29,7 +29,7 @@ export function KeyPeople({ people }: { people: KeyPerson[] }) {
     <section>
       <h2 className="mb-3 text-lg font-black">Key people</h2>
       <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {people.map(({ ask, key, roleLabel, contender, seat }) => (
+        {people.map(({ ask, key, roleLabel, certainty, contender, seat }) => (
           <li key={key}>
             <Link
               to="/q/$slug/$decider"
@@ -46,6 +46,7 @@ export function KeyPeople({ people }: { people: KeyPerson[] }) {
               </span>
               <span className="mt-2 flex flex-wrap items-center gap-2 text-sm">
                 {ask.title}
+                <CertaintyTag certainty={certainty} />
                 <AskStatus ask={ask} />
               </span>
             </Link>

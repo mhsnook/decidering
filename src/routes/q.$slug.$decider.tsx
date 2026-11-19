@@ -47,6 +47,8 @@ function DeciderOnQuestion() {
     ]),
   ]
   const seatSpan = span(me.role)
+  const holds =
+    me.role.certainty === 'certain' ? seatSpan && `holds the seat${seatSpan}` : `${me.role.certainty === 'likely' ? 'likely to hold' : 'may hold'} the seat${seatSpan}, not settled`
   const rivals = (tracker.rolesBySeat.get(seat.id) ?? [])
     .filter((r) => r.decider_id !== decider.id)
     .map((r) => tracker.contender(question, r))
@@ -67,7 +69,7 @@ function DeciderOnQuestion() {
               {seat.chamber && `, ${seat.chamber}`}
               {me.role.affiliation && ` · ${me.role.affiliation}`}
               {seat.next_election_on && ` · next election ${formatDate(seat.next_election_on)}`}
-              {seatSpan && ` · holds the seat${seatSpan}`}
+              {holds && ` · ${holds}`}
             </p>
             {roleLabels.length > 0 && <p className="text-sm font-medium">{roleLabels.join(' · ')}</p>}
             {held.flatMap((t) => {

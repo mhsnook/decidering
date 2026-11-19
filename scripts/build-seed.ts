@@ -9,6 +9,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 const read = (name: string) => JSON.parse(readFileSync(new URL(`../seed/data/${name}`, import.meta.url), 'utf8'))
 const congress = read('us-congress.json')
 const congressAsks = read('us-congress-asks.json')
+const congressElect = read('us-congress-elect.json')
 const era = read('us-states-era.json')
 const demo = read('demo.json')
 
@@ -114,30 +115,87 @@ insert('bodies', {
   slug: US,
   name: 'United States Congress',
   jurisdiction: 'United States',
-  description: `Members of the 119th Congress. Roster and cosponsor records as of ${congress.fetched_on}.`,
+  description: `Members of the 119th Congress, and those elected to the 120th. Roster and cosponsor records as of ${congress.fetched_on}; election results, uncertified, as of ${congressElect.as_of}.`,
   is_demo: false,
   sort: 0,
   next_term_on: congressAsks.next_term.on,
   next_term_label: congressAsks.next_term.label,
 })
 
+// Who gives up which seat when the next term starts: the holder of every seat
+// that changed hands, and of every seat not yet decided. In an undecided seat
+// the holder may come back as one of those who may yet hold it.
+if (congressElect.term_starts_on !== congressAsks.next_term.on) throw new Error('the members-elect file and the asks file disagree on when the next term starts')
+const TERM = congressElect.term_starts_on
+const leaving = new Set<string>([
+  ...congressElect.seats.filter((s: any) => s.leaving).map((s: any) => `${s.seat} ${s.leaving}`),
+  ...congressElect.pending.map((s: any) => `${s.seat} ${s.holder}`),
+])
+
+type CongressSeat = { chamber: string; state: string; district: number | null; senate_class?: number | null }
+const seatKey = (m: CongressSeat) => (m.chamber === 'House' ? `${m.state}-${m.district === 0 ? 'AL' : m.district}` : `${m.state}-sen-${m.senate_class}`)
+const NON_VOTING = new Set(['DC', 'PR', 'GU', 'VI', 'AS', 'MP'])
+function congressSeat(m: CongressSeat): string {
+  const house = m.chamber === 'House'
+  const id = `${US}:${seatKey(m)}`
+  insert('seats', {
+    id,
+    body_id: US,
+    chamber: m.chamber,
+    region: m.state,
+    label: house ? seatKey(m) : `${m.state} Senate`,
+    is_voting: !house || !NON_VOTING.has(m.state),
+    next_election_on: null,
+  })
+  return id
+}
+
 const members = new Map<string, any>()
 for (const m of congress.members) {
   members.set(m.bioguide, m)
   insert('deciders', { id: m.bioguide, slug: slugify(m.name), name: m.name, sort_name: m.sort_name, external_id: m.bioguide, url: m.url })
-  const house = m.chamber === 'House'
-  const district = m.district === 0 ? 'AL' : m.district
-  const seatId = house ? `${US}:${m.state}-${district}` : `${US}:${m.state}-sen-${m.senate_class}`
-  insert('seats', {
-    id: seatId,
-    body_id: US,
-    chamber: m.chamber,
-    region: m.state,
-    label: house ? `${m.state}-${district}` : `${m.state} Senate`,
-    is_voting: m.voting,
-    next_election_on: null,
+  const seatId = congressSeat(m)
+  insert('roles', {
+    id: `${seatId}:${m.bioguide}`,
+    seat_id: seatId,
+    decider_id: m.bioguide,
+    kind: 'incumbent',
+    contest: null,
+    affiliation: m.party,
+    starts_on: null,
+    ends_on: leaving.has(`${seatKey(m)} ${m.bioguide}`) ? TERM : null,
+    certainty: 'certain',
   })
-  insert('roles', { id: `${seatId}:${m.bioguide}`, seat_id: seatId, decider_id: m.bioguide, kind: 'incumbent', contest: null, affiliation: m.party })
+}
+
+// Someone who holds a seat from the day the next term starts. A sitting member
+// keeps their id and record; anyone else is new here, under an id that is not a
+// Bioguide id, since they get one only when sworn in.
+function seatFromNextTerm(seatId: string, who: { bioguide?: string; name: string; sort_name?: string; party: string }, certainty: string) {
+  let deciderId = who.bioguide
+  if (deciderId) {
+    if (!members.has(deciderId)) throw new Error(`${seatId} names ${deciderId}, who is not in the roster`)
+  } else {
+    const slug = slugify(who.name)
+    deciderId = `elect-${slug}`
+    insert('deciders', { id: deciderId, slug, name: who.name, sort_name: who.sort_name, external_id: null, url: null })
+  }
+  // A returning holder already has a role in this seat, the one that ends, so
+  // the role from the next term needs an id of its own.
+  insert('roles', { id: `${seatId}:${deciderId}:${TERM}`, seat_id: seatId, decider_id: deciderId, kind: 'incumbent', contest: null, affiliation: who.party, starts_on: TERM, ends_on: null, certainty })
+}
+
+for (const s of congressElect.seats) seatFromNextTerm(congressSeat(s), s.winner, 'certain')
+
+// Seats not decided yet. Whoever is ahead is likely; everyone else still in it
+// is possible, the current holder included.
+for (const s of congressElect.pending) {
+  const seatId = congressSeat(s)
+  const holder = members.get(s.holder)
+  if (s.likely) seatFromNextTerm(seatId, s.likely, 'likely')
+  for (const p of s.possible) {
+    seatFromNextTerm(seatId, p === 'holder' ? { bioguide: holder.bioguide, name: holder.name, party: holder.party } : p, 'possible')
+  }
 }
 
 question({
@@ -223,7 +281,14 @@ lines.push(`UPDATE bodies SET next_term_on = ${sql(congressAsks.next_term.on)}, 
 congressAsks.offices.forEach((o: any, i: number) => {
   insert('offices', { id: o.id, body_id: US, chamber: o.chamber, label: o.label, sort: i })
   for (const h of o.holders) {
-    insert('office_holders', { id: `${o.id}:${member(h.bioguide, o.id)}`, office_id: o.id, decider_id: h.bioguide, starts_on: h.starts_on ?? null, ends_on: h.ends_on ?? null })
+    insert('office_holders', {
+      id: `${o.id}:${member(h.bioguide, o.id)}`,
+      office_id: o.id,
+      decider_id: h.bioguide,
+      starts_on: h.starts_on ?? null,
+      ends_on: h.ends_on ?? null,
+      certainty: h.certainty ?? 'certain',
+    })
   }
 })
 congressAsks.asks.forEach((ask: any, i: number) => {

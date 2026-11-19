@@ -57,6 +57,13 @@ export const seatSchema = z.object({
 })
 export type Seat = z.infer<typeof seatSchema>
 
+// How sure it is that someone holds a seat or an office over its dates. It is
+// a fact about the holding, not the person. A seat or office is shown as held
+// by its certain or likely holder; possible holders are shown beside them.
+export const CERTAINTIES = ['certain', 'likely', 'possible'] as const
+export const certaintySchema = z.enum(CERTAINTIES)
+export type Certainty = z.infer<typeof certaintySchema>
+
 export const roleSchema = z.object({
   id: z.string(),
   seat_id: z.string(),
@@ -66,6 +73,7 @@ export const roleSchema = z.object({
   affiliation: z.string().nullable(),
   starts_on: z.string().nullable(),
   ends_on: z.string().nullable(),
+  certainty: certaintySchema,
 })
 export type Role = z.infer<typeof roleSchema>
 
@@ -94,6 +102,7 @@ export const officeHolderSchema = z.object({
   starts_on: z.string().nullable(),
   ends_on: z.string().nullable(),
   source_id: z.string().nullable(),
+  certainty: certaintySchema,
 })
 export type OfficeHolder = z.infer<typeof officeHolderSchema>
 
