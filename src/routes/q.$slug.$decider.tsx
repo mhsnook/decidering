@@ -2,7 +2,6 @@ import { Link, createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import type { Certainty } from '../../shared/schema.ts'
 import { FOOTING_HINT } from '../../shared/standing.ts'
-import { stanceId } from '../../shared/schema.ts'
 import { useTracker, useViewedBody, type Tenure } from '../lib/tracker.tsx'
 import { FootingTag, NotFound, StandingPill, Syncing } from '../components/bits.tsx'
 import { QuestionHeader } from '../components/QuestionHeader.tsx'
@@ -11,7 +10,7 @@ import { SubmitEvidence } from '../components/SubmitEvidence.tsx'
 import { Discussion } from '../components/Discussion.tsx'
 import { Modal } from '../components/Modal.tsx'
 import { AskStatus, CloseAsk, ClosedNote } from '../components/Asks.tsx'
-import { MergeAct } from '../components/MergeAct.tsx'
+import { MergeAct, WithdrawAct } from '../components/MergeAct.tsx'
 import { isEditor } from '../lib/editor.ts'
 import { claimLabel, formatDate } from '../lib/position.ts'
 
@@ -100,10 +99,10 @@ function DeciderOnQuestion() {
           </>
         )}
 
-        {isAsk && (
+        {(isAsk || question.status !== 'open') && (
           <div className="mt-4 space-y-3">
             <ClosedNote ask={question} />
-            <CloseAsk ask={question} />
+            {isAsk && <CloseAsk ask={question} />}
           </div>
         )}
 
@@ -122,10 +121,13 @@ function DeciderOnQuestion() {
             ))}
             {measures.map((m) => (
               <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
-                <Link to="/q/$slug/$decider" params={{ slug: m.slug, decider: decider.slug }} className="hover:underline">
-                  {m.title}
-                </Link>
-                <StandingPill standing={tracker.stanceById.get(stanceId(m.id, decider.id))?.position ?? 'unknown'} question={m} />
+                <span className="flex flex-wrap items-center gap-2">
+                  <Link to="/q/$slug/$decider" params={{ slug: m.slug, decider: decider.slug }} className="hover:underline">
+                    {m.title}
+                  </Link>
+                  <AskStatus ask={m} />
+                </span>
+                <StandingPill standing={tracker.standingFor(m, decider.id)} question={m} />
               </li>
             ))}
           </ul>
@@ -148,6 +150,7 @@ function DeciderOnQuestion() {
             <ol className="space-y-3">
               {me.record.map((entry) => (
                 <RecordItem key={entry.reading.id} entry={entry} question={question}>
+                  {isEditor() && <WithdrawAct act={entry.act} />}
                   {isEditor() && <MergeAct act={entry.act} />}
                 </RecordItem>
               ))}

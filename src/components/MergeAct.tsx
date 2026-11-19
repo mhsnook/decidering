@@ -43,3 +43,36 @@ export function MergeAct({ act }: { act: Act }) {
     </div>
   )
 }
+
+// Editors only: a commitment can be taken back, as when a cosponsor removes
+// their name. From that day it stops counting as on the record.
+export function WithdrawAct({ act }: { act: Act }) {
+  const [error, setError] = useState<string | null>(null)
+  if (act.kind !== 'commits') return null
+  const save = (withdrawn_on: string | null) => {
+    setError(null)
+    db.acts.update(act.id, (a) => void (a.withdrawn_on = withdrawn_on)).isPersisted.promise.catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+  }
+  return (
+    <form
+      className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted"
+      onSubmit={(e) => {
+        e.preventDefault()
+        save(new FormData(e.currentTarget).get('withdrawn_on') as string)
+      }}
+    >
+      {act.withdrawn_on ? (
+        <button type="button" className="underline underline-offset-2" onClick={() => save(null)}>
+          Undo the withdrawal
+        </button>
+      ) : (
+        <>
+          <label htmlFor={`withdraw-${act.id}`}>Withdrawn on</label>
+          <input id={`withdraw-${act.id}`} name="withdrawn_on" type="date" required className="field w-auto py-1 text-xs" />
+          <button className="underline underline-offset-2">Save</button>
+        </>
+      )}
+      {error && <span className="text-oppose">Not saved: {error}</span>}
+    </form>
+  )
+}

@@ -1,13 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useLiveQuery } from '@tanstack/react-db'
-import { ACT_KINDS, POSITIONS, stanceId, type ActKind, type Position, type Proposal, type ProposalItem, type ProposalNote } from '../../shared/schema.ts'
+import { ACT_KINDS, BEARINGS, POSITIONS, stanceId, type ActKind, type Bearing, type Position, type Proposal, type ProposalItem, type ProposalNote } from '../../shared/schema.ts'
 import { db } from '../lib/db.ts'
 import { editorFetch, isEditor, signIn, signOut } from '../lib/editor.ts'
 import { commit } from '../lib/review.ts'
 import { planReview, type ItemVerdict } from '../lib/review-plan.ts'
 import { useTracker } from '../lib/tracker.tsx'
-import { KIND_LABEL, formatDate, hostOf, standingLabel } from '../lib/position.ts'
+import { KIND_CHOICE, KIND_LABEL, SIGNAL_LABEL, formatDate, hostOf, standingLabel } from '../lib/position.ts'
 import { Syncing, Token } from '../components/bits.tsx'
 import { RecordItem } from '../components/RecordItem.tsx'
 
@@ -148,7 +148,7 @@ function Queue() {
                         className="flex w-full cursor-pointer items-start gap-3 rounded-[14px] border-2 border-ink bg-surface px-3.5 py-3 text-left hover:shadow-hard-md"
                       >
                         <Token
-                          standing={(first && tracker.stanceById.get(stanceId(first.question_id, first.decider_id))?.position) ?? 'unknown'}
+                          standing={(first && tracker.questionById.has(first.question_id) && tracker.standingFor(tracker.questionById.get(first.question_id)!, first.decider_id)) || 'unknown'}
                           className="mt-0.5 size-[22px]"
                         />
                         <span className="min-w-0 flex-1">
@@ -224,7 +224,9 @@ function Review({ proposal, items, notes, behind }: { proposal: Proposal; items:
         occurred_on: onFile?.occurred_on ?? text(field('occurred_on')),
         quote: text(field('quote')),
         reading,
-        position: (f.get(field('position')) as Position | '') || reading,
+        bearing: f.get(field('bearing')) as Bearing,
+        // A formal-act question has no position to judge: it is read off the acts.
+        position: (f.get(field('position')) as Position | '' | null) || reading,
         summary: text(field('summary')) || null,
         comment,
       }
@@ -348,7 +350,9 @@ function ItemFields({
   const onFile = [...(tracker.actsByDecider.get(decider.id) ?? [])].sort((a, b) => b.occurred_on.localeCompare(a.occurred_on))
   const stance = tracker.stanceById.get(stanceId(question.id, decider.id))
   const record = tracker.recordFor(question, decider.id)
-  const parent = question.implies_parent_support && question.parent_id ? tracker.questionById.get(question.parent_id) : undefined
+  const parent = question.implies_on_parent && question.parent_id ? tracker.questionById.get(question.parent_id) : undefined
+  const isFormal = question.kind === 'formal_act'
+  const standing = tracker.standingFor(question, decider.id)
   const field = (name: string) => `${item.id}:${name}`
   const other = family.find((q) => q.id !== questionId)
 
@@ -361,7 +365,7 @@ function ItemFields({
     <section className="flex flex-col gap-4 border-t-2 border-dashed border-line pt-4 sm:gap-5 sm:pt-5" aria-label={`Item ${number ?? 1}: ${decider.name}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-3 sm:gap-3.5">
-          <Token standing={stance?.position ?? 'unknown'} className={`size-10 border-[3px] sm:size-[52px] ${stance ? 'shadow-hard-sm sm:shadow-hard-md' : ''}`} />
+          <Token standing={standing} className={`size-10 border-[3px] sm:size-[52px] ${standing !== 'unknown' ? 'shadow-hard-sm sm:shadow-hard-md' : ''}`} />
           <div>
             <h3 className="text-[22px] leading-[1.1] font-black sm:text-[28px]">
               {number && <span className="mr-2 text-faint tabular-nums">{number}.</span>}
@@ -428,7 +432,7 @@ function ItemFields({
               <select id={field('kind')} name={field('kind')} defaultValue={item.kind} className="field">
                 {ACT_KINDS.map((k) => (
                   <option key={k} value={k}>
-                    {KIND_LABEL[k]}
+                    {KIND_CHOICE[k]}
                   </option>
                 ))}
               </select>
@@ -442,7 +446,7 @@ function ItemFields({
               What does this show?
             </span>
             <span className="text-[13px] font-medium text-faint sm:text-sm">
-              {stance ? `Now listed as ${standingLabel(stance.position, question)}, from ${record.length} item${record.length === 1 ? '' : 's'}` : 'Not listed yet'}
+              {standing !== 'unknown' ? `Now listed as ${standingLabel(standing, question)}, from ${record.length} item${record.length === 1 ? '' : 's'}` : 'Not listed yet'}
             </span>
           </p>
           <div className="grid grid-cols-5 gap-1.5 text-center text-[11px] leading-[1.15] font-bold sm:gap-2.5 sm:text-[15px]">
@@ -457,16 +461,33 @@ function ItemFields({
               </label>
             ))}
           </div>
-          {parent && <p className="mt-2.5 text-[13px] text-faint sm:text-sm">If this shows a yes, it is also recorded as a yes on “{parent.short_title}”.</p>}
+          {parent && question.implies_on_parent && (
+            <p className="mt-2.5 text-[13px] text-faint sm:text-sm">
+              If this shows a yes here, it is also recorded as “{SIGNAL_LABEL[question.implies_on_parent]}” on “{parent.short_title}”.
+            </p>
+          )}
+        </div>
+
+        <div className="sm:max-w-sm">
+          <label className="label" htmlFor={field('bearing')}>
+            It is about
+          </label>
+          <select id={field('bearing')} name={field('bearing')} defaultValue={item.bearing} className="field">
+            {BEARINGS.map((b) => (
+              <option key={b} value={b}>
+                {b === 'direct' ? 'This question itself' : 'Something else that bears on it'}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Keyed by question so the defaults follow the question picked above. */}
-        <div key={question.id} className="grid gap-3 sm:grid-cols-[12rem_1fr]">
-          <div>
+        <div key={question.id} className={`grid gap-3 ${isFormal ? '' : 'sm:grid-cols-[12rem_1fr]'}`}>
+          <div className={isFormal ? 'hidden' : ''}>
             <label className="label" htmlFor={field('position')}>
               Listed as, after approving
             </label>
-            <select id={field('position')} name={field('position')} defaultValue={item.position ?? stance?.position ?? ''} className="field">
+            <select id={field('position')} name={field('position')} disabled={isFormal} defaultValue={item.position ?? stance?.position ?? ''} className="field">
               <option value="">Same as this item</option>
               {POSITIONS.map((p) => (
                 <option key={p} value={p}>
@@ -482,6 +503,7 @@ function ItemFields({
             <input id={field('summary')} name={field('summary')} defaultValue={item.summary ?? stance?.summary ?? ''} placeholder="Write one line…" className="field" />
           </div>
         </div>
+        {isFormal && <p className="-mt-2 text-[13px] text-faint sm:text-sm">Where they stand on this is read off the acts on file, so there is no position to set.</p>}
 
         {record.length > 0 && (
           <details>

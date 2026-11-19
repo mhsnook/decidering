@@ -2,16 +2,17 @@ import { describe, expect, it } from 'vitest'
 import { footingOf } from './standing.ts'
 
 const now = new Date('2026-11-12T00:00:00Z')
-const said = (occurred_on: string) => ({ kind: 'statement' as const, occurred_on })
+const said = (occurred_on: string) => ({ occurred_on, onRecord: false })
+const bound = (occurred_on: string) => ({ occurred_on, onRecord: true })
 
 describe('footingOf', () => {
   it('is unknown with nothing on file', () => {
     expect(footingOf([], now)).toBe('unknown')
   })
 
-  it('treats a recorded act as standing, however old and however alone', () => {
-    expect(footingOf([{ kind: 'formal_act', occurred_on: '2019-01-01' }], now)).toBe('on_record')
-    expect(footingOf([said('2026-11-01'), { kind: 'vote', occurred_on: '2021-06-01' }], now)).toBe('on_record')
+  it('treats an act that binds as standing, however old and however alone', () => {
+    expect(footingOf([bound('2019-01-01')], now)).toBe('on_record')
+    expect(footingOf([said('2026-11-01'), bound('2021-06-01')], now)).toBe('on_record')
   })
 
   it('calls a single statement sparse even when it is recent', () => {

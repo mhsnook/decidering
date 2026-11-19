@@ -141,6 +141,63 @@ describe('0006_shared_questions_and_roles_at_large', () => {
   })
 })
 
+describe('0007_act_nature', () => {
+  const db = database('0007')
+  db.exec(`
+    INSERT INTO bodies (id, slug, name) VALUES ('b', 'b', 'Body');
+    INSERT INTO deciders (id, slug, name, sort_name) VALUES ('ann', 'ann', 'Ann', 'Ann');
+    INSERT INTO questions (id, slug, body_id, parent_id, kind, title, short_title, implies_parent_support) VALUES
+      ('policy', 'policy', 'b', NULL, 'position', 'Policy?', 'Policy', 0),
+      ('bill', 'bill', 'b', 'policy', 'formal_act', 'Bill?', 'Bill', 1);
+    INSERT INTO sources (id, url, created_at) VALUES ('post', 'https://x.example/1', 't'), ('radio', 'https://x.example/2', 't'), ('paper', 'https://x.example/3', 't');
+    INSERT INTO acts (id, decider_id, kind, occurred_on, body, created_at) VALUES
+      ('cosponsored', 'ann', 'formal_act', '2026-01-01', 'b', 't'), ('voted', 'ann', 'vote', '2026-01-02', 'b', 't'),
+      ('posted', 'ann', 'social', '2026-01-03', 'b', 't'), ('interviewed', 'ann', 'interview', '2026-01-04', 'b', 't'),
+      ('said', 'ann', 'statement', '2026-01-05', 'b', 't'), ('platform', 'ann', 'platform', '2026-01-06', 'b', 't');
+    INSERT INTO reports (id, source_id, act_id, created_at) VALUES ('r1', 'post', 'posted', 't'), ('r2', 'radio', 'interviewed', 't'), ('r3', 'paper', 'said', 't');
+    INSERT INTO readings (id, act_id, question_id, position, created_at) VALUES ('rd', 'cosponsored', 'bill', 'support', 't');
+    INSERT INTO proposals (id, source_id, origin, created_at) VALUES ('p', 'paper', 'reader', 't');
+    INSERT INTO proposal_items (id, proposal_id, decider_id, question_id, act_id, kind, quote) VALUES ('i1', 'p', 'ann', 'bill', 'a', 'formal_act', 'q'), ('i2', 'p', 'ann', 'policy', 'b', 'interview', 'q');
+  `)
+  db.exec(migration('0007_act_nature.sql'))
+
+  it('turns each kind into how much the act binds', () => {
+    expect(Object.fromEntries(all(db, `SELECT id, kind FROM acts`).map((a) => [a.id, a.kind]))).toEqual({
+      cosponsored: 'commits',
+      voted: 'does',
+      posted: 'says',
+      interviewed: 'says',
+      said: 'says',
+      platform: 'says',
+    })
+    expect(all(db, `SELECT id, kind, bearing FROM proposal_items ORDER BY id`)).toEqual([
+      { id: 'i1', kind: 'commits', bearing: 'direct' },
+      { id: 'i2', kind: 'says', bearing: 'direct' },
+    ])
+  })
+
+  it('keeps where it was said on the source', () => {
+    expect(all(db, `SELECT id, kind FROM sources ORDER BY id`)).toEqual([
+      { id: 'paper', kind: null },
+      { id: 'post', kind: 'social_post' },
+      { id: 'radio', kind: 'transcript' },
+    ])
+  })
+
+  it('carries the yes/no flag over as support, and reads every existing reading as direct', () => {
+    expect(all(db, `SELECT id, implies_on_parent FROM questions ORDER BY id`)).toEqual([
+      { id: 'bill', implies_on_parent: 'support' },
+      { id: 'policy', implies_on_parent: null },
+    ])
+    expect(all(db, `SELECT bearing FROM readings`)).toEqual([{ bearing: 'direct' }])
+    expect(all(db, `PRAGMA foreign_key_check`)).toEqual([])
+  })
+
+  it('refuses the old kinds', () => {
+    expect(() => db.exec(`INSERT INTO acts (id, decider_id, kind, occurred_on, body, created_at) VALUES ('x', 'ann', 'vote', '2026-01-01', 'b', 't')`)).toThrow(/CHECK/)
+  })
+})
+
 describe('0009_one_kind_of_claim', () => {
   const db = database('0009')
   db.exec(`
@@ -199,16 +256,16 @@ describe('the seed', () => {
     const db = database()
     db.exec(seed)
     expect(all(db, `SELECT COUNT(*) AS n FROM readings r JOIN questions q ON q.id = r.question_id
-      WHERE q.implies_parent_support = 1 AND r.position = 'support'
-        AND NOT EXISTS (SELECT 1 FROM readings p WHERE p.act_id = r.act_id AND p.question_id = q.parent_id AND p.via_question_id = q.id)`)[0].n).toBe(0)
+      WHERE q.implies_on_parent IS NOT NULL AND r.position = 'support' AND r.bearing = 'direct'
+        AND NOT EXISTS (SELECT 1 FROM readings p WHERE p.act_id = r.act_id AND p.question_id = q.parent_id AND p.via_question_id = q.id AND p.position = q.implies_on_parent)`)[0].n).toBe(0)
   })
 
   it('seeds an open ask of an office in Congress, with a holder now and one from the next term', () => {
     const db = database()
     db.exec(seed)
-    expect(all(db, `SELECT q.parent_id, q.status, q.implies_parent_support, o.label, b.next_term_on FROM questions q
+    expect(all(db, `SELECT q.parent_id, q.status, q.implies_on_parent, o.label, b.next_term_on FROM questions q
       JOIN question_offices l ON l.question_id = q.id JOIN offices o ON o.id = l.office_id JOIN bodies b ON b.id = o.body_id WHERE q.id = 'm4a-s1506-markup'`)).toEqual([
-      { parent_id: 'm4a', status: 'open', implies_parent_support: 0, label: 'Chair, Senate Finance Committee', next_term_on: '2027-01-03' },
+      { parent_id: 'm4a', status: 'open', implies_on_parent: null, label: 'Chair, Senate Finance Committee', next_term_on: '2027-01-03' },
     ])
     expect(all(db, `SELECT d.name, h.starts_on, h.ends_on FROM office_holders h JOIN deciders d ON d.id = h.decider_id
       WHERE h.office_id = 'us-senate-finance-chair' ORDER BY h.starts_on IS NOT NULL`)).toEqual([

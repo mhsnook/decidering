@@ -3,7 +3,7 @@ import { claimLabel, claimTag } from './position.ts'
 import { act, decider, holder, link, office, question, reading, report, role, seat, source, stance, track } from './fixtures.ts'
 
 const policy = question('policy')
-const bill = question('bill', { parent_id: 'policy', kind: 'formal_act', implies_parent_support: true, sort: 1 })
+const bill = question('bill', { parent_id: 'policy', kind: 'formal_act', implies_on_parent: 'support', sort: 1 })
 
 describe("a decider's record on a question", () => {
   const tracker = track({
@@ -12,7 +12,7 @@ describe("a decider's record on a question", () => {
       sources: [source('release'), source('paper'), source('wire')],
       acts: [
         act('speech', 'ann', { occurred_on: '2026-02-11', primary_source_id: 'release' }),
-        act('signed', 'ann', { kind: 'formal_act', occurred_on: '2026-01-05' }),
+        act('signed', 'ann', { kind: 'commits', occurred_on: '2026-01-05' }),
         act('hedge', 'ann', { occurred_on: '2026-03-01' }),
         act('bob-speech', 'bob', { occurred_on: '2026-02-12' }),
       ],
@@ -68,7 +68,7 @@ describe("a decider's record on a question", () => {
         roles: [role('s1', 'ann')],
         questions: [policy, bill],
         stances: [stance('bill', 'ann', 'support')],
-        acts: [act('signed', 'ann', { kind: 'formal_act' })],
+        acts: [act('signed', 'ann', { kind: 'commits' })],
         readings: [reading('signed', 'bill', 'support'), reading('signed', 'policy', 'support', 'bill')],
       })
     const [row] = tracked.board(bill)
@@ -220,6 +220,56 @@ describe('a question put to more than one body', () => {
     const asked = track({ ...rows, questions: [...rows.questions, ask], questionBodies: [...rows.questionBodies, { id: 'ask:board', question_id: 'ask', body_id: 'board' }], questionOffices: [{ id: 'ask:fundraiser', question_id: 'ask', office_id: 'fundraiser' }] })
     expect(asked.keyPeople(pledge, 'council').map((k) => [k.contender.decider.id, k.roleLabel, k.seat.id])).toEqual([['ann', 'Fundraiser', 'c1']])
     expect(asked.keyPeople(pledge, 'board').map((k) => [k.contender.decider.id, k.roleLabel, k.seat.id])).toEqual([['ann', 'Fundraiser', 'b1']])
+  })
+})
+
+describe('how much an act counts', () => {
+  const policy = question('policy')
+  const bill = question('bill', { parent_id: 'policy', kind: 'formal_act', implies_on_parent: 'support', status: 'lapsed', closed_on: '2027-01-03' })
+  const base = { deciders: [decider('ann')], seats: [seat('s1')], roles: [role('s1', 'ann')], questions: [policy, bill] }
+  const on = (rows: Parameters<typeof track>[0], q: typeof policy, asOf?: string) => {
+    const person = track({ ...base, ...rows }, asOf).board(q)[0].incumbent!
+    return [person.standing, person.footing]
+  }
+  const cosponsored = { acts: [act('signed', 'ann', { kind: 'commits', occurred_on: '2025-04-29' })], readings: [reading('signed', 'bill', 'support'), reading('signed', 'policy', 'support', 'bill')] }
+
+  it('puts a use of office and a commitment in force on the record, and words not', () => {
+    expect(on({ acts: [act('a', 'ann', { kind: 'does' })], readings: [reading('a', 'policy', 'support')] }, policy)[1]).toBe('on_record')
+    expect(on({ acts: [act('a', 'ann', { kind: 'commits' })], readings: [reading('a', 'policy', 'support')] }, policy)[1]).toBe('on_record')
+    expect(on({ acts: [act('a', 'ann', { kind: 'says', occurred_on: '2026-11-01' })], readings: [reading('a', 'policy', 'support')] }, policy)[1]).toBe('sparse')
+  })
+
+  it('counts a vote on something else as a signal here, not as being on the record', () => {
+    const indirect = { ...reading('gift', 'policy', 'lean_oppose'), bearing: 'indirect' as const }
+    const rows = { acts: [act('gift', 'ann', { kind: 'does', occurred_on: '2026-07-14' })], readings: [indirect], stances: [stance('policy', 'ann', 'lean_support')] }
+    expect(on(rows, policy)).toEqual(['lean_support', 'sparse'])
+    expect(track({ ...base, ...rows }).recordFor(policy, 'ann')[0].onRecord).toBe(false)
+  })
+
+  it('reads where someone stands on a formal-act question off the acts, whatever a stance says', () => {
+    expect(on({ ...cosponsored, stances: [] }, bill)).toEqual(['support', 'on_record'])
+    expect(on({ acts: [act('talk', 'ann')], readings: [reading('talk', 'bill', 'support')], stances: [stance('bill', 'ann', 'support')] }, bill)[0]).toBe('unknown')
+    const both = { acts: [act('yes', 'ann', { kind: 'does' }), act('no', 'ann', { kind: 'does', occurred_on: '2026-02-01' })], readings: [reading('yes', 'bill', 'support'), reading('no', 'bill', 'oppose')] }
+    expect(on(both, bill)[0]).toBe('mixed')
+  })
+
+  it('stops counting a commitment from the day it is withdrawn', () => {
+    const withdrawn = { ...cosponsored, acts: [act('signed', 'ann', { kind: 'commits', occurred_on: '2025-04-29', withdrawn_on: '2026-10-05' })] }
+    expect(on(withdrawn, bill, '2026-10-04')).toEqual(['support', 'on_record'])
+    expect(on(withdrawn, bill, '2026-10-05')[0]).toBe('unknown')
+    expect(track({ ...base, ...withdrawn }).recordFor(bill, 'ann')[0].lapse).toBe('withdrawn')
+    expect(on(withdrawn, policy)[1]).not.toBe('on_record')
+  })
+
+  it('lets a commitment lapse on the parent when its measure closes, and keeps the measure as it stood', () => {
+    expect(on(cosponsored, policy)[1]).toBe('on_record')
+    expect(on(cosponsored, policy, '2027-01-31')[1]).toBe('sparse')
+    expect(track({ ...base, ...cosponsored }, '2027-01-31').recordFor(policy, 'ann')[0].lapse).toBe('closed')
+    expect(on(cosponsored, bill, '2027-01-31')).toEqual(['support', 'on_record'])
+  })
+
+  it('treats a question with a closing date ahead as open until the day', () => {
+    expect([track(base).isOpen(bill), track(base, '2027-01-03').isOpen(bill)]).toEqual([true, false])
   })
 })
 

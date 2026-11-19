@@ -105,8 +105,10 @@
     ["free-ferry", "Suvi Castellanos", "interview", "support", "2026-10-19", "The incumbent has had four years to fix the commute and chose the cruise lines.", "Tideline Radio: Ward 3 primary forum"],
     ["free-ferry", "Calloway Nduka", "statement", "oppose", "2025-01-22", "Half the riders do not live here. Why are we buying their tickets?", "Harbor Ledger: Letters"],
     ["free-ferry", "Calloway Nduka", "statement", "oppose", "2025-07-30", "I would rather fix the buses people in Ward 5 actually ride.", "Dockside Dispatch: Candidate questionnaire"],
-    ["free-ferry-fiscal-note", "Nadezhda Okafor", "formal_act", "support", "2026-10-30", "Published the fiscal note for Ordinance 26-114.", "Council docket: Fiscal note for Ordinance 26-114"],
+    ["free-ferry-fiscal-note", "Nadezhda Okafor", "formal_act", "support", "2026-10-30", "Published the fiscal note for Ordinance 26-114.", "Council docket: Fiscal note for Ordinance 26-114", { "kind": "does" }],
     ["no-cruise-money", "Odalys Brennan", "formal_act", "support", "2025-03-18", "Signed the pledge to refuse campaign donations from cruise operators.", "Clean Harbor Pledge: Signers"],
-    ["no-cruise-money", "Ilse Marchetti", "formal_act", "support", "2026-01-12", "Signed the pledge to refuse campaign donations from cruise operators.", "Clean Harbor Pledge: Signers"]
+    ["no-cruise-money", "Ilse Marchetti", "formal_act", "support", "2026-01-12", "Signed the pledge to refuse campaign donations from cruise operators.", "Clean Harbor Pledge: Signers"],
+    ["free-ferry", "Ikenna Vasquez", "vote", "lean_oppose", "2026-07-14", "Voted to cut the cruise ship berth fee by a third (5 to 2). The ordinance would pay for the free ferry out of that fee.", "Council minutes: July 14 regular session", { "bearing": "indirect" }],
+    ["free-ferry-ord-26-114", "Ikenna Vasquez", "formal_act", "support", "2026-09-20", "Signed on to Ordinance 26-114 as a co-sponsor.", "Council docket: Ordinance 26-114, sponsor changes", { "withdrawn_on": "2026-10-05" }]
   ]
 }

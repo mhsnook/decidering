@@ -49,12 +49,16 @@ export const STANDING_COLOR: Record<Standing, string> = {
 export const SPECTRUM: Standing[] = ['support', 'lean_support', 'mixed', 'unknown', 'lean_oppose', 'oppose']
 
 export const KIND_LABEL: Record<ActKind, string> = {
-  statement: 'Statement',
-  formal_act: 'Formal act',
-  vote: 'Vote',
-  platform: 'Platform',
-  interview: 'Interview',
-  social: 'Social post',
+  says: 'Statement',
+  commits: 'Commitment',
+  does: 'Action',
+}
+
+// For the forms, where someone has to pick one.
+export const KIND_CHOICE: Record<ActKind, string> = {
+  says: 'Said it (a statement, interview or post)',
+  commits: 'Committed to it (cosponsored, signed, pledged)',
+  does: 'Did it (voted, scheduled, ratified)',
 }
 
 const dateFmt = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })

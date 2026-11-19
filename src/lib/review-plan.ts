@@ -2,6 +2,7 @@ import {
   stanceId,
   type Act,
   type ActKind,
+  type Bearing,
   type Position,
   type Proposal,
   type ProposalItem,
@@ -53,6 +54,7 @@ export type ItemVerdict =
       occurred_on: string
       quote: string
       reading: Position
+      bearing: Bearing
       position: Position
       summary: string | null
       comment: string | null
@@ -91,21 +93,21 @@ export function planReview(
   const stanceById = new Map(published.stances.map((s) => [s.id, s]))
   const newStances = new Map<string, Stance>()
 
-  const read = (actId: string, questionId: string, position: Position, via: string | null) => {
+  const read = (actId: string, questionId: string, position: Position, bearing: Bearing, via: string | null) => {
     const key = `${actId} ${questionId}`
     const mine = newReadings.get(key)
     const existing = mine ?? readingByPair.get(key)
     if (!existing) {
-      const row: Reading = { id: newId(), act_id: actId, question_id: questionId, position, via_question_id: via, created_at: now }
+      const row: Reading = { id: newId(), act_id: actId, question_id: questionId, position, bearing, via_question_id: via, created_at: now }
       newReadings.set(key, row)
       writes.push({ on: 'readings', type: 'insert', row })
     } else if (via) {
       // A reading implied by a sub-question never replaces one already there.
     } else if (mine) {
-      Object.assign(mine, { position, via_question_id: null })
-    } else if (existing.position !== position || existing.via_question_id) {
+      Object.assign(mine, { position, bearing, via_question_id: null })
+    } else if (existing.position !== position || existing.bearing !== bearing || existing.via_question_id) {
       // Read directly, it stops being a reading the sub-question implied.
-      writes.push({ on: 'readings', type: 'update', id: existing.id, changes: { position, via_question_id: null } })
+      writes.push({ on: 'readings', type: 'update', id: existing.id, changes: { position, bearing, via_question_id: null } })
     }
   }
 
@@ -147,7 +149,7 @@ export function planReview(
       writes.push({
         on: 'acts',
         type: 'insert',
-        row: { id: v.act_id, decider_id: deciderId, kind: v.kind, occurred_on: v.occurred_on, body: v.quote, primary_source_id: null, created_at: now },
+        row: { id: v.act_id, decider_id: deciderId, kind: v.kind, occurred_on: v.occurred_on, body: v.quote, primary_source_id: null, withdrawn_on: null, created_at: now },
       })
     }
     if (!reported.has(`${source.id} ${v.act_id}`)) {
@@ -160,11 +162,14 @@ export function planReview(
       })
     }
 
-    read(v.act_id, question.id, v.reading, null)
+    read(v.act_id, question.id, v.reading, v.bearing, null)
     stand(question.id, deciderId, v.position, v.summary)
-    if (question.implies_parent_support && question.parent_id && v.reading === 'support') {
-      read(v.act_id, question.parent_id, 'support', question.id)
-      stand(question.parent_id, deciderId, 'support', v.summary, true)
+    // Doing the thing a sub-question asks about says something on its parent
+    // too, if the sub-question says what. An indirect reading is too loose to
+    // carry upward.
+    if (question.implies_on_parent && question.parent_id && v.reading === 'support' && v.bearing === 'direct') {
+      read(v.act_id, question.parent_id, question.implies_on_parent, 'direct', question.id)
+      stand(question.parent_id, deciderId, question.implies_on_parent, v.summary, true)
     }
 
     writes.push({
@@ -179,6 +184,7 @@ export function planReview(
         occurred_on: v.occurred_on,
         quote: v.quote,
         reading: v.reading,
+        bearing: v.bearing,
         position: v.position,
         summary: v.summary,
       },

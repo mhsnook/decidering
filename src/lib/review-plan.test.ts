@@ -10,7 +10,7 @@ const ids = () => {
 }
 
 const policy = question('policy')
-const bill = question('bill', { parent_id: 'policy', kind: 'formal_act', implies_parent_support: true })
+const bill = question('bill', { parent_id: 'policy', kind: 'formal_act', implies_on_parent: 'support' })
 const markup = question('markup', { parent_id: 'policy' })
 const article = source('article', { title: 'As submitted' })
 const pending = proposal('p1', 'article')
@@ -22,10 +22,11 @@ const accept = (i: ReturnType<typeof item>, over: Partial<Extract<ItemVerdict, {
   accept: true,
   question_id: i.question_id,
   act_id: i.act_id,
-  kind: 'statement',
+  kind: 'says',
   occurred_on: '2026-11-10',
   quote: i.quote,
   reading: 'support',
+  bearing: 'direct',
   position: 'support',
   summary: null,
   comment: null,
@@ -118,7 +119,7 @@ describe('planReview', () => {
       published(),
       pending,
       article,
-      { source_title: article.title, review_note: null, items: [accept(item('i1', 'p1', 'ann', 'bill'), { kind: 'formal_act', summary: 'Cosponsor.' })] },
+      { source_title: article.title, review_note: null, items: [accept(item('i1', 'p1', 'ann', 'bill'), { kind: 'commits', summary: 'Cosponsor.' })] },
       NOW,
       ids(),
     )
@@ -160,14 +161,14 @@ describe('planReview', () => {
     expect(rowsOf<Act>(writes, 'acts')).toEqual([])
     expect(rowsOf<Report>(writes, 'reports').map((r) => [r.source_id, r.act_id, r.excerpt])).toEqual([['article', 'feb-11', 'As the paper words it.']])
     expect(rowsOf<Reading>(writes, 'readings')).toEqual([])
-    expect(updatesOf(writes, 'readings')).toEqual([{ on: 'readings', type: 'update', id: 'feb-11@policy', changes: { position: 'support', via_question_id: null } }])
+    expect(updatesOf(writes, 'readings')).toEqual([{ on: 'readings', type: 'update', id: 'feb-11@policy', changes: { position: 'support', bearing: 'direct', via_question_id: null } }])
     expect(updatesOf(writes, 'stances')).toEqual([{ on: 'stances', type: 'update', id: 'policy:ann', changes: { position: 'support', summary: 'Now for it.', updated_at: NOW } }])
     expect(updatesOf(writes, 'proposal_items')[0].changes.act_id).toBe('feb-11')
     expect(onFile.readings[0].position).toBe('lean_support')
   })
 
   it('makes a reading its own once an editor reads the act on the parent directly', () => {
-    const onFile = published({ acts: [act('signed', 'ann', { kind: 'formal_act' })], readings: [reading('signed', 'bill', 'support'), reading('signed', 'policy', 'support', 'bill')] })
+    const onFile = published({ acts: [act('signed', 'ann', { kind: 'commits' })], readings: [reading('signed', 'bill', 'support'), reading('signed', 'policy', 'support', 'bill')] })
     const writes = planReview(
       onFile,
       pending,
@@ -176,7 +177,33 @@ describe('planReview', () => {
       NOW,
       ids(),
     )
-    expect(updatesOf(writes, 'readings')).toEqual([{ on: 'readings', type: 'update', id: 'signed@policy', changes: { position: 'mixed', via_question_id: null } }])
+    expect(updatesOf(writes, 'readings')).toEqual([{ on: 'readings', type: 'update', id: 'signed@policy', changes: { position: 'mixed', bearing: 'direct', via_question_id: null } }])
+  })
+
+  it('records on the parent what the sub-question says doing it means, which need not be support', () => {
+    const letter = question('letter', { parent_id: 'policy', kind: 'formal_act', implies_on_parent: 'oppose' })
+    const writes = planReview(
+      published({ questions: [policy, letter] }),
+      pending,
+      article,
+      { source_title: article.title, review_note: null, items: [accept(item('i1', 'p1', 'ann', 'letter'), { kind: 'commits' })] },
+      NOW,
+      ids(),
+    )
+    expect(rowsOf<Reading>(writes, 'readings').map((r) => [r.question_id, r.position, r.via_question_id])).toEqual([
+      ['letter', 'support', null],
+      ['policy', 'oppose', 'letter'],
+    ])
+    expect(rowsOf<Stance>(writes, 'stances').map((s) => [s.id, s.position])).toEqual([
+      ['letter:ann', 'support'],
+      ['policy:ann', 'oppose'],
+    ])
+  })
+
+  it('keeps an indirect reading where it was made', () => {
+    const writes = planReview(published(), pending, article, { source_title: article.title, review_note: null, items: [accept(item('i1', 'p1', 'ann', 'bill'), { kind: 'does', bearing: 'indirect' })] }, NOW, ids())
+    expect(rowsOf<Reading>(writes, 'readings').map((r) => [r.question_id, r.bearing])).toEqual([['bill', 'indirect']])
+    expect(updatesOf(writes, 'proposal_items')[0].changes.bearing).toBe('indirect')
   })
 
   it('rejects a whole proposal without publishing anything', () => {
