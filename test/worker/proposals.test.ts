@@ -16,25 +16,68 @@ const totals = async () => ({
 beforeAll(seed)
 
 describe('POST /api/proposals: refused input', () => {
-  it('needs a JSON body', async () => {
-    const res = await post('/api/proposals', 'not json')
+  it.each([
+    ['text that is not JSON', 'not json'],
+    ['JSON null', 'null'],
+  ])('refuses %s', async (_, raw) => {
+    const res = await post('/api/proposals', raw)
     expect(res.status).toBe(400)
     expect(await res.json()).toEqual({ error: 'Expected a JSON body.' })
   })
 
   it.each([
+    ['a JSON array', '[]'],
+    ['a JSON string', '"I support it"'],
+    ['a JSON number', '42'],
+  ])('refuses %s with a 400 and writes nothing', async (_, raw) => {
+    const before = await totals()
+    expect((await post('/api/proposals', raw)).status).toBe(400)
+    expect(await totals()).toEqual(before)
+  })
+
+  it.each([
     ['quote', { quote: 'too short' }],
+    ['quote', { quote: 'x'.repeat(2001) }],
+    ['source_url', { source_url: `https://news.example/${'x'.repeat(2000)}` }],
+    ['source_url', { source_url: 'javascript:alert(document.cookie)' }],
+    ['source_url', { source_url: 'data:text/html,<script>alert(1)</script>' }],
     ['source_url', { source_url: 'ftp://news.example/story' }],
-    ['reading', { reading: 'maybe' }],
-    ['kind', { kind: 'thinks' }],
-    ['occurred_on', { occurred_on: '1 November' }],
-    ['question_id', { question_id: '' }],
-  ])('names the first bad field: %s', async (field, bad) => {
+    ['source_title', { source_title: 'x'.repeat(301) }],
+    ['submitter_note', { submitter_note: 'x'.repeat(1001) }],
+  ])('refuses a bad %s and writes nothing', async (field, bad) => {
     const before = await totals()
     const res = await post('/api/proposals', proposal(bad))
     expect(res.status).toBe(400)
     expect(((await res.json()) as { error: string }).error).toMatch(new RegExp(`^${field}: `))
     expect(await totals()).toEqual(before)
+  })
+
+  it('ignores fields only the server or an editor sets', async () => {
+    const url = 'https://news.example/forged-fields'
+    const res = await post('/api/proposals', {
+      ...proposal({ source_url: url }),
+      id: 'forged-proposal',
+      proposal_id: 'forged-proposal',
+      act_id: 'forged-act',
+      origin: 'model',
+      status: 'accepted',
+      position: 'oppose',
+      summary: 'Forged summary',
+      bearing: 'indirect',
+      sort: 99,
+      submitted_by: 'admin',
+      reviewed_at: '2026-11-01',
+    })
+    expect(await res.json()).toEqual({ ok: true, duplicate: false })
+    const [row] = await rows(
+      `SELECT p.id AS proposal_id, p.origin, p.status AS proposal_status, p.submitted_by, p.reviewed_at,
+              i.id, i.act_id, i.status, i.position, i.summary, i.bearing, i.sort
+       FROM proposal_items i JOIN proposals p ON p.id = i.proposal_id JOIN sources s ON s.id = p.source_id WHERE s.url = ?`,
+      url,
+    )
+    expect(row).toMatchObject({ origin: 'reader', proposal_status: 'pending', submitted_by: null, reviewed_at: null, status: 'pending', position: null, summary: null, bearing: 'direct', sort: 0 })
+    expect([row.proposal_id, row.id, row.act_id]).not.toContain('forged-proposal')
+    expect(row.act_id).not.toBe('forged-act')
   })
 
   it('answers a filled-in honeypot as if it worked and writes nothing', async () => {
@@ -121,15 +164,15 @@ describe('POST /api/proposals: duplicates from the same source', () => {
   })
 
   it('does not block another person or another question, and reuses the source', async () => {
-    expect(await submit({ decider_id: 'cara' })).toEqual({ ok: true, duplicate: false })
+    expect(await submit({ decider_id: 'eve' })).toEqual({ ok: true, duplicate: false })
     expect(await submit({ decider_id: 'bob', question_id: 'cold' })).toEqual({ ok: true, duplicate: false })
     expect(await rows(`SELECT id FROM sources WHERE url = ?`, url)).toHaveLength(1)
   })
 
   it('a published item blocks the same person and question', async () => {
-    expect(await submit({ decider_id: 'dan' })).toEqual({ ok: true, duplicate: false })
-    await env.DB.prepare(`UPDATE proposal_items SET status = 'accepted' WHERE id = ?`).bind((await itemsFor('dan'))[0].id).run()
-    expect(await submit({ decider_id: 'dan', quote: 'A different sentence from the article.' })).toEqual({ ok: true, duplicate: true })
+    expect(await submit({ decider_id: 'fay' })).toEqual({ ok: true, duplicate: false })
+    await env.DB.prepare(`UPDATE proposal_items SET status = 'accepted' WHERE id = ?`).bind((await itemsFor('fay'))[0].id).run()
+    expect(await submit({ decider_id: 'fay', quote: 'A different sentence from the article.' })).toEqual({ ok: true, duplicate: true })
   })
 
   it('a rejected item blocks a reader only for the same quote', async () => {

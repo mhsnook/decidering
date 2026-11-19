@@ -6,7 +6,7 @@ export { EDITOR_TOKEN }
 // One table of each kind a proposal or a news search reads. Each test file gets
 // its own database, so a file seeds once and its tests share the rows.
 //
-//   congress  the body the questions are listed under; Ann sits in it
+//   congress  the body the questions are listed under; Ann, Eve and Fay sit in it
 //   senate    a second body the hot question is also put to; Bob sits in it
 //   demo      a demo body with a hot question of its own; Cara sits in it
 //   Dan sits nowhere
@@ -17,9 +17,12 @@ export async function seed() {
         ('congress', 'congress', 'Congress', 0), ('senate', 'senate', 'Senate', 0), ('demo', 'demo', 'Demo Council', 1)`,
       `INSERT INTO deciders (id, slug, name, sort_name) VALUES
         ('ann', 'ann-alpha', 'Ann Alpha', 'Alpha, Ann'), ('bob', 'bob-beta', 'Bob Beta', 'Beta, Bob'),
-        ('cara', 'cara-gamma', 'Cara Gamma', 'Gamma, Cara'), ('dan', 'dan-delta', 'Dan Delta', 'Delta, Dan')`,
-      `INSERT INTO seats (id, body_id, label) VALUES ('s-ann', 'congress', 'Seat 1'), ('s-bob', 'senate', 'Seat 1'), ('s-cara', 'demo', 'Seat 1')`,
-      `INSERT INTO roles (id, seat_id, decider_id) VALUES ('r-ann', 's-ann', 'ann'), ('r-bob', 's-bob', 'bob'), ('r-cara', 's-cara', 'cara')`,
+        ('cara', 'cara-gamma', 'Cara Gamma', 'Gamma, Cara'), ('dan', 'dan-delta', 'Dan Delta', 'Delta, Dan'),
+        ('eve', 'eve-epsilon', 'Eve Epsilon', 'Epsilon, Eve'), ('fay', 'fay-zeta', 'Fay Zeta', 'Zeta, Fay')`,
+      `INSERT INTO seats (id, body_id, label) VALUES
+        ('s-ann', 'congress', 'Seat 1'), ('s-eve', 'congress', 'Seat 2'), ('s-fay', 'congress', 'Seat 3'), ('s-bob', 'senate', 'Seat 1'), ('s-cara', 'demo', 'Seat 1')`,
+      `INSERT INTO roles (id, seat_id, decider_id) VALUES
+        ('r-ann', 's-ann', 'ann'), ('r-eve', 's-eve', 'eve'), ('r-fay', 's-fay', 'fay'), ('r-bob', 's-bob', 'bob'), ('r-cara', 's-cara', 'cara')`,
       `INSERT INTO questions (id, slug, body_id, kind, title, short_title, is_hot, status, closed_on) VALUES
         ('hot', 'hot', 'congress', 'position', 'Hot question?', 'Hot Topic', 1, 'open', NULL),
         ('cold', 'cold', 'congress', 'position', 'Cold question?', 'Cold Topic', 0, 'open', NULL),

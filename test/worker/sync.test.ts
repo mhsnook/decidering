@@ -56,6 +56,19 @@ describe('what a socket is sent', () => {
     reader.close()
   })
 
+  it.each([
+    ['a wrong token', 'not-the-token'],
+    ['a prefix of the token', EDITOR_TOKEN.slice(0, -1)],
+  ])('treats a socket with %s as a reader', async (_, token) => {
+    const socket = await partySocket(token)
+    await until(() => socket.channels().has('bodies'))
+    const before = socket.frames.length
+    socket.send({ subscribe: 'proposal_notes' })
+    await until(() => socket.frames.slice(before).some((f) => f.channel === 'proposal_notes'))
+    expect(rowsOn(socket.frames, 'proposal_notes')).toEqual([])
+    socket.close()
+  })
+
   it('sends an editor the proposal notes on connect', async () => {
     const editor = await partySocket(EDITOR_TOKEN)
     await until(() => editor.channels().has('proposal_notes'))
@@ -72,11 +85,17 @@ describe('what a socket is sent', () => {
     const res = await post('/api/proposals', proposal({ source_url: 'https://news.example/live', submitter_note: 'A second private note.' }))
     expect(await res.json()).toEqual({ ok: true, duplicate: false })
 
-    // The reader is still sent the public half of the same proposal.
-    await until(() => reader.frames.slice(seen.reader).some((f) => f.channel === 'sources'))
-    await until(() => editor.frames.slice(seen.editor).some((f) => f.channel === 'proposal_notes'))
-    expect(editor.frames.slice(seen.editor).find((f) => f.channel === 'proposal_notes')?.ops[0].value.body).toBe('A second private note.')
+    // A later write is sent after everything the proposal committed, so once the
+    // reader has it, any note that was going to reach the reader already has.
+    const marker = { ...body, id: 'after-live', slug: 'after-live' }
+    expect((await partyWrite([{ channel: 'bodies', ops: [{ type: 'insert', value: marker }] }], EDITOR_TOKEN)).status).toBe(200)
+    await until(() => rowsOn(reader.frames.slice(seen.reader), 'bodies').some((b) => b.id === 'after-live'))
+
+    // The reader is sent the public half of the same proposal.
+    expect(rowsOn(reader.frames.slice(seen.reader), 'sources').map((src) => src.url)).toContain('https://news.example/live')
     expect(rowsOn(reader.frames, 'proposal_notes')).toEqual([])
+    await until(() => editor.frames.slice(seen.editor).some((f) => f.channel === 'proposal_notes'))
+    expect(rowsOn(editor.frames.slice(seen.editor), 'proposal_notes').map((n) => n.body)).toEqual(['A second private note.'])
     reader.close()
     editor.close()
   })

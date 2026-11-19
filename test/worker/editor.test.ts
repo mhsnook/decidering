@@ -1,5 +1,6 @@
-import { exports } from 'cloudflare:workers'
+import { env, exports } from 'cloudflare:workers'
 import { describe, expect, it } from 'vitest'
+import { isEditorRequest, isEditorToken } from '../../worker/editor.ts'
 import { EDITOR_TOKEN } from './helpers.ts'
 
 const call = (path: string, method: string, token?: string) =>
@@ -33,5 +34,23 @@ describe('/api/editor/read-article', () => {
 
   it('needs a web address and a question', async () => {
     expect((await call('/api/editor/read-article', 'POST', EDITOR_TOKEN)).status).toBe(400)
+  })
+})
+
+// A Preview deployed without the secret has no EDITOR_TOKEN. Nobody is an editor there.
+describe('with no editor token configured', () => {
+  const unset = [
+    ['empty', { ...env, EDITOR_TOKEN: '' }],
+    ['missing', { ...env, EDITOR_TOKEN: undefined }],
+  ] as unknown as [string, Env][]
+
+  it.each(unset)('accepts no token when the secret is %s', async (_, noSecret) => {
+    for (const token of ['', 'undefined', 'null', EDITOR_TOKEN]) expect(await isEditorToken(token, noSecret)).toBe(false)
+  })
+
+  it.each(unset)('accepts no request when the secret is %s', async (_, noSecret) => {
+    for (const authorization of ['Bearer ', 'Bearer undefined', `Bearer ${EDITOR_TOKEN}`]) {
+      expect(await isEditorRequest(new Request('http://sporelight.test/', { headers: { authorization } }), noSecret)).toBe(false)
+    }
   })
 })
