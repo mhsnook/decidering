@@ -25,7 +25,7 @@
   // gateway named `default` is created on first use; this one has to exist.
   "vars": { "AI_GATEWAY": "sporelight" },
   "ratelimits": [{ "name": "POST_LIMITER", "namespace_id": "1001", "simple": { "limit": 6, "period": 60 } }],
-  "triggers": { "crons": ["17 */6 * * *"] },
+  "triggers": { "crons": ["17 14 * * *"] },
   "observability": { "enabled": true },
   // Previews inherit none of the bindings above. One the Worker reads from `env`
   // and that is missing here is undefined at runtime, not a build error.

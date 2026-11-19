@@ -124,7 +124,9 @@ The news search and the article reader route through the AI Gateway named `spore
 
 ## News search
 
-Every six hours the Worker runs four searches for each question marked as in the news. A result is followed up when its title or excerpt names one to three people on that body's roster.
+Once a day (14:17 UTC) the Worker runs four searches for each question marked as in the news. A result is followed up when its title or excerpt names one to three people on that body's roster.
+
+The daily run is skipped while the queue is unattended: when leads it queued earlier are still waiting and no editor has reviewed one in the last day. The next run after a review goes ahead. "Search the news now" in `/editor` always runs.
 
 ### Reading the article
 
@@ -143,7 +145,7 @@ The model id is `MODEL` in `worker/reader.ts`. The search and the model both go 
 
 ### Calls per run
 
-A run reads at most 15 articles (`MAX_READS_PER_RUN` in `worker/news.ts`); results beyond that are left for the next run, which finds them again if the search still returns them. With two questions in the news, one run spends at most:
+A run reads at most 15 articles (`MAX_READS_PER_RUN` in `worker/news.ts`); results beyond that are left for the next run, which finds them again if the search still returns them. A model call that fails (a spending limit on the gateway, a rate limit, an outage) also ends reading for the run: that result falls back to its excerpt lead and the rest wait. With two questions in the news, one run spends at most:
 
 | Call | Count | Counts against |
 | --- | --- | --- |
@@ -153,7 +155,7 @@ A run reads at most 15 articles (`MAX_READS_PER_RUN` in `worker/news.ts`); resul
 | Model calls | 15 | Cloudflare services |
 | D1 queries | about 10 per result looked at | Cloudflare services |
 
-A model call sends up to about 15,000 tokens of article and gets back a few hundred. At $0.30 per million input tokens and $1.20 per million output tokens that is under half a cent per article, and under 10 cents for a full run. The model needs the Workers Paid plan or prepaid AI Gateway credits. It allows 20 requests a minute on standard billing, which a run of 15 reads one at a time stays under.
+A model call sends up to about 15,000 tokens of article and gets back a few hundred. At $0.30 per million input tokens and $1.20 per million output tokens that is under half a cent per article, and under 10 cents for a full run, which is once a day. Spending limits set on the gateway cap this; a run that hits one stops reading, as above. The model needs the Workers Paid plan or prepaid AI Gateway credits. It allows 20 requests a minute on standard billing, which a run of 15 reads one at a time stays under.
 
 ### Trying the reader on one page
 

@@ -7,7 +7,9 @@ import type { SubmitResult } from './tracker.ts'
 const PROVIDER = 'exa'
 const RESULTS_PER_QUERY = 10
 // Articles fetched and sent to the model in one run; the rest wait for the next
-// run. Each read is one outside fetch (plus any redirects), one conversion and
+// run. A failed model call also ends reading for the run, since the usual
+// causes (the gateway's spending limit, a rate limit, an outage) would fail the
+// rest too. Each read is one outside fetch (plus any redirects), one conversion and
 // one model call. On the Workers Free plan a run may make 50 outside requests.
 export const MAX_READS_PER_RUN = 15
 
@@ -17,7 +19,7 @@ export type NewsReport = {
   error?: string
   questions: { question: string; hits: number; read: number; queued: number }[]
   // Hits that name someone and were neither read nor recorded, because the run
-  // reached MAX_READS_PER_RUN.
+  // reached MAX_READS_PER_RUN or a model call failed.
   deferred: number
 }
 
@@ -43,7 +45,7 @@ function roster(db: D1Database, question: { id: string; body_id: string }) {
 export type ArticleOutcome =
   | { outcome: 'acts'; context: ReadingContext; acts: ModelAct[]; dropped: Dropped[]; draft: ProposalDraft }
   | { outcome: 'no_acts'; context: ReadingContext; dropped: Dropped[] }
-  | { outcome: 'not_read'; reason: string }
+  | { outcome: 'not_read'; reason: string; modelCallFailed?: boolean }
 
 // Fetches one article and has the model read it for these people on this
 // question. Writes nothing.
@@ -65,7 +67,7 @@ export async function readOneArticle(
   const context = await readingContext(env.DB, questionId, people, today)
   if (!context) return { outcome: 'not_read', reason: 'The question no longer exists.' }
   const reading = await readArticle(env, context, { ...article, text: body }, today)
-  if (!reading.ok) return { outcome: 'not_read', reason: reading.reason }
+  if (!reading.ok) return { outcome: 'not_read', reason: reading.reason, modelCallFailed: reading.callFailed }
   if (reading.acts.length === 0) return { outcome: 'no_acts', context, dropped: reading.dropped }
   return { outcome: 'acts', context, acts: reading.acts, dropped: reading.dropped, draft: draftFromReading(article, reading.acts, reading.dropped, query) }
 }
@@ -114,6 +116,7 @@ export async function searchNews(env: Env, tracker: Submitter, now: Date = new D
 
   const report: NewsReport = { questions: [], deferred: 0 }
   let reads = 0
+  let modelDown = false
   for (const question of hot.results) {
     const members = (await roster(env.DB, question)).results
     const byId = new Map(members.map((m) => [m.id, m]))
@@ -138,7 +141,7 @@ export async function searchNews(env: Env, tracker: Submitter, now: Date = new D
         if (people.length === 0) continue
         const url = sourceUrl(hit.url)
         if (await alreadyHandled(env.DB, url, question.id)) continue
-        if (reads >= MAX_READS_PER_RUN) {
+        if (reads >= MAX_READS_PER_RUN || modelDown) {
           report.deferred++
           continue
         }
@@ -156,6 +159,10 @@ export async function searchNews(env: Env, tracker: Submitter, now: Date = new D
           await recordRead(env.DB, url, question.id, now, 'no_acts', MODEL, droppedDetail(result.dropped))
           continue
         } else {
+          if (result.modelCallFailed) {
+            modelDown = true
+            report.error = `Stopped reading articles: ${result.reason}`
+          }
           draft = leadFromHit(hit, question.id, query, match, `The article was not read: ${result.reason}`)
           origin = 'news_search'
         }
@@ -200,4 +207,21 @@ export async function dryRunArticle(env: Env, url: string, questionId: string, n
   if (people.length === 0) return { outcome: 'no_people' as const, model: MODEL, article }
   const result = await readOneArticle(env, { url: sourceUrl(url), title: null, date: null }, question.id, people, today, null, fetched.text)
   return { ...result, model: MODEL, article, people: people.map((p) => p.name) }
+}
+
+// Whether the scheduled search should run today: when nothing it queued earlier
+// is waiting, or when an editor has reviewed something it queued in the last
+// day. An unattended queue stops filling, and the first review starts it again
+// at the next run.
+export async function queueIsAttended(db: D1Database, now: Date): Promise<boolean> {
+  const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()
+  const row = await db
+    .prepare(
+      `SELECT
+         NOT EXISTS (SELECT 1 FROM proposals WHERE status = 'pending' AND origin IN ('news_search', 'model')) AS empty,
+         EXISTS (SELECT 1 FROM proposals WHERE status = 'reviewed' AND origin IN ('news_search', 'model') AND reviewed_at > ?) AS reviewed`,
+    )
+    .bind(dayAgo)
+    .first<{ empty: number; reviewed: number }>()
+  return Boolean(row?.empty || row?.reviewed)
 }

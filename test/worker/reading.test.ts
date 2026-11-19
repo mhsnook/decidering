@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers'
 import { getServerByName } from 'partyserver'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { SearchHit } from '../../worker/leads.ts'
-import { dryRunArticle, MAX_READS_PER_RUN, searchNews } from '../../worker/news.ts'
+import { dryRunArticle, MAX_READS_PER_RUN, queueIsAttended, searchNews } from '../../worker/news.ts'
 import { MODEL } from '../../worker/reader.ts'
 import type { Tracker } from '../../worker/tracker.ts'
 import { rows, seed } from './helpers.ts'
@@ -231,6 +231,42 @@ describe('reading articles', () => {
     const second = stubbed({ hits: urls.map((u) => hit(u)), pages, answer: () => ({ acts: [] }) })
     await searchNews(second.env, await tracker(), NOW)
     expect(second.fetcher.mock.calls.map(([u]) => String(u))).toEqual(urls.slice(MAX_READS_PER_RUN))
+  })
+})
+
+describe('when a model call fails', () => {
+  it('falls back for that article and leaves the rest of the run for the next one', async () => {
+    const urls = ['https://news.example/down-0', 'https://news.example/down-1', 'https://news.example/down-2']
+    const pages = Object.fromEntries(urls.map((u) => [u, page('Nothing of note.')]))
+    const first = stubbed({ hits: urls.map((u) => hit(u)), pages, answer: () => new Error('2016: spending limit reached') })
+    const report = await searchNews(first.env, await tracker(), NOW)
+    expect(first.run).toHaveBeenCalledTimes(1)
+    expect(report.error).toBe('Stopped reading articles: The model call failed (Error: 2016: spending limit reached).')
+    expect(await proposalsFor(urls[0])).toEqual([expect.objectContaining({ origin: 'news_search' })])
+    expect(await readsOf(urls[1])).toEqual([])
+    vi.restoreAllMocks()
+
+    const second = stubbed({ hits: urls.map((u) => hit(u)), pages, answer: () => ({ acts: [] }) })
+    await searchNews(second.env, await tracker(), NOW)
+    expect(second.fetcher.mock.calls.map(([u]) => String(u))).toEqual(urls.slice(1))
+  })
+})
+
+describe('queueIsAttended', () => {
+  const at = (iso: string) => new Date(iso)
+
+  it('lets the run go ahead once an editor has reviewed an automated lead in the last day', async () => {
+    // Earlier tests in this file left automated proposals pending.
+    expect(await queueIsAttended(env.DB, NOW)).toBe(false)
+    const [{ id }] = await rows<{ id: string }>(`SELECT id FROM proposals WHERE status = 'pending' AND origin IN ('news_search', 'model') LIMIT 1`)
+    await env.DB.prepare(`UPDATE proposals SET status = 'reviewed', reviewed_at = '2026-11-19T02:00:00Z' WHERE id = ?`).bind(id).run()
+    expect(await queueIsAttended(env.DB, at('2026-11-19T12:00:00Z'))).toBe(true)
+    expect(await queueIsAttended(env.DB, at('2026-11-20T12:00:00Z'))).toBe(false)
+  })
+
+  it('lets the run go ahead when nothing automated is waiting', async () => {
+    await env.DB.prepare(`UPDATE proposals SET status = 'reviewed', reviewed_at = '2026-11-01T00:00:00Z' WHERE status = 'pending'`).run()
+    expect(await queueIsAttended(env.DB, at('2026-11-30T12:00:00Z'))).toBe(true)
   })
 })
 

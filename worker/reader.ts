@@ -170,8 +170,9 @@ export type Dropped = { act: Pick<ModelAct, 'person_id' | 'question_id' | 'quote
 
 export type Reading =
   | { ok: true; acts: ModelAct[]; dropped: Dropped[] }
-  // The model did not answer, or answered with nothing that fits the schema.
-  | { ok: false; reason: string }
+  // The model did not answer (`callFailed`), or answered with nothing that
+  // fits the schema.
+  | { ok: false; reason: string; callFailed: boolean }
 
 // Pulls the model's answer out of what the binding returns. The catalogue
 // gives an OpenAI-style completion; older Workers AI models put it in
@@ -198,10 +199,10 @@ export async function readArticle(
     const raw = await env.AI.run(MODEL as never, modelPrompt(context, article, today) as never, { gateway: { id: env.AI_GATEWAY } })
     answer = answerOf(raw)
   } catch (e) {
-    return { ok: false, reason: `The model call failed (${String(e).slice(0, 160)}).` }
+    return { ok: false, reason: `The model call failed (${String(e).slice(0, 160)}).`, callFailed: true }
   }
   const parsed = modelOutputSchema.safeParse(answer)
-  if (!parsed.success) return { ok: false, reason: `The model's answer did not fit the expected shape (${parsed.error.issues[0]?.message ?? 'unknown'}).` }
+  if (!parsed.success) return { ok: false, reason: `The model's answer did not fit the expected shape (${parsed.error.issues[0]?.message ?? 'unknown'}).`, callFailed: false }
 
   const allowed = new Map(context.people.map((p) => [p.id, new Set(p.questions)]))
   const acts: ModelAct[] = []

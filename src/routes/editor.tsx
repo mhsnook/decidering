@@ -130,7 +130,7 @@ function Queue() {
       {!selected ? (
         <div className="card card-lg mt-10 bg-mint px-5 py-7 text-center sm:mt-12 sm:p-12">
           <h2 className="text-2xl font-black sm:text-[32px]">{tab === 'pending' ? 'The queue is empty.' : 'Nothing reviewed yet.'}</h2>
-          {tab === 'pending' && <p className="mt-2 text-[15px] sm:text-[17px]">Every lead has been reviewed. The next news search runs in a few hours.</p>}
+          {tab === 'pending' && <p className="mt-2 text-[15px] sm:text-[17px]">Every lead has been reviewed. The news search runs once a day.</p>}
         </div>
       ) : (
         <div className="mt-6 grid items-start gap-9 sm:mt-8 lg:grid-cols-[minmax(0,1fr)_minmax(260px,340px)]">

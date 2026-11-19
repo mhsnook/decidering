@@ -1,7 +1,7 @@
 import { getServerByName, routePartykitRequest } from 'partyserver'
 import { commentInputSchema, proposalInputSchema } from '../shared/schema.ts'
 import { isEditorRequest } from './editor.ts'
-import { dryRunArticle, searchNews } from './news.ts'
+import { dryRunArticle, queueIsAttended, searchNews } from './news.ts'
 import type { Tracker } from './tracker.ts'
 
 export { Tracker } from './tracker.ts'
@@ -74,7 +74,9 @@ export default {
 
   // Awaited, not left to waitUntil: a run reads articles for minutes, and
   // waitUntil only promises a short time after the handler returns.
-  async scheduled(_controller, env) {
-    console.log('news search', await searchNews(env, await tracker(env)))
+  async scheduled(controller, env) {
+    const now = new Date(controller.scheduledTime)
+    if (!(await queueIsAttended(env.DB, now))) return console.log('news search skipped: earlier leads are waiting and none was reviewed in the last day')
+    console.log('news search', await searchNews(env, await tracker(env), now))
   },
 } satisfies ExportedHandler<Env>
