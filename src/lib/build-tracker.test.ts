@@ -73,7 +73,7 @@ describe("a decider's record on a question", () => {
       })
     const [row] = tracked.board(bill)
     expect(row.incumbent).toMatchObject({ standing: 'support', footing: 'on_record' })
-    expect(tracked.board(policy)[0].incumbent).toMatchObject({ standing: 'unknown', footing: 'on_record' })
+    expect(tracked.board(policy)[0].incumbent).toMatchObject({ standing: 'support', footing: 'on_record' })
   })
 })
 
@@ -267,6 +267,26 @@ describe('how much an act counts', () => {
     expect(on(withdrawn, bill, '2026-10-05')[0]).toBe('unknown')
     expect(track({ ...base, ...withdrawn }).recordFor(bill, 'ann')[0].lapse).toBe('withdrawn')
     expect(on(withdrawn, policy)[1]).not.toBe('on_record')
+  })
+
+  it('reads a stance that was only implied off the acts behind it, so taking them back takes it back', () => {
+    const implied = { ...cosponsored, stances: [stance('policy', 'ann', 'support', 'Cosponsor of the bill.')] }
+    const withdrawn = { ...implied, acts: [act('signed', 'ann', { kind: 'commits', occurred_on: '2025-04-29', withdrawn_on: '2026-10-05' })] }
+    const person = (rows: Parameters<typeof track>[0], asOf?: string) => track({ ...base, ...rows }, asOf).board(policy)[0].incumbent!
+    expect([person(implied).standing, person(implied).stance?.summary]).toEqual(['support', 'Cosponsor of the bill.'])
+    expect([person(withdrawn, '2026-10-04').standing, person(withdrawn).standing, person(withdrawn).stance]).toEqual(['support', 'unknown', undefined])
+    expect(person({ ...cosponsored, stances: [] }).standing).toBe('support')
+    expect(person(implied, '2027-01-31').standing).toBe('support')
+  })
+
+  it('keeps a stance an editor judged from an act read on the question itself, whatever is taken back', () => {
+    const judged = {
+      acts: [act('signed', 'ann', { kind: 'commits', occurred_on: '2025-04-29', withdrawn_on: '2026-10-05' }), act('speech', 'ann', { occurred_on: '2026-10-20' })],
+      readings: [...cosponsored.readings, reading('speech', 'policy', 'lean_support')],
+      stances: [stance('policy', 'ann', 'lean_support')],
+    }
+    expect(on(judged, policy)[0]).toBe('lean_support')
+    expect(on({ stances: [stance('policy', 'ann', 'oppose')] }, policy)[0]).toBe('oppose')
   })
 
   it('lets a commitment lapse on the parent when its measure closes, and keeps the measure as it stood', () => {
