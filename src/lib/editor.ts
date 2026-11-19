@@ -1,4 +1,4 @@
-const KEY = 'decidering.editor-token'
+const KEY = 'sporelight.editor-token'
 
 export function editorToken(): string | undefined {
   try {

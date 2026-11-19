@@ -2,12 +2,12 @@
 // `previews` block in wrangler.jsonc). Nothing deploys from this file.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "decidering",
+  "name": "sporelight",
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "decidering-preview",
-      "database_id": "08ea785b-bbd6-45c2-925b-3bf403e597df",
+      "database_name": "sporelight-preview",
+      "database_id": "14c5e7ec-779b-44ab-913d-e6c7fa7574f6",
       "migrations_dir": "migrations"
     }
   ]

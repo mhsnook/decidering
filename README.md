@@ -82,7 +82,7 @@ Until that is done, apply migrations by hand before pushing a schema change: `pn
 One-time setup, from a machine with `wrangler login`:
 
 ```sh
-wrangler d1 create decidering          # put the id in wrangler.jsonc
+wrangler d1 create sporelight          # put the id in wrangler.jsonc
 wrangler d1 migrations apply DB --remote
 pnpm seed:build && wrangler d1 execute DB --remote --file seed/out/seed.sql
 wrangler secret put EDITOR_TOKEN
@@ -92,7 +92,7 @@ Then connect the repo in the Cloudflare dashboard and push to `main`. Secrets pe
 
 ### Previews
 
-A Preview takes only the bindings in the `previews` block of `wrangler.jsonc`. All Previews share one database, `decidering-preview`, so nothing posted or approved on a preview URL reaches production. Each Preview gets its own sync room.
+A Preview takes only the bindings in the `previews` block of `wrangler.jsonc`. All Previews share one database, `sporelight-preview`, so nothing posted or approved on a preview URL reaches production. Each Preview gets its own sync room.
 
 Set the preview database up once. All Previews share it, so a migration on one branch reaches every Preview:
 

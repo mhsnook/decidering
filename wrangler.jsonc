@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "decidering",
+  "name": "sporelight",
   "main": "worker/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -11,8 +11,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "decidering",
-      "database_id": "196b0b5b-2356-49fe-8915-4d49f3710260",
+      "database_name": "sporelight",
+      "database_id": "bd8981d0-61c6-48e6-8241-25335083f225",
       "migrations_dir": "migrations"
     }
   ],
@@ -30,8 +30,8 @@
     "d1_databases": [
       {
         "binding": "DB",
-        "database_name": "decidering-preview",
-        "database_id": "08ea785b-bbd6-45c2-925b-3bf403e597df"
+        "database_name": "sporelight-preview",
+        "database_id": "14c5e7ec-779b-44ab-913d-e6c7fa7574f6"
       }
     ],
     "durable_objects": {

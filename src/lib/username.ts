@@ -1,4 +1,4 @@
-const KEY = 'decidering.comment-name'
+const KEY = 'sporelight.comment-name'
 
 export function savedUsername(): string {
   try {
