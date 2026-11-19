@@ -1,4 +1,4 @@
-import type { ProposalDraft } from '../shared/schema.ts'
+import type { Proposal, ProposalDraft, ProposalItem } from '../shared/schema.ts'
 
 export type RosterEntry = { id: string; name: string; sort_name: string }
 export type SearchHit = { url: string; title: string; description?: string; lastModifiedDate?: string }
@@ -52,4 +52,17 @@ export function leadFromHit(hit: SearchHit, questionId: string, query: string, m
     note: `Search excerpt, not a verified quote. Found by searching: ${query}`,
     items: people.map((decider_id) => ({ question_id: questionId, decider_id, kind: 'says', occurred_on, quote, reading: null })),
   }
+}
+
+type Proposed = Pick<ProposalItem, 'question_id' | 'decider_id' | 'status' | 'quote'>
+
+// Whether an item already proposed from the same source stands in the way of a
+// new one for the same person and question. A search hit is the same lead
+// however it is excerpted, so anything earlier blocks it, rejected or not. A
+// person can bring a better quote than one that was turned down: theirs is
+// blocked only by an item still waiting or published, or by the same words.
+export function alreadyProposed(earlier: Proposed[], item: Pick<Proposed, 'question_id' | 'decider_id' | 'quote'>, origin: Proposal['origin']): boolean {
+  return earlier.some(
+    (e) => e.question_id === item.question_id && e.decider_id === item.decider_id && (origin === 'news_search' || e.status !== 'rejected' || e.quote === item.quote),
+  )
 }
