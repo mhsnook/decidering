@@ -342,10 +342,15 @@ function ItemFields({
     const role = tracker.roleIn(root, decider.id)
     return role && tracker.seatById.get(role.seat_id)?.chamber
   })()
+  // `asked` is listed even when this person would not be offered it: a select
+  // whose value matches no option submits its first one.
   const family = [
-    root,
-    ...(tracker.measuresOf.get(root.id) ?? []).filter((m) => !m.chamber || m.chamber === chamber),
-    ...tracker.asksFor(root, decider.id).map((k) => k.ask),
+    ...new Set([
+      root,
+      ...(tracker.measuresOf.get(root.id) ?? []).filter((m) => !m.chamber || m.chamber === chamber),
+      ...tracker.asksFor(root, decider.id).map((k) => k.ask),
+      asked,
+    ]),
   ]
   const onFile = [...(tracker.actsByDecider.get(decider.id) ?? [])].sort((a, b) => b.occurred_on.localeCompare(a.occurred_on))
   const stance = tracker.stanceById.get(stanceId(question.id, decider.id))
