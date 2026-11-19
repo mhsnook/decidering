@@ -17,7 +17,12 @@ The README describes what the app is and how to run it. This file is how changes
 
 ## Code
 
-- A comment has to stop the next person from making a specific wrong assumption about that line: a footgun, an ordering constraint, something that looks wrong but isn't. Why a change was made goes in the commit message or PR, not in a comment.
+- A comment earns its place in one of two ways:
+  - It stops the next person from making a specific wrong assumption about that line: a footgun, an ordering constraint, something that looks wrong but isn't.
+  - It is a one-line signpost saying what a block does and why, such as "Parse the model's answer to match the review form's fields".
+
+  Why a change was made goes in the commit message or PR, not in a comment.
+- Prefer a two-word name that makes a comment unnecessary over a generic one-word name that needs one: `articleText` over `text` with a note saying which text.
 - When a library or a Cloudflare feature covers a job, use it fully. One snag is not a reason to drop it and write its job by hand. If you do drop one, say so and why.
 - Anything written as the project (README, UI copy, PR text, test names, prompts) is plain and factual, with no emphasis for effect.
 - Unreviewed proposals are public. Text only editors should see goes in `proposal_notes`, never in a column of a synced public table.
