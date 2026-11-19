@@ -241,13 +241,40 @@ describe('reading articles', () => {
     const report = await searchNews(first.env, await tracker(), NOW)
     expect(first.fetcher).toHaveBeenCalledTimes(MAX_READS_PER_RUN)
     expect(report.questions[0].read).toBe(MAX_READS_PER_RUN)
-    // Every query returns the same hits, so the three left over are counted once per query.
-    expect(report.deferred).toBe(3 * 4)
+    // Every query returns the same hits; each one left over is counted once.
+    expect(report.deferred).toBe(3)
     vi.restoreAllMocks()
 
     const second = stubbed({ hits: urls.map((u) => hit(u)), pages, answer: () => ({ acts: [] }) })
     await searchNews(second.env, await tracker(), NOW)
     expect(second.fetcher.mock.calls.map(([u]) => String(u))).toEqual(urls.slice(MAX_READS_PER_RUN))
+  })
+})
+
+describe('when queueing fails', () => {
+  it('does not record the read, so the next run tries again', async () => {
+    const url = 'https://news.example/queue-fails'
+    const s = stubbed({ hits: [hit(url)], pages: { [url]: page('Ann Alpha said: “I will vote for this bill when it reaches the floor.”') }, answer: () => ({ acts: [act()] }) })
+    const failing = { propose: async () => ({ ok: false as const, status: 400, error: 'Unknown question or decider.' }) }
+    const report = await searchNews(s.env, failing, NOW)
+    expect(report.error).toContain('Unknown question or decider.')
+    expect(await readsOf(url)).toEqual([])
+  })
+
+  it('does not record the read when queueing throws, and carries on with the run', async () => {
+    const urls = ['https://news.example/queue-throws-0', 'https://news.example/queue-throws-1']
+    const s = stubbed({ hits: urls.map((u) => hit(u)), pages: Object.fromEntries(urls.map((u) => [u, page('Ann Alpha said: “I will vote for this bill when it reaches the floor.”')])), answer: () => ({ acts: [act()] }) })
+    const throwing = { propose: vi.fn(async () => Promise.reject(new Error('D1 is down'))) }
+    await searchNews(s.env, throwing, NOW)
+    expect(throwing.propose).toHaveBeenCalledTimes(2)
+    expect(await readsOf(urls[0])).toEqual([])
+  })
+
+  it('records an article whose every act was already proposed as having nothing new', async () => {
+    const url = 'https://news.example/queue-nothing-new'
+    const s = stubbed({ hits: [hit(url)], pages: { [url]: page('Ann Alpha said: “I will vote for this bill when it reaches the floor.”') }, answer: () => ({ acts: [act()] }) })
+    await searchNews(s.env, { propose: async () => ({ ok: true as const, queued: 0 }) }, NOW)
+    expect(await readsOf(url)).toEqual([expect.objectContaining({ outcome: 'no_acts' })])
   })
 })
 

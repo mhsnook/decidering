@@ -117,6 +117,10 @@ export async function searchNews(env: Env, tracker: Submitter, now: Date = new D
   const report: NewsReport = { questions: [], deferred: 0 }
   let reads = 0
   let modelDown = false
+  // Every query of a question returns many of the same hits. A hit tried this
+  // run and left unrecorded is not tried again until the next run.
+  const deferred = new Set<string>()
+  const tried = new Set<string>()
   for (const question of hot.results) {
     const members = (await roster(env.DB, question)).results
     const byId = new Map(members.map((m) => [m.id, m]))
@@ -140,13 +144,16 @@ export async function searchNews(env: Env, tracker: Submitter, now: Date = new D
         const people = peopleInHit(hit, match)
         if (people.length === 0) continue
         const url = sourceUrl(hit.url)
-        if (await alreadyHandled(env.DB, url, question.id)) continue
+        const key = `${url} ${question.id}`
+        if (tried.has(key) || (await alreadyHandled(env.DB, url, question.id))) continue
         if (reads >= MAX_READS_PER_RUN || modelDown) {
-          report.deferred++
+          deferred.add(key)
+          report.deferred = deferred.size
           continue
         }
         reads++
         tally.read++
+        tried.add(key)
 
         const article = { url, title: hit.title || null, date: hitDate(hit) }
         const result = await readOneArticle(env, article, question.id, people.map((id) => byId.get(id)!), today, query)
@@ -167,18 +174,17 @@ export async function searchNews(env: Env, tracker: Submitter, now: Date = new D
           origin = 'news_search'
         }
         if (!draft) continue
-        const submitted = await tracker.propose(draft, origin)
+        const submitted = await tracker.propose(draft, origin).catch((e: unknown): SubmitResult => ({ ok: false, status: 500, error: String(e).slice(0, 200) }))
         if (!submitted.ok && submitted.status === 429) return stop(submitted.error)
-        if (submitted.ok) tally.queued += submitted.queued
-        await recordRead(
-          env.DB,
-          url,
-          question.id,
-          now,
-          result.outcome === 'acts' ? 'queued' : 'not_read',
-          result.outcome === 'acts' ? MODEL : null,
-          result.outcome === 'acts' ? droppedDetail(result.dropped) : result.reason,
-        )
+        // Not recorded, so the next run reads it again.
+        if (!submitted.ok) {
+          report.error = `Could not queue ${url}: ${submitted.error}`
+          continue
+        }
+        tally.queued += submitted.queued
+        if (result.outcome !== 'acts') await recordRead(env.DB, url, question.id, now, 'not_read', null, result.reason)
+        else if (submitted.queued > 0) await recordRead(env.DB, url, question.id, now, 'queued', MODEL, droppedDetail(result.dropped))
+        else await recordRead(env.DB, url, question.id, now, 'no_acts', MODEL, 'Every act found was already proposed from this source.')
       }
     }
     report.questions.push(tally)

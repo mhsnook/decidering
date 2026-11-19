@@ -146,25 +146,54 @@ export function modelPrompt(context: ReadingContext, article: { url: string; tit
 }
 
 // For comparing a quote with the article: case, runs of whitespace, curly
-// quotes, dashes and non-breaking spaces do not count as differences.
-export function normalise(text: string): string {
-  return text
-    .normalize('NFKC')
-    .replace(/[‘’‚‛′`´]/g, "'")
-    .replace(/[“”„‟″«»]/g, '"')
-    .replace(/[‐-―−]/g, '-')
-    .replace(/[­​-‍﻿]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase()
+// quotes, dashes and invisible characters do not count as differences.
+const QUOTE_FOLD: [RegExp, string][] = [
+  [/[\u2018\u2019\u201A\u201B\u2032\u0060\u00B4]/g, "'"],
+  [/[\u201C\u201D\u201E\u201F\u2033\u00AB\u00BB]/g, '"'],
+  [/[\u2010-\u2015\u2212]/g, '-'],
+  [/[\u00AD\u200B-\u200D\uFEFF]/g, ''],
+]
+const foldChar = (c: string) => QUOTE_FOLD.reduce((out, [from, to]) => out.replace(from, to), c.normalize('NFKC')).toLowerCase()
+
+// The folded text, and for each of its characters the index in `text` of the
+// character it came from, so a match can be cut from the original.
+function fold(text: string): { folded: string; from: number[] } {
+  let folded = ''
+  const from: number[] = []
+  let index = 0
+  for (const c of text) {
+    const out = /\s/.test(c) ? (folded.endsWith(' ') || folded === '' ? '' : ' ') : foldChar(c)
+    folded += out
+    for (let unit = 0; unit < out.length; unit++) from.push(index)
+    index += c.length
+  }
+  return { folded, from }
 }
 
-const stripOuterQuotes = (quote: string) => quote.trim().replace(/^["']+|["']+$/g, '').trim()
+export const normalise = (text: string) => fold(text).folded.trim()
 
-export function quoteIsInArticle(quote: string, articleText: string): boolean {
-  const needle = normalise(stripOuterQuotes(quote))
-  return needle.length >= 10 && normalise(articleText).includes(needle)
+// Quote marks around the whole quote are the model's, not the speaker's.
+// A lone apostrophe at one end is kept: "the members'" ends in one.
+function unwrap(needle: string): string {
+  let out = needle.trim().replace(/^"+|"+$/g, '').trim()
+  while (out.length > 1 && out.startsWith("'") && out.endsWith("'")) out = out.slice(1, -1).trim()
+  return out
 }
+
+// The article's own words for a quote, or null if they are not in it.
+export function findInArticle(quote: string, articleText: string): string | null {
+  const needle = unwrap(normalise(quote))
+  if (needle.length < 10) return null
+  const { folded, from } = fold(articleText)
+  const at = folded.indexOf(needle)
+  if (at === -1) return null
+  const start = from[at]
+  const last = from[at + needle.length - 1]
+  const end = last + (articleText.codePointAt(last)! > 0xffff ? 2 : 1)
+  return articleText.slice(start, end).trim()
+}
+
+export const quoteIsInArticle = (quote: string, articleText: string) => findInArticle(quote, articleText) !== null
 
 // More than this from one article is more than an editor can check as one
 // proposal, and more than an honest reading of one article tends to find.
@@ -219,11 +248,12 @@ export async function readArticle(
   const taken = new Set<string>()
   for (const act of parsed.data.acts) {
     const pair = `${act.person_id} ${act.question_id}`
+    const found = findInArticle(act.quote, article.text)
     const why = !allowed.has(act.person_id)
       ? 'names someone the article was not read for'
       : !allowed.get(act.person_id)!.has(act.question_id)
         ? 'is read on a question not put to that person'
-        : !quoteIsInArticle(act.quote, article.text)
+        : !found
           ? 'quotes words that are not in the article'
           : taken.has(pair)
             ? 'repeats a person and question already listed'
@@ -232,7 +262,15 @@ export async function readArticle(
               : null
     if (!why) taken.add(pair)
     if (why) dropped.push({ act: { person_id: act.person_id, question_id: act.question_id, quote: act.quote }, why })
-    else acts.push({ ...act, quote: stripOuterQuotes(act.quote).slice(0, 2000), summary: act.summary.trim().slice(0, 300), reason: act.reason.trim().slice(0, 1000) })
+    else
+      acts.push({
+        ...act,
+        quote: found!.slice(0, 2000),
+        // A date ahead of today is the date of something promised, not of the act.
+        occurred_on: act.occurred_on && act.occurred_on <= today ? act.occurred_on : null,
+        summary: act.summary.trim().slice(0, 300),
+        reason: act.reason.trim().slice(0, 1000),
+      })
   }
   return { ok: true, acts, dropped }
 }
