@@ -19,6 +19,9 @@ export const bodySchema = z.object({
   description: z.string().nullable(),
   is_demo: z.boolean(),
   sort: z.number(),
+  // The day the body next changes over and what it is called from then on.
+  next_term_on: z.string().nullable(),
+  next_term_label: z.string().nullable(),
 })
 export type Body = z.infer<typeof bodySchema>
 
@@ -43,15 +46,76 @@ export const seatSchema = z.object({
 })
 export type Seat = z.infer<typeof seatSchema>
 
+// How sure it is that someone holds a seat or an office over its dates. It is
+// a fact about the holding, not the person. A seat or office is shown as held
+// by its certain or likely holder; possible holders are shown beside them.
+export const CERTAINTIES = ['certain', 'likely', 'possible'] as const
+export const certaintySchema = z.enum(CERTAINTIES)
+export type Certainty = z.infer<typeof certaintySchema>
+
+// A role is one claim on a seat: who, between which dates, and how sure. There
+// is no separate kind for a challenger. Someone running for a seat is a possible
+// holder from the next term, a member-elect a certain one, and whoever holds
+// it today a certain one with no end known.
+export const CONTESTS = ['primary', 'general', 'runoff', 'recount'] as const
+
 export const roleSchema = z.object({
   id: z.string(),
   seat_id: z.string(),
   decider_id: z.string(),
-  kind: z.enum(['incumbent', 'challenger']),
-  contest: z.enum(['primary', 'general']).nullable(),
+  // What the claim still depends on, for one that is not settled.
+  contest: z.enum(CONTESTS).nullable(),
   affiliation: z.string().nullable(),
+  starts_on: z.string().nullable(),
+  ends_on: z.string().nullable(),
+  certainty: certaintySchema,
 })
 export type Role = z.infer<typeof roleSchema>
+
+// Whether a dated row holds on a day. A null start is "since before we kept
+// track" and a null end is "no end known". The end day itself is excluded, so
+// one holder can end on the day the next starts.
+export const inEffect = (row: { starts_on: string | null; ends_on: string | null }, day: string) =>
+  (row.starts_on === null || row.starts_on <= day) && (row.ends_on === null || day < row.ends_on)
+
+// A key role, such as a committee chair. It outlives its holders.
+export const officeSchema = z.object({
+  id: z.string(),
+  // null is a role held at large: it belongs to its holder in their own right
+  // and shows with them in every body they sit in.
+  body_id: z.string().nullable(),
+  chamber: z.string().nullable(),
+  label: z.string(),
+  sort: z.number(),
+})
+export type Office = z.infer<typeof officeSchema>
+
+export const officeHolderSchema = z.object({
+  id: z.string(),
+  office_id: z.string(),
+  decider_id: z.string(),
+  starts_on: z.string().nullable(),
+  ends_on: z.string().nullable(),
+  source_id: z.string().nullable(),
+  certainty: certaintySchema,
+})
+export type OfficeHolder = z.infer<typeof officeHolderSchema>
+
+// Puts a question to a body beyond the one in questions.body_id.
+export const questionBodySchema = z.object({
+  id: z.string(),
+  question_id: z.string(),
+  body_id: z.string(),
+})
+export type QuestionBody = z.infer<typeof questionBodySchema>
+
+// An ask put to whoever holds an office on the day being viewed.
+export const questionOfficeSchema = z.object({
+  id: z.string(),
+  question_id: z.string(),
+  office_id: z.string(),
+})
+export type QuestionOffice = z.infer<typeof questionOfficeSchema>
 
 export const questionSchema = z.object({
   id: z.string(),
@@ -82,8 +146,8 @@ export const questionSchema = z.object({
 })
 export type Question = z.infer<typeof questionSchema>
 
-// A question with rows here is an ask of those people only. One without
-// applies to every seat in its body or chamber.
+// A question with rows here, or in question_offices, is an ask of those people
+// only. One with neither applies to every seat in its body or chamber.
 export const questionDeciderSchema = z.object({
   id: z.string(),
   question_id: z.string(),
@@ -247,6 +311,10 @@ export const publicCollections = [
   definePartyCollection({ name: 'roles', key: 'id', schema: roleSchema, access: editorWrites }),
   definePartyCollection({ name: 'questions', key: 'id', schema: questionSchema, access: editorWrites }),
   definePartyCollection({ name: 'question_deciders', key: 'id', schema: questionDeciderSchema, access: editorWrites }),
+  definePartyCollection({ name: 'question_bodies', key: 'id', schema: questionBodySchema, access: editorWrites }),
+  definePartyCollection({ name: 'offices', key: 'id', schema: officeSchema, access: editorWrites }),
+  definePartyCollection({ name: 'office_holders', key: 'id', schema: officeHolderSchema, access: editorWrites }),
+  definePartyCollection({ name: 'question_offices', key: 'id', schema: questionOfficeSchema, access: editorWrites }),
   definePartyCollection({ name: 'stances', key: 'id', schema: stanceSchema, access: editorWrites }),
   definePartyCollection({ name: 'sources', key: 'id', schema: sourceSchema, access: editorWrites }),
   definePartyCollection({ name: 'acts', key: 'id', schema: actSchema, access: editorWrites }),

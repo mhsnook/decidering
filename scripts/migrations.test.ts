@@ -114,6 +114,59 @@ describe('0004_evidence_model', () => {
   })
 })
 
+describe('0006_shared_questions_and_roles_at_large', () => {
+  const db = database('0006')
+  db.exec(`
+    INSERT INTO bodies (id, slug, name) VALUES ('b', 'b', 'Body');
+    INSERT INTO deciders (id, slug, name, sort_name) VALUES ('ann', 'ann', 'Ann', 'Ann');
+    INSERT INTO questions (id, slug, body_id, kind, title, short_title) VALUES ('ask', 'ask', 'b', 'position', 'Ask?', 'Ask');
+    INSERT INTO offices (id, body_id, chamber, label, sort) VALUES ('chair', 'b', 'Upper', 'Chair', 3);
+    INSERT INTO office_holders (id, office_id, decider_id, starts_on, ends_on) VALUES ('chair:ann', 'chair', 'ann', NULL, '2027-01-03');
+    INSERT INTO question_offices (id, question_id, office_id) VALUES ('ask:chair', 'ask', 'chair');
+  `)
+  db.exec(migration('0006_shared_questions_and_roles_at_large.sql'))
+
+  it('rebuilds offices without losing rows or the rows that point at them', () => {
+    expect(all(db, `SELECT o.id, o.body_id, o.chamber, o.label, o.sort, h.decider_id, h.ends_on, h.source_id, l.question_id
+      FROM offices o JOIN office_holders h ON h.office_id = o.id JOIN question_offices l ON l.office_id = o.id`)).toEqual([
+      { id: 'chair', body_id: 'b', chamber: 'Upper', label: 'Chair', sort: 3, decider_id: 'ann', ends_on: '2027-01-03', source_id: null, question_id: 'ask' },
+    ])
+    expect(all(db, `PRAGMA foreign_key_check`)).toEqual([])
+    expect(all(db, `SELECT name FROM sqlite_master WHERE name LIKE 'offices_new' OR name LIKE '%_aside'`)).toEqual([])
+  })
+
+  it('allows a role with no body, and still refuses a holder of an office that does not exist', () => {
+    db.exec(`INSERT INTO offices (id, body_id, label) VALUES ('at-large', NULL, 'Fundraiser')`)
+    expect(() => db.exec(`INSERT INTO office_holders (id, office_id, decider_id) VALUES ('x', 'nope', 'ann')`)).toThrow(/FOREIGN KEY/)
+  })
+})
+
+describe('0009_one_kind_of_claim', () => {
+  const db = database('0009')
+  db.exec(`
+    INSERT INTO bodies (id, slug, name, next_term_on) VALUES ('council', 'council', 'Council', NULL), ('house', 'house', 'House', '2027-01-03');
+    INSERT INTO deciders (id, slug, name, sort_name) VALUES ('inc', 'inc', 'Inc', 'Inc'), ('cha', 'cha', 'Cha', 'Cha'), ('pri', 'pri', 'Pri', 'Pri');
+    INSERT INTO seats (id, body_id, label, next_election_on) VALUES ('ward', 'council', 'Ward', '2027-05-04'), ('district', 'house', 'District', NULL);
+    INSERT INTO roles (id, seat_id, decider_id, kind, contest, affiliation) VALUES
+      ('r1', 'ward', 'inc', 'incumbent', NULL, 'A'), ('r2', 'ward', 'cha', 'challenger', 'general', 'B'), ('r3', 'district', 'pri', 'challenger', 'primary', 'A');
+  `)
+  db.exec(migration('0009_one_kind_of_claim.sql'))
+
+  it('turns a challenger into a possible holder from the next election or term, and leaves a holder alone', () => {
+    expect(all(db, `SELECT id, contest, starts_on, ends_on, certainty, affiliation FROM roles ORDER BY id`)).toEqual([
+      { id: 'r1', contest: null, starts_on: null, ends_on: null, certainty: 'certain', affiliation: 'A' },
+      { id: 'r2', contest: 'general', starts_on: '2027-05-04', ends_on: null, certainty: 'possible', affiliation: 'B' },
+      { id: 'r3', contest: 'primary', starts_on: '2027-01-03', ends_on: null, certainty: 'possible', affiliation: 'A' },
+    ])
+    expect(all(db, `SELECT name FROM pragma_table_info('roles') WHERE name IN ('kind', 'depends_on')`)).toEqual([])
+  })
+
+  it('accepts the stages after election day as contests', () => {
+    db.exec(`INSERT INTO roles (id, seat_id, decider_id, contest, certainty) VALUES ('r4', 'ward', 'pri', 'recount', 'likely')`)
+    expect(() => db.exec(`INSERT INTO roles (id, seat_id, decider_id, contest) VALUES ('r5', 'ward', 'pri', 'coin toss')`)).toThrow(/CHECK/)
+  })
+})
+
 describe('the seed', () => {
   let seed = ''
   beforeAll(() => {
@@ -124,7 +177,7 @@ describe('the seed', () => {
   it('loads into the migrated schema, and loads again without duplicating anything', () => {
     const db = database()
     db.exec(seed)
-    const tables = ['sources', 'acts', 'reports', 'readings', 'stances', 'questions', 'question_deciders']
+    const tables = ['sources', 'acts', 'reports', 'readings', 'stances', 'questions', 'question_deciders', 'offices', 'office_holders', 'question_offices', 'question_bodies', 'bodies', 'seats', 'roles']
     const first = tables.map((t) => count(db, t))
     expect(count(db, 'acts')).toBeGreaterThan(0)
     expect(count(db, 'reports')).toBe(count(db, 'acts'))
@@ -150,13 +203,113 @@ describe('the seed', () => {
         AND NOT EXISTS (SELECT 1 FROM readings p WHERE p.act_id = r.act_id AND p.question_id = q.parent_id AND p.via_question_id = q.id)`)[0].n).toBe(0)
   })
 
-  it('seeds an open ask of one named person in Congress', () => {
+  it('seeds an open ask of an office in Congress, with a holder now and one from the next term', () => {
     const db = database()
     db.exec(seed)
-    expect(all(db, `SELECT q.parent_id, q.status, q.implies_parent_support, d.name, l.role_label FROM questions q
-      JOIN question_deciders l ON l.question_id = q.id JOIN deciders d ON d.id = l.decider_id WHERE q.id = 'm4a-s1506-markup'`)).toEqual([
-      { parent_id: 'm4a', status: 'open', implies_parent_support: 0, name: 'Ron Wyden', role_label: 'Ranking Member, Senate Finance Committee' },
+    expect(all(db, `SELECT q.parent_id, q.status, q.implies_parent_support, o.label, b.next_term_on FROM questions q
+      JOIN question_offices l ON l.question_id = q.id JOIN offices o ON o.id = l.office_id JOIN bodies b ON b.id = o.body_id WHERE q.id = 'm4a-s1506-markup'`)).toEqual([
+      { parent_id: 'm4a', status: 'open', implies_parent_support: 0, label: 'Chair, Senate Finance Committee', next_term_on: '2027-01-03' },
+    ])
+    expect(all(db, `SELECT d.name, h.starts_on, h.ends_on FROM office_holders h JOIN deciders d ON d.id = h.decider_id
+      WHERE h.office_id = 'us-senate-finance-chair' ORDER BY h.starts_on IS NOT NULL`)).toEqual([
+      { name: 'Mike Crapo', starts_on: null, ends_on: '2027-01-03' },
+      { name: 'Ron Wyden', starts_on: '2027-01-03', ends_on: null },
     ])
     expect(all(db, `SELECT COUNT(*) AS n FROM readings WHERE question_id = 'm4a-s1506-markup'`)[0].n).toBe(0)
+  })
+
+  it('moves an ask that named a person onto its office when the asks file is replayed alone', () => {
+    const db = database()
+    db.exec(seed)
+    db.exec(`INSERT INTO question_deciders (id, question_id, decider_id, role_label) VALUES ('old', 'm4a-s1506-markup', 'W000779', 'Ranking Member, Senate Finance Committee')`)
+    db.exec(readFileSync(new URL('seed/out/us-congress-asks.sql', root), 'utf8'))
+    expect(all(db, `SELECT COUNT(*) AS n FROM question_deciders WHERE question_id = 'm4a-s1506-markup'`)[0].n).toBe(0)
+    expect(all(db, `PRAGMA foreign_key_check`)).toEqual([])
+  })
+
+  describe('members-elect', () => {
+    // Whoever certainly or likely holds each seat on a day. Those who only may
+    // hold it are left out, as on the pages.
+    const holders = (db: DatabaseSync, day: string, where = '1', certainty = `r.certainty <> 'possible'`) =>
+      all(db, `SELECT s.id AS seat, s.chamber, r.affiliation, r.certainty, d.name FROM roles r JOIN seats s ON s.id = r.seat_id JOIN deciders d ON d.id = r.decider_id
+        WHERE s.body_id = 'us-congress' AND (r.starts_on IS NULL OR r.starts_on <= '${day}') AND (r.ends_on IS NULL OR '${day}' < r.ends_on) AND ${certainty} AND ${where}`)
+    const tally = (rows: Record<string, any>[]) => rows.reduce<Record<string, number>>((n, r) => ((n[r.affiliation] = (n[r.affiliation] ?? 0) + 1), n), {})
+
+    it('never puts two people in one seat, before or after the term starts', () => {
+      const db = database()
+      db.exec(seed)
+      for (const day of ['2026-11-19', '2027-01-02', '2027-01-03', '2027-06-01']) {
+        const seats = holders(db, day).map((r) => r.seat)
+        expect(seats.length).toBe(new Set(seats).size)
+      }
+    })
+
+    it('never has one person holding two seats at once', () => {
+      const db = database()
+      db.exec(seed)
+      for (const day of ['2026-11-19', '2027-01-03']) {
+        const names = holders(db, day).map((r) => r.name)
+        expect(names.length).toBe(new Set(names).size)
+      }
+    })
+
+    it('fills the Senate from the day the term starts, and the House but for the seats still undecided', () => {
+      const db = database()
+      db.exec(seed)
+      expect(tally(holders(db, '2027-01-03', `s.chamber = 'Senate'`))).toEqual({ Democrat: 54, Independent: 2, Republican: 44 })
+      const house = holders(db, '2027-01-03', `s.chamber = 'House' AND s.is_voting = 1`)
+      // 435 less the two Louisiana seats that go to a runoff on December 12
+      expect(house.length).toBe(433)
+      // 258 called, and two more who lead in a recount
+      expect(tally(house).Democrat).toBe(260)
+      expect(house.filter((r) => r.certainty === 'likely').map((r) => r.name).sort()).toEqual(['Chuck Hubbard', 'Jake Johnson'])
+    })
+
+    it('leaves today as it is', () => {
+      const db = database()
+      db.exec(seed)
+      expect(tally(holders(db, '2026-11-19', `s.chamber = 'Senate'`))).toEqual({ Democrat: 45, Independent: 2, Republican: 53 })
+      expect(holders(db, '2026-11-19', `d.id LIKE 'elect-%'`)).toEqual([])
+    })
+
+    it('moves a sitting member to a new seat under the id they already have, with their record', () => {
+      const db = database()
+      db.exec(seed)
+      const seatsOf = (day: string) => holders(db, day, `d.name = 'Chris Pappas'`).map((r) => r.seat)
+      expect(seatsOf('2026-11-19')).toEqual(['us-congress:NH-1'])
+      expect(seatsOf('2027-01-03')).toEqual(['us-congress:NH-sen-2'])
+      expect(all(db, `SELECT COUNT(*) AS n FROM deciders WHERE name = 'Chris Pappas'`)[0].n).toBe(1)
+    })
+
+    it('gives a seat in a recount to whoever leads, as likely, with the holder as possible', () => {
+      const db = database()
+      db.exec(seed)
+      const claims = (day: string) => holders(db, day, `s.id = 'us-congress:MN-1'`, '1').map((r) => [r.name, r.certainty]).sort()
+      expect(claims('2026-11-19')).toEqual([['Brad Finstad', 'certain']])
+      expect(claims('2027-01-03')).toEqual([
+        ['Brad Finstad', 'possible'],
+        ['Jake Johnson', 'likely'],
+      ])
+      expect(all(db, `SELECT DISTINCT contest FROM roles WHERE seat_id = 'us-congress:MN-1' AND starts_on IS NOT NULL`)).toEqual([{ contest: 'recount' }])
+    })
+
+    it('leaves a seat going to a runoff with nobody holding it, and both candidates possible', () => {
+      const db = database()
+      db.exec(seed)
+      expect(holders(db, '2027-01-03', `s.id IN ('us-congress:LA-5', 'us-congress:LA-6')`)).toEqual([])
+      expect(holders(db, '2027-01-03', `s.id = 'us-congress:LA-5'`, '1').map((r) => [r.name, r.certainty]).sort()).toEqual([
+        ['Gabe Firment', 'possible'],
+        ['Pat Moore', 'possible'],
+      ])
+    })
+
+    it('marks the incoming committee chair as likely', () => {
+      const db = database()
+      db.exec(seed)
+      expect(all(db, `SELECT d.name, h.certainty FROM office_holders h JOIN deciders d ON d.id = h.decider_id WHERE h.office_id = 'us-senate-finance-chair' ORDER BY h.starts_on IS NOT NULL`)).toEqual([
+        { name: 'Mike Crapo', certainty: 'certain' },
+        { name: 'Ron Wyden', certainty: 'likely' },
+      ])
+    })
   })
 })

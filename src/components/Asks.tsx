@@ -4,8 +4,8 @@ import type { Question } from '../../shared/schema.ts'
 import { db } from '../lib/db.ts'
 import { isEditor } from '../lib/editor.ts'
 import { formatDate } from '../lib/position.ts'
-import type { KeyPerson } from '../lib/tracker.tsx'
-import { StandingPill } from './bits.tsx'
+import { today, type KeyPerson } from '../lib/tracker.tsx'
+import { CertaintyTag, StandingPill } from './bits.tsx'
 import { Modal } from './Modal.tsx'
 
 const CLOSED_LABEL = { resolved: 'Resolved', lapsed: 'Lapsed' } as const
@@ -27,8 +27,8 @@ export function KeyPeople({ people }: { people: KeyPerson[] }) {
     <section>
       <h2 className="mb-3 text-lg font-black">Key people</h2>
       <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {people.map(({ ask, link, contender, seat }) => (
-          <li key={link.id}>
+        {people.map(({ ask, key, roleLabel, certainty, contender, seat }) => (
+          <li key={key}>
             <Link
               to="/q/$slug/$decider"
               params={{ slug: ask.slug, decider: contender.decider.slug }}
@@ -39,11 +39,12 @@ export function KeyPeople({ people }: { people: KeyPerson[] }) {
                 <StandingPill standing={contender.standing} question={ask} />
               </span>
               <span className="block text-xs text-muted">
-                {link.role_label ?? seat.label}
+                {roleLabel ?? seat.label}
                 {contender.role.affiliation && ` · ${contender.role.affiliation}`}
               </span>
               <span className="mt-2 flex flex-wrap items-center gap-2 text-sm">
                 {ask.title}
+                <CertaintyTag certainty={certainty} />
                 <AskStatus ask={ask} />
               </span>
             </Link>
@@ -53,8 +54,6 @@ export function KeyPeople({ people }: { people: KeyPerson[] }) {
     </section>
   )
 }
-
-const today = () => new Date().toISOString().slice(0, 10)
 
 // Editors only. An ask closes when it is met (resolved) or when it stops being
 // what anyone is asking for (lapsed).

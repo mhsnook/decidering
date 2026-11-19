@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildTracker } from './build-tracker.ts'
 import { planMerge, type Write } from './review-plan.ts'
-import { act, data, decider, item, question, reading, report, source } from './fixtures.ts'
+import { act, decider, item, question, reading, report, source, track } from './fixtures.ts'
 
 // Applies a plan to plain arrays the way the store would, so a test can look at
 // what a reader ends up seeing.
@@ -65,9 +64,7 @@ describe('planMerge', () => {
 
   it('shows a reader one entry with every source', () => {
     const policy = question('policy')
-    const tracker = buildTracker(
-      data({ deciders: [decider('ann'), decider('bob')], questions: [policy, question('markup', { parent_id: 'policy' })], sources: [source('paper'), source('wire'), source('release')], ...after }),
-    )
+    const tracker = track({ deciders: [decider('ann'), decider('bob')], questions: [policy, question('markup', { parent_id: 'policy' })], sources: [source('paper'), source('wire'), source('release')], ...after })
     const record = tracker.recordFor(policy, 'ann')
     expect(record).toHaveLength(1)
     expect(record[0].reports.map((r) => r.source.id)).toEqual(['release', 'paper', 'wire'])

@@ -9,6 +9,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 const read = (name: string) => JSON.parse(readFileSync(new URL(`../seed/data/${name}`, import.meta.url), 'utf8'))
 const congress = read('us-congress.json')
 const congressAsks = read('us-congress-asks.json')
+const congressElect = read('us-congress-elect.json')
 const era = read('us-states-era.json')
 const demo = read('demo.json')
 
@@ -100,28 +101,86 @@ insert('bodies', {
   slug: US,
   name: 'United States Congress',
   jurisdiction: 'United States',
-  description: `Members of the 119th Congress. Roster and cosponsor records as of ${congress.fetched_on}.`,
+  description: `Members of the 119th Congress, and those elected to the 120th. Roster and cosponsor records as of ${congress.fetched_on}; election results, uncertified, as of ${congressElect.as_of}.`,
   is_demo: false,
   sort: 0,
+  next_term_on: congressAsks.next_term.on,
+  next_term_label: congressAsks.next_term.label,
 })
+
+// Who gives up which seat when the next term starts: the holder of every seat
+// that changed hands, and of every seat not yet decided. In an undecided seat
+// the holder may come back as one of those who may yet hold it.
+if (congressElect.term_starts_on !== congressAsks.next_term.on) throw new Error('the members-elect file and the asks file disagree on when the next term starts')
+const TERM = congressElect.term_starts_on
+const leaving = new Set<string>([
+  ...congressElect.seats.filter((s: any) => s.leaving).map((s: any) => `${s.seat} ${s.leaving}`),
+  ...congressElect.pending.map((s: any) => `${s.seat} ${s.holder}`),
+])
+
+type CongressSeat = { chamber: string; state: string; district: number | null; senate_class?: number | null }
+const seatKey = (m: CongressSeat) => (m.chamber === 'House' ? `${m.state}-${m.district === 0 ? 'AL' : m.district}` : `${m.state}-sen-${m.senate_class}`)
+const NON_VOTING = new Set(['DC', 'PR', 'GU', 'VI', 'AS', 'MP'])
+function congressSeat(m: CongressSeat): string {
+  const house = m.chamber === 'House'
+  const id = `${US}:${seatKey(m)}`
+  insert('seats', {
+    id,
+    body_id: US,
+    chamber: m.chamber,
+    region: m.state,
+    label: house ? seatKey(m) : `${m.state} Senate`,
+    is_voting: !house || !NON_VOTING.has(m.state),
+    next_election_on: null,
+  })
+  return id
+}
 
 const members = new Map<string, any>()
 for (const m of congress.members) {
   members.set(m.bioguide, m)
   insert('deciders', { id: m.bioguide, slug: slugify(m.name), name: m.name, sort_name: m.sort_name, external_id: m.bioguide, url: m.url })
-  const house = m.chamber === 'House'
-  const district = m.district === 0 ? 'AL' : m.district
-  const seatId = house ? `${US}:${m.state}-${district}` : `${US}:${m.state}-sen-${m.senate_class}`
-  insert('seats', {
-    id: seatId,
-    body_id: US,
-    chamber: m.chamber,
-    region: m.state,
-    label: house ? `${m.state}-${district}` : `${m.state} Senate`,
-    is_voting: m.voting,
-    next_election_on: null,
+  const seatId = congressSeat(m)
+  insert('roles', {
+    id: `${seatId}:${m.bioguide}`,
+    seat_id: seatId,
+    decider_id: m.bioguide,
+    contest: null,
+    affiliation: m.party,
+    starts_on: null,
+    ends_on: leaving.has(`${seatKey(m)} ${m.bioguide}`) ? TERM : null,
+    certainty: 'certain',
   })
-  insert('roles', { id: `${seatId}:${m.bioguide}`, seat_id: seatId, decider_id: m.bioguide, kind: 'incumbent', contest: null, affiliation: m.party })
+}
+
+// Someone who holds a seat from the day the next term starts. A sitting member
+// keeps their id and record; anyone else is new here, under an id that is not a
+// Bioguide id, since they get one only when sworn in.
+function seatFromNextTerm(seatId: string, who: { bioguide?: string; name: string; sort_name?: string; party: string }, certainty: string, contest: string | null = null) {
+  let deciderId = who.bioguide
+  if (deciderId) {
+    if (!members.has(deciderId)) throw new Error(`${seatId} names ${deciderId}, who is not in the roster`)
+  } else {
+    const slug = slugify(who.name)
+    deciderId = `elect-${slug}`
+    insert('deciders', { id: deciderId, slug, name: who.name, sort_name: who.sort_name, external_id: null, url: null })
+  }
+  // A returning holder already has a role in this seat, the one that ends, so
+  // the role from the next term needs an id of its own.
+  insert('roles', { id: `${seatId}:${deciderId}:${TERM}`, seat_id: seatId, decider_id: deciderId, contest, affiliation: who.party, starts_on: TERM, ends_on: null, certainty })
+}
+
+for (const s of congressElect.seats) seatFromNextTerm(congressSeat(s), s.winner, 'certain')
+
+// Seats not decided yet. Whoever is ahead is likely; everyone else still in it
+// is possible, the current holder included.
+for (const s of congressElect.pending) {
+  const seatId = congressSeat(s)
+  const holder = members.get(s.holder)
+  if (s.likely) seatFromNextTerm(seatId, s.likely, 'likely', s.contest)
+  for (const p of s.possible) {
+    seatFromNextTerm(seatId, p === 'holder' ? { bioguide: holder.bioguide, name: holder.name, party: holder.party } : p, 'possible', s.contest)
+  }
 }
 
 question({
@@ -192,6 +251,25 @@ congress.bills.forEach((bill: any, i: number) => {
 // database without replaying the roster and stances over an editor's changes --
 
 dataSet('us-congress-asks')
+const member = (bioguide: string, where: string) => {
+  if (!members.has(bioguide)) throw new Error(`${where} names ${bioguide}, who is not in the roster`)
+  return bioguide
+}
+// Also set by the roster's own file. Repeated so this file works alone.
+lines.push(`UPDATE bodies SET next_term_on = ${sql(congressAsks.next_term.on)}, next_term_label = ${sql(congressAsks.next_term.label)} WHERE id = ${sql(US)};`)
+congressAsks.offices.forEach((o: any, i: number) => {
+  insert('offices', { id: o.id, body_id: US, chamber: o.chamber, label: o.label, sort: i })
+  for (const h of o.holders) {
+    insert('office_holders', {
+      id: `${o.id}:${member(h.bioguide, o.id)}`,
+      office_id: o.id,
+      decider_id: h.bioguide,
+      starts_on: h.starts_on ?? null,
+      ends_on: h.ends_on ?? null,
+      certainty: h.certainty ?? 'certain',
+    })
+  }
+})
 congressAsks.asks.forEach((ask: any, i: number) => {
   question({
     id: ask.id,
@@ -207,10 +285,12 @@ congressAsks.asks.forEach((ask: any, i: number) => {
     is_hot: false,
     sort: 100 + i,
   })
-  for (const d of ask.deciders) {
-    if (!members.has(d.bioguide)) throw new Error(`${ask.id} names ${d.bioguide}, who is not in the roster`)
-    insert('question_deciders', { id: `${ask.id}:${d.bioguide}`, question_id: ask.id, decider_id: d.bioguide, role_label: d.role_label })
+  // An ask that used to name people and now names offices must not keep both.
+  lines.push(`DELETE FROM question_deciders WHERE question_id = ${sql(ask.id)};`)
+  for (const d of ask.deciders ?? []) {
+    insert('question_deciders', { id: `${ask.id}:${member(d.bioguide, ask.id)}`, question_id: ask.id, decider_id: d.bioguide, role_label: d.role_label })
   }
+  for (const officeId of ask.offices ?? []) insert('question_offices', { id: `${ask.id}:${officeId}`, question_id: ask.id, office_id: officeId })
 })
 
 // ---- The states and the Equal Rights Amendment: the National Archives' list --
@@ -253,7 +333,7 @@ for (const state of era.states) {
   const seatId = `${STATES}:${state.code}`
   insert('deciders', { id, slug: slugify(state.name), name: state.name, sort_name: state.name, external_id: state.code, url: null })
   insert('seats', { id: seatId, body_id: STATES, chamber: null, region: state.code, label: state.code, is_voting: true, next_election_on: null })
-  insert('roles', { id: `${seatId}:${id}`, seat_id: seatId, decider_id: id, kind: 'incumbent', contest: null, affiliation: null })
+  insert('roles', { id: `${seatId}:${id}`, seat_id: seatId, decider_id: id, contest: null, affiliation: null })
   if (!state.ratified_on) continue
 
   const isLate = state.ratified_on > era.deadline
@@ -300,14 +380,28 @@ const person = (name: string) => {
   }
   return demoIds.get(name)!
 }
-for (const seat of demo.seats) {
-  const seatId = `${D}:${slugify(`${D} ${seat.label}`).slice(D.length + 1)}`
-  insert('seats', { id: seatId, body_id: D, chamber: null, region: null, label: seat.label, is_voting: true, next_election_on: demo.next_election_on })
-  const [name, affiliation] = seat.incumbent
-  insert('roles', { id: `${seatId}:${person(name)}`, seat_id: seatId, decider_id: person(name), kind: 'incumbent', contest: null, affiliation })
-  for (const [cName, cAffiliation, contest] of seat.challengers) {
-    insert('roles', { id: `${seatId}:${person(cName)}`, seat_id: seatId, decider_id: person(cName), kind: 'challenger', contest, affiliation: cAffiliation })
+function demoSeats(bodyId: string, seats: any[], next_election_on: string | null) {
+  for (const seat of seats) {
+    const seatId = `${bodyId}:${slugify(`${bodyId} ${seat.label}`).slice(bodyId.length + 1)}`
+    insert('seats', { id: seatId, body_id: bodyId, chamber: null, region: null, label: seat.label, is_voting: true, next_election_on })
+    const [name, affiliation] = seat.incumbent
+    insert('roles', { id: `${seatId}:${person(name)}`, seat_id: seatId, decider_id: person(name), contest: null, affiliation })
+    for (const [cName, cAffiliation, contest] of seat.challengers ?? []) {
+      // Someone running for the seat may hold it from the election on.
+      insert('roles', { id: `${seatId}:${person(cName)}`, seat_id: seatId, decider_id: person(cName), contest, affiliation: cAffiliation, starts_on: next_election_on, certainty: 'possible' })
+    }
   }
+}
+demoSeats(D, demo.seats, demo.next_election_on)
+demo.other_bodies.forEach((body: any, i: number) => {
+  const { seats, ...row } = body
+  insert('bodies', { ...row, slug: body.id, is_demo: true, sort: 2 + i })
+  demoSeats(body.id, seats, null)
+})
+for (const r of demo.roles_at_large) {
+  source({ ...r.source, kind: 'official_record' }, '2026-01-01T00:00:00.000Z')
+  insert('offices', { id: r.id, body_id: null, chamber: null, label: r.label, sort: 0 })
+  insert('office_holders', { id: `${r.id}:${person(r.holder)}`, office_id: r.id, decider_id: person(r.holder), starts_on: null, ends_on: null, source_id: sourceId(r.source.url) })
 }
 demo.questions.forEach((q: any, i: number) => {
   question({
@@ -327,7 +421,9 @@ demo.questions.forEach((q: any, i: number) => {
     status: q.status ?? 'open',
     closed_on: q.closed_on ?? null,
     closed_note: q.closed_note ?? null,
+    act_label: q.act_label ?? null,
   })
+  for (const bodyId of q.bodies ?? []) insert('question_bodies', { id: `${q.id}:${bodyId}`, question_id: q.id, body_id: bodyId })
   for (const [name, role_label] of q.deciders ?? []) {
     insert('question_deciders', { id: `${q.id}:${person(name)}`, question_id: q.id, decider_id: person(name), role_label })
   }

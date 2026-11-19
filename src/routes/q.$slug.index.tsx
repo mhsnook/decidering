@@ -2,9 +2,9 @@ import { Link, createFileRoute } from '@tanstack/react-router'
 import { useMemo } from 'react'
 import type { Question } from '../../shared/schema.ts'
 import { NEEDS_ATTENTION } from '../../shared/standing.ts'
-import { isHeld, useTracker, type HeldSeat } from '../lib/tracker.tsx'
-import { SPECTRUM, STANDINGS, STANDING_BG, standingLabel, type Standing } from '../lib/position.ts'
-import { FootingTag, NotFound, StandingDot, StandingPill, Syncing, tally } from '../components/bits.tsx'
+import { isHeld, useTracker, useViewedBody, type HeldSeat } from '../lib/tracker.tsx'
+import { SPECTRUM, STANDINGS, STANDING_BG, claimTag, formatDate, standingLabel, type Standing } from '../lib/position.ts'
+import { CertaintyTag, FootingTag, NotFound, StandingDot, StandingPill, Syncing, tally } from '../components/bits.tsx'
 import { Hemicycle } from '../components/Hemicycle.tsx'
 import { QuestionHeader } from '../components/QuestionHeader.tsx'
 import { AskStatus, CloseAsk, ClosedNote, KeyPeople } from '../components/Asks.tsx'
@@ -31,17 +31,23 @@ function Board() {
   const navigate = Route.useNavigate()
   const { tracker, isReady } = useTracker()
   const question = tracker.questionBySlug.get(slug)
-  const rows = useMemo(() => (question ? tracker.board(question).filter(isHeld) : []), [tracker, question])
+  const { body } = useViewedBody(question)
+  const everySeat = useMemo(() => (question && body ? tracker.board(question, body.id) : []), [tracker, question, body])
+  const rows = useMemo(() => everySeat.filter(isHeld), [everySeat])
+  // Seats nobody certainly or likely holds on the day viewed, but someone may.
+  const undecided = everySeat.filter((r) => !r.incumbent && r.alternates.length > 0)
 
   if (!isReady) return <Syncing />
-  if (!question) return <NotFound what="question" />
-  if (tracker.isAsk(question)) return <Ask question={question} />
+  if (!question || !body) return <NotFound what="question" />
+  if (tracker.isAsk(question)) return <Ask question={question} bodyId={body.id} />
 
   const set = (patch: BoardSearch) => navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true })
-  const body = tracker.bodies.find((b) => b.id === question.body_id)
   const chambers = [...new Set(rows.map((r) => r.seat.chamber).filter((c) => c !== null))].sort()
   const chamber = chambers.includes(search.chamber ?? '') ? search.chamber : undefined
-  const hasChallengers = rows.some((r) => r.challengers.length > 0)
+  // Everyone with a claim on the seat besides its holder: possible holders on
+  // the day viewed and anyone due, likely or running to take it later.
+  const others = (r: HeldSeat) => [...r.alternates, ...r.upcoming]
+  const hasOthers = rows.some((r) => others(r).length > 0)
   const needle = search.q?.toLowerCase()
 
   // Everything but the chamber, which decides which charts are drawn rather
@@ -50,9 +56,9 @@ function Board() {
     const inc = r.incumbent
     if (search.standing && inc.standing !== search.standing) return false
     if (search.thin && !NEEDS_ATTENTION.has(inc.footing)) return false
-    if (search.contested && !r.challengers.some((c) => c.stance)) return false
+    if (search.contested && !others(r).some((c) => c.stance)) return false
     if (needle) {
-      const haystack = [inc.decider.name, r.seat.label, inc.role.affiliation, ...r.challengers.map((c) => c.decider.name)].join(' ').toLowerCase()
+      const haystack = [inc.decider.name, r.seat.label, inc.role.affiliation, ...others(r).map((c) => c.decider.name)].join(' ').toLowerCase()
       if (!haystack.includes(needle)) return false
     }
     return true
@@ -71,7 +77,7 @@ function Board() {
     <div className="space-y-6">
       <QuestionHeader question={question} />
 
-      <KeyPeople people={tracker.keyPeople(question)} />
+      <KeyPeople people={tracker.keyPeople(question, body.id)} />
 
       <div className={`grid gap-4 ${charts.length > 1 ? 'lg:grid-cols-2' : ''}`}>
         {charts.map((c) => (
@@ -133,9 +139,9 @@ function Board() {
         <Toggle on={!!search.thin} onChange={(thin) => set({ thin: thin || undefined })}>
           Thin evidence
         </Toggle>
-        {hasChallengers && (
+        {hasOthers && (
           <Toggle on={!!search.contested} onChange={(contested) => set({ contested: contested || undefined })}>
-            Challenger on record
+            Challenger or successor on record
           </Toggle>
         )}
         <span className="ml-auto text-sm text-muted tabular-nums">
@@ -144,6 +150,26 @@ function Board() {
       </div>
 
       {groups.length === 0 && <p className="py-8 text-center text-muted">Nobody matches those filters.</p>}
+      {undecided.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-lg font-semibold">Not decided yet</h2>
+          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {undecided.map((row) => (
+              <li key={row.seat.id} className="rounded-xl border-2 border-dashed border-line bg-surface py-2 pr-3 pl-4">
+                <span className="block text-xs text-muted">{row.seat.label}</span>
+                {row.alternates.map((a, i) => (
+                  <span key={a.decider.id}>
+                    {i > 0 && ' or '}
+                    <Link to="/q/$slug/$decider" params={{ slug: question.slug, decider: a.decider.slug }} className="link font-medium">
+                      {a.decider.name}
+                    </Link>
+                  </span>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {groups.map((group) => {
         const shown = search.standing || needle ? group.rows : group.rows.slice(0, PREVIEW)
         return (
@@ -171,16 +197,18 @@ function Board() {
 }
 
 // An ask is put to a few named people, so it gets a list in place of a seat chart.
-function Ask({ question }: { question: Question }) {
+function Ask({ question, bodyId }: { question: Question; bodyId: string }) {
   const { tracker } = useTracker()
   const parent = question.parent_id ? tracker.questionById.get(question.parent_id) : undefined
+  const people = tracker.peopleOf(question, bodyId)
   return (
     <div className="space-y-6">
       <QuestionHeader question={question} />
       <ClosedNote ask={question} />
+      {people.length === 0 && <p className="text-muted">Nobody holds the role this is asked of on {formatDate(tracker.asOf)}.</p>}
       <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {tracker.peopleOf(question).map(({ link, contender, seat }) => (
-          <li key={link.id}>
+        {people.map(({ key, roleLabel, certainty, contender, seat }) => (
+          <li key={key}>
             <Link
               to="/q/$slug/$decider"
               params={{ slug: question.slug, decider: contender.decider.slug }}
@@ -191,11 +219,12 @@ function Ask({ question }: { question: Question }) {
                 <StandingPill standing={contender.standing} question={question} />
               </span>
               <span className="block text-xs text-muted">
-                {link.role_label ?? seat.label}
+                {roleLabel ?? seat.label}
                 {contender.role.affiliation && ` · ${contender.role.affiliation}`}
               </span>
               <span className="mt-2 flex flex-wrap items-center gap-2">
                 {contender.footing !== 'unknown' && <FootingTag footing={contender.footing} />}
+                <CertaintyTag certainty={certainty} />
                 <AskStatus ask={question} />
               </span>
             </Link>
@@ -223,6 +252,7 @@ function Toggle({ on, onChange, children }: { on: boolean; onChange: (on: boolea
 }
 
 function SeatCard({ row, question }: { row: HeldSeat; question: Question }) {
+  const { tracker } = useTracker()
   const inc = row.incumbent
   return (
     <li className="relative overflow-hidden rounded-xl border-2 border-ink bg-surface">
@@ -230,7 +260,10 @@ function SeatCard({ row, question }: { row: HeldSeat; question: Question }) {
       <Link to="/q/$slug/$decider" params={{ slug: question.slug, decider: inc.decider.slug }} className="block py-2 pr-3 pl-4 hover:bg-paper">
         <span className="flex items-start justify-between gap-2">
           <span className="leading-snug font-medium">{inc.decider.name}</span>
-          {inc.footing !== 'unknown' && <FootingTag footing={inc.footing} />}
+          <span className="flex shrink-0 flex-wrap justify-end gap-1">
+            <CertaintyTag certainty={inc.role.certainty} />
+            {inc.footing !== 'unknown' && <FootingTag footing={inc.footing} />}
+          </span>
         </span>
         <span className="block text-xs text-muted">
           {row.seat.label}
@@ -238,14 +271,27 @@ function SeatCard({ row, question }: { row: HeldSeat; question: Question }) {
           {!row.seat.is_voting && ' · non-voting'}
         </span>
       </Link>
-      {row.challengers.length > 0 && (
+      {row.alternates.length > 0 && (
+        <p className="border-t border-line py-1.5 pr-3 pl-4 text-xs text-muted">
+          or{' '}
+          {row.alternates.map((a, i) => (
+            <span key={a.decider.id}>
+              {i > 0 && ', '}
+              <Link to="/q/$slug/$decider" params={{ slug: question.slug, decider: a.decider.slug }} className="link text-ink">
+                {a.decider.name}
+              </Link>
+            </span>
+          ))}
+        </p>
+      )}
+      {row.upcoming.length > 0 && (
         <ul className="border-t border-line py-1.5 pr-3 pl-4 text-xs">
-          {row.challengers.map((c) => (
-            <li key={c.decider.id}>
+          {row.upcoming.map((c) => (
+            <li key={c.role.id}>
               <Link to="/q/$slug/$decider" params={{ slug: question.slug, decider: c.decider.slug }} className="flex items-center gap-1.5 py-0.5 hover:underline">
                 <span className={`size-2 shrink-0 rounded-full ${STANDING_BG[c.standing]}`} />
                 <span className="truncate">
-                  <span className="text-muted">{c.role.contest ?? 'challenger'}:</span> {c.decider.name}
+                  <span className="text-muted">{claimTag(c.role, tracker.asOf)}:</span> {c.decider.name}
                 </span>
                 <span className="ml-auto whitespace-nowrap text-muted">{standingLabel(c.standing, question)}</span>
               </Link>

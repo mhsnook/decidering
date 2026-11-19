@@ -1,8 +1,9 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
+import type { Certainty } from '../../shared/schema.ts'
 import { FOOTING_HINT } from '../../shared/standing.ts'
 import { stanceId } from '../../shared/schema.ts'
-import { useTracker } from '../lib/tracker.tsx'
+import { useTracker, useViewedBody, type Tenure } from '../lib/tracker.tsx'
 import { FootingTag, NotFound, StandingPill, Syncing } from '../components/bits.tsx'
 import { QuestionHeader } from '../components/QuestionHeader.tsx'
 import { RecordItem } from '../components/RecordItem.tsx'
@@ -12,7 +13,7 @@ import { Modal } from '../components/Modal.tsx'
 import { AskStatus, CloseAsk, ClosedNote } from '../components/Asks.tsx'
 import { MergeAct } from '../components/MergeAct.tsx'
 import { isEditor } from '../lib/editor.ts'
-import { formatDate } from '../lib/position.ts'
+import { claimLabel, formatDate } from '../lib/position.ts'
 
 export const Route = createFileRoute('/q/$slug/$decider')({ component: DeciderOnQuestion })
 
@@ -20,21 +21,38 @@ function DeciderOnQuestion() {
   const { slug, decider: deciderSlug } = Route.useParams()
   const { tracker, isReady } = useTracker()
   const [adding, setAdding] = useState(false)
-  if (!isReady) return <Syncing />
-
   const question = tracker.questionBySlug.get(slug)
   const decider = tracker.deciderBySlug.get(deciderSlug)
-  const role = decider && question && tracker.roleIn(question, decider.id)
+  const { body } = useViewedBody(question, decider?.id)
+  if (!isReady) return <Syncing />
+
+  const role = decider && question && tracker.roleIn(question, decider.id, body?.id)
   const seat = role && tracker.seatById.get(role.seat_id)
   const me = question && role && tracker.contender(question, role)
-  if (!question || !decider || !seat || !me || !tracker.appliesTo(question, decider.id)) return <NotFound what="record" />
+  // Someone who held, or will hold, the office an ask is put to keeps their page for it.
+  const tenures = question && decider ? tracker.tenuresOn(question, decider.id) : []
+  if (!question || !decider || !body || !seat || !me || !(tracker.appliesTo(question, decider.id) || tenures.length > 0)) return <NotFound what="record" />
 
-  const measures = (tracker.measuresOf.get(question.id) ?? []).filter((m) => !m.chamber || m.chamber === seat.chamber)
+  const measures = tracker.measuresIn(question, body.id).filter((m) => !m.chamber || m.chamber === seat.chamber)
   const isAsk = tracker.isAsk(question)
   const root = (question.parent_id && tracker.questionById.get(question.parent_id)) || question
-  const asks = tracker.asksFor(root, decider.id)
-  const roleLabels = [...new Set(asks.map((k) => k.link.role_label).filter((l) => l !== null))]
-  const rivals = (tracker.rolesBySeat.get(seat.id) ?? [])
+  const asks = tracker.asksFor(root, decider.id, body.id)
+  const held = tracker.tenuresHeldBy(decider.id, body.id)
+  const unsure = (c: Certainty) => (c === 'certain' ? '' : c === 'likely' ? ' (likely)' : ' (possible)')
+  const sourceOf = (t: Tenure) => (t.holder.source_id ? tracker.sourceById.get(t.holder.source_id) : undefined)
+  const span = (t: { starts_on: string | null; ends_on: string | null }) =>
+    t.starts_on && t.starts_on > tracker.asOf ? ` from ${formatDate(t.starts_on)}` : t.ends_on && t.ends_on <= tracker.asOf ? ` until ${formatDate(t.ends_on)}` : ''
+  const roleLabels = [
+    ...new Set([
+      ...held.filter((t) => !sourceOf(t)).map((t) => t.office.label + unsure(t.holder.certainty)),
+      ...asks.map((k) => k.roleLabel).filter((l) => l !== null),
+      ...tenures.filter((t) => span(t.holder)).map((t) => t.office.label + span(t.holder)),
+    ]),
+  ]
+  const claim = claimLabel(me.role, tracker.asOf)
+  const holds = claim === 'holds the seat' ? '' : claim
+  // Everyone else with a claim on this seat, now or later.
+  const rivals = [...(tracker.rolesBySeat.get(seat.id) ?? []), ...(tracker.upcomingBySeat.get(seat.id) ?? [])]
     .filter((r) => r.decider_id !== decider.id)
     .map((r) => tracker.contender(question, r))
     .filter((c) => c !== undefined)
@@ -49,13 +67,24 @@ function DeciderOnQuestion() {
           <div>
             <h2 className="text-2xl font-semibold">{decider.name}</h2>
             <p className="text-sm text-muted">
-              {me.role.kind === 'challenger' && `Running in the ${me.role.contest ?? ''} for `}
               {seat.label}
               {seat.chamber && `, ${seat.chamber}`}
               {me.role.affiliation && ` · ${me.role.affiliation}`}
               {seat.next_election_on && ` · next election ${formatDate(seat.next_election_on)}`}
+              {holds && ` · ${holds}`}
             </p>
             {roleLabels.length > 0 && <p className="text-sm font-medium">{roleLabels.join(' · ')}</p>}
+            {held.flatMap((t) => {
+              const url = sourceOf(t)?.url
+              return url ? (
+                <a key={t.holder.id} href={url} target="_blank" rel="noreferrer" className="block text-sm font-medium underline underline-offset-2">
+                  {t.office.label}
+                  {unsure(t.holder.certainty)} ↗
+                </a>
+              ) : (
+                []
+              )
+            })}
           </div>
           <div className="flex items-center gap-2">
             <StandingPill standing={me.standing} question={question} />
@@ -142,10 +171,10 @@ function DeciderOnQuestion() {
         <aside className="space-y-6">
           {rivals.length > 0 && (
             <section>
-              <h2 className="mb-2 text-base font-semibold">Also in the running for {seat.label}</h2>
+              <h2 className="mb-2 text-base font-semibold">Others holding or seeking {seat.label}</h2>
               <ul className="space-y-2">
                 {rivals.map((r) => (
-                  <li key={r.decider.id}>
+                  <li key={r.role.id}>
                     <Link
                       to="/q/$slug/$decider"
                       params={{ slug: question.slug, decider: r.decider.slug }}
@@ -155,8 +184,8 @@ function DeciderOnQuestion() {
                         <span className="font-medium">{r.decider.name}</span>
                         <StandingPill standing={r.standing} question={question} />
                       </span>
-                      <span className="text-xs text-muted">
-                        {r.role.kind === 'incumbent' ? 'Incumbent' : `Challenger, ${r.role.contest ?? 'undeclared'}`}
+                      <span className="block text-xs text-muted first-letter:uppercase">
+                        {claimLabel(r.role, tracker.asOf)}
                         {r.role.affiliation && ` · ${r.role.affiliation}`}
                       </span>
                     </Link>

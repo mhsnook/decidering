@@ -14,7 +14,7 @@ function Questions() {
     <div className="space-y-12">
       <h1 className="h-page">Questions</h1>
       {bodies.map((body) => {
-        const questions = tracker.questions.filter((q) => q.body_id === body.id && !q.parent_id).sort((a, b) => a.sort - b.sort)
+        const questions = tracker.questionsIn(body.id)
         return (
           <section key={body.id}>
             <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -25,7 +25,7 @@ function Questions() {
             <ul className="grid gap-6 md:grid-cols-2">
               {questions.map((question) => (
                 <li key={question.id}>
-                  <QuestionCard question={question} />
+                  <QuestionCard question={question} body={body} />
                 </li>
               ))}
             </ul>
