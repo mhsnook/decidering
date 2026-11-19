@@ -45,7 +45,23 @@ Sign in at `/editor` with the `EDITOR_TOKEN` from `.dev.vars`.
 
 The news search needs the remote AI binding, which plain `pnpm dev` leaves off. Run `pnpm dev:remote` (after `wrangler login`) to use it locally; searches bill the logged-in account.
 
-`pnpm test` runs the unit tests and `pnpm typecheck` checks all three TypeScript projects.
+## Tests
+
+```sh
+pnpm typecheck     # every TypeScript project, tests included
+pnpm test:unit     # pure functions, in Node
+pnpm test:worker   # the Worker, in workerd
+pnpm test:e2e      # the app, in Chromium
+pnpm test          # unit and Worker tests together
+```
+
+`pnpm typecheck` needs a `.dev.vars` (copy `.dev.vars.example`), since that is where `wrangler types` finds `EDITOR_TOKEN`.
+
+The Worker tests run in workerd through [`@cloudflare/vitest-plugin`](https://developers.cloudflare.com/workers/testing/vitest-integration/), with the bindings in `wrangler.jsonc` and a local D1 that has every migration in `migrations/` applied. They call the Worker's `fetch` and the party endpoint the way a browser does, over HTTP and WebSockets. Each test file gets its own database and Durable Object storage, and the tests in a file share them. The news search is tested with `env.AI.websearch` replaced, so nothing reaches the network.
+
+The browser tests reset and seed the local database with `pnpm db:reset`, which throws away anything written to it locally, then start the dev server on port 5179 and drive it with Playwright. They use the editor token in `.dev.vars`. Install Chromium once with `pnpm exec playwright install chromium`.
+
+CI runs all of these on every pull request and on pushes to `main` (`.github/workflows/ci.yml`). It needs no secrets and deploys nothing.
 
 ## Data
 

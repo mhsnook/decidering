@@ -14,6 +14,9 @@
     "preview:ci": "pnpm db:migrate:preview && wrangler preview",
     "typecheck": "wrangler types && tsc -b",
     "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:worker": "vitest run --project worker",
+    "test:e2e": "pnpm db:reset && playwright test",
     "db:migrate": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote --config wrangler.jsonc",
     "seed:build": "node scripts/build-seed.ts",
@@ -22,13 +25,6 @@
     "db:migrate:preview": "wrangler d1 migrations apply DB --remote --config wrangler.preview-migrations.jsonc",
     "db:seed:preview": "pnpm seed:build && wrangler d1 execute DB --remote --config wrangler.preview-migrations.jsonc --file seed/out/seed.sql",
     "seed:fetch": "node scripts/fetch-congress.ts"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "workerd",
-      "sharp"
-    ]
   },
   "dependencies": {
     "@fontsource-variable/recursive": "^5.3.0",
@@ -44,6 +40,8 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.69.1",
+    "@cloudflare/vitest-plugin": "^1.8.4",
+    "@playwright/test": "1.63.0",
     "@tailwindcss/vite": "^4.3.5",
     "@tanstack/router-plugin": "^1.169.0",
     "@types/node": "^26.6.6",

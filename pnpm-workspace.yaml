@@ -1,0 +1,8 @@
+# Packages whose install scripts may run.
+allowBuilds:
+  esbuild: true
+  sharp: true
+  workerd: true
+
+# A version has to have been published a day before it is installed.
+minimumReleaseAge: 1440
