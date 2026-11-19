@@ -1,5 +1,6 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
+import type { Certainty } from '../../shared/schema.ts'
 import { FOOTING_HINT } from '../../shared/standing.ts'
 import { useTracker, useViewedBody, type Tenure } from '../lib/tracker.tsx'
 import { FootingTag, NotFound, StandingPill, Syncing } from '../components/bits.tsx'
@@ -36,12 +37,13 @@ function DeciderOnQuestion() {
   const root = (question.parent_id && tracker.questionById.get(question.parent_id)) || question
   const asks = tracker.asksFor(root, decider.id, body.id)
   const held = tracker.tenuresHeldBy(decider.id, body.id)
+  const unsure = (c: Certainty) => (c === 'certain' ? '' : c === 'likely' ? ' (likely)' : ' (possible)')
   const sourceOf = (t: Tenure) => (t.holder.source_id ? tracker.sourceById.get(t.holder.source_id) : undefined)
   const span = (t: { starts_on: string | null; ends_on: string | null }) =>
     t.starts_on && t.starts_on > tracker.asOf ? ` from ${formatDate(t.starts_on)}` : t.ends_on && t.ends_on <= tracker.asOf ? ` until ${formatDate(t.ends_on)}` : ''
   const roleLabels = [
     ...new Set([
-      ...held.filter((t) => !sourceOf(t)).map((t) => t.office.label),
+      ...held.filter((t) => !sourceOf(t)).map((t) => t.office.label + unsure(t.holder.certainty)),
       ...asks.map((k) => k.roleLabel).filter((l) => l !== null),
       ...tenures.filter((t) => span(t.holder)).map((t) => t.office.label + span(t.holder)),
     ]),
@@ -76,7 +78,8 @@ function DeciderOnQuestion() {
               const url = sourceOf(t)?.url
               return url ? (
                 <a key={t.holder.id} href={url} target="_blank" rel="noreferrer" className="block text-sm font-medium underline underline-offset-2">
-                  {t.office.label} ↗
+                  {t.office.label}
+                  {unsure(t.holder.certainty)} ↗
                 </a>
               ) : (
                 []
