@@ -99,3 +99,8 @@ export function claimTag(role: Claim, day: string): string {
   const when = upcoming ? `from ${formatDate(role.starts_on!)}` : 'now'
   return role.certainty === 'certain' ? when : `${role.certainty === 'likely' ? 'likely' : 'possibly'} ${when}`
 }
+
+// What one reading shows on its question. On a formal-act question a reading
+// records the act, so it is named as the act.
+export const readingLabel = (position: Position, question: Pick<Question, 'kind' | 'act_label'>) =>
+  question.kind === 'formal_act' ? standingLabel(position, question) : SIGNAL_LABEL[position]

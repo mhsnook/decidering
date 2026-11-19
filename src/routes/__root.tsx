@@ -23,6 +23,9 @@ function NavLinks({ className, onNavigate }: { className: string; onNavigate?: (
       <Link to="/questions" className={className} onClick={onNavigate}>
         Questions
       </Link>
+      <Link to="/latest" className={className} onClick={onNavigate}>
+        Latest
+      </Link>
       <Link to="/" hash="how" className={className} activeProps={{}} onClick={onNavigate}>
         How it works
       </Link>

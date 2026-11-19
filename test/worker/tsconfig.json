@@ -4,5 +4,5 @@
     "types": ["../../worker-configuration.d.ts", "@cloudflare/vitest-plugin/types"],
     "tsBuildInfoFile": "../../node_modules/.tmp/worker-test.tsbuildinfo"
   },
-  "include": ["./**/*.ts", "../../worker", "../../shared", "../../worker-configuration.d.ts"]
+  "include": ["./**/*.ts", "../../worker", "../../shared", "../../src/lib/build-tracker.ts", "../../src/lib/feed.ts", "../../src/lib/position.ts", "../../worker-configuration.d.ts"]
 }

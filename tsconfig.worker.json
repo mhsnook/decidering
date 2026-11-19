@@ -12,5 +12,5 @@
     "types": ["./worker-configuration.d.ts"],
     "tsBuildInfoFile": "./node_modules/.tmp/worker.tsbuildinfo"
   },
-  "include": ["worker", "shared", "worker-configuration.d.ts"]
+  "include": ["worker", "shared", "src/lib/build-tracker.ts", "src/lib/feed.ts", "src/lib/position.ts", "worker-configuration.d.ts"]
 }
