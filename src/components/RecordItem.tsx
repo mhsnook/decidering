@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { Act, Question } from '../../shared/schema.ts'
 import type { RecordEntry } from '../lib/tracker.tsx'
-import { KIND_LABEL, SIGNAL_LABEL, STANDING_BG, formatDate, sourceLabel } from '../lib/position.ts'
+import { KIND_LABEL, POSITION_LABEL, STANDING_BG, formatDate, sourceLabel } from '../lib/position.ts'
 
 export function RecordItem({ entry, question, children }: { entry: RecordEntry; question?: Question; children?: ReactNode }) {
   const { act, reading, via, reports, lapse } = entry
@@ -19,7 +19,7 @@ export function RecordItem({ entry, question, children }: { entry: RecordEntry; 
         {lapse === 'closed' && via && <span className="rounded bg-paper px-1.5 py-0.5">{via.short_title} has closed</span>}
         <span className="ml-auto flex items-center gap-1.5">
           <span className={`size-2 rounded-full ${STANDING_BG[reading.position]}`} />
-          {SIGNAL_LABEL[reading.position]}
+          {POSITION_LABEL[reading.position]}
         </span>
       </div>
       <ActWords kind={act.kind} words={act.body} />

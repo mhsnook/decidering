@@ -4,7 +4,8 @@ export type Standing = Position | 'unknown'
 
 export const STANDINGS: Standing[] = ['support', 'lean_support', 'mixed', 'lean_oppose', 'oppose', 'unknown']
 
-const LABEL: Record<Position, string> = {
+// One scale for where someone stands and for what one act shows.
+export const POSITION_LABEL: Record<Position, string> = {
   support: 'Yes',
   lean_support: 'Probably yes',
   mixed: 'Mixed',
@@ -16,15 +17,7 @@ const LABEL: Record<Position, string> = {
 export function standingLabel(standing: Standing, question: Pick<Question, 'kind' | 'act_label'>): string {
   if (standing === 'unknown') return question.kind === 'formal_act' ? 'Has not' : 'No record yet'
   if (question.kind === 'formal_act' && standing === 'support') return question.act_label ?? 'Signed on'
-  return LABEL[standing]
-}
-
-export const SIGNAL_LABEL: Record<Position, string> = {
-  support: 'Signals support',
-  lean_support: 'Leans toward',
-  mixed: 'Mixed signal',
-  lean_oppose: 'Leans against',
-  oppose: 'Signals opposition',
+  return POSITION_LABEL[standing]
 }
 
 export const STANDING_BG: Record<Standing, string> = {
@@ -103,7 +96,3 @@ export function claimTag(role: Claim, day: string): string {
   return role.certainty === 'certain' ? when : `${role.certainty === 'likely' ? 'likely' : 'possibly'} ${when}`
 }
 
-// What one reading shows on its question. On a formal-act question a reading
-// records the act, so it is named as the act.
-export const readingLabel = (position: Position, question: Pick<Question, 'kind' | 'act_label'>) =>
-  question.kind === 'formal_act' ? standingLabel(position, question) : SIGNAL_LABEL[position]

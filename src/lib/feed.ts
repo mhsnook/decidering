@@ -36,8 +36,8 @@ export type WaitingItem = {
   key: string
   decider: Decider
   // The first claim's item carries the act's kind, date and words.
-  // `now` is where the person stands on the question today, before any of this is checked.
-  claims: { item: ProposalItem; question: Question; reading: NonNullable<ProposalItem['reading']>; now: Standing }[]
+  // Where the person stands on the question before this claim, which counts only once an editor checks it.
+  claims: { item: ProposalItem; question: Question; reading: NonNullable<ProposalItem['reading']>; before: Standing }[]
 }
 
 // A proposal waiting for review: its source and the acts it claims. Nobody has
@@ -131,7 +131,7 @@ export function buildWaiting(tracker: Tracker, proposals: Proposal[], items: Pro
       stories.set(proposal.id, story)
     }
     story.isDemo ||= isDemoQuestion(tracker, question)
-    const claim = { item, question, reading: item.reading, now: tracker.standingFor(question, decider.id) }
+    const claim = { item, question, reading: item.reading, before: tracker.standingFor(question, decider.id) }
     const existing = story.items.find((i) => i.key === item.act_id)
     if (existing) existing.claims.push(claim)
     else story.items.push({ key: item.act_id, decider, claims: [claim] })

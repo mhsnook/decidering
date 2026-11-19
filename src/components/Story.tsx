@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { useState, type ReactNode } from 'react'
 import type { Bearing, Position, Proposal, Question, Source } from '../../shared/schema.ts'
 import type { Story, StoryItem, WaitingStory } from '../lib/feed.ts'
-import { KIND_LABEL, SPECTRUM, STANDING_COLOR, formatDate, hostOf, readingLabel, sourceLabel, standingLabel } from '../lib/position.ts'
+import { KIND_LABEL, SPECTRUM, STANDING_COLOR, formatDate, hostOf, sourceLabel, standingLabel } from '../lib/position.ts'
 import { Token } from './bits.tsx'
 import { ActWords, IndirectTag } from './RecordItem.tsx'
 
@@ -58,7 +58,7 @@ function ReadingLine({ decider, position, question, via, bearing, lead }: { deci
   return (
     <li className="flex flex-wrap items-center gap-x-1.5">
       {lead}
-      <span className="font-semibold">{readingLabel(position, question)}</span>
+      <span className="font-semibold">{standingLabel(position, question)}</span>
       <span className="text-muted">on</span>
       <PersonLink slug={question.slug} decider={decider} className="link">
         {question.short_title}
@@ -172,9 +172,9 @@ export function WaitingStoryCard({ story }: { story: WaitingStory }) {
             <span key={claim.item.id} className="flex items-center gap-x-1.5 truncate">
               <span className="size-2.5 shrink-0 rounded-full border-2 border-dashed" style={{ borderColor: STANDING_COLOR[claim.reading] }} />
               <span className="font-semibold">{shortName(decider)}</span>
-              <span>{readingLabel(claim.reading, claim.question).toLowerCase()}</span>
+              <span>{standingLabel(claim.reading, claim.question).toLowerCase()}</span>
               <span className="text-muted">
-                on {claim.question.short_title} · now {standingLabel(claim.now, claim.question).toLowerCase()}
+                on {claim.question.short_title} · prev. {standingLabel(claim.before, claim.question).toLowerCase()}
               </span>
             </span>
           ))}

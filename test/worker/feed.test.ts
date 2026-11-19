@@ -79,8 +79,8 @@ describe('GET /feed.xml', () => {
 
   it('says who is in each story and what each act shows on each question', async () => {
     const xml = await (await feed()).text()
-    expect(xml).toContain('Bill: Signed on\nHot Topic: Signals support (through Bill)\nhttp://sporelight.test/q/hot-bill/ann-alpha')
-    expect(xml).toContain('Bob Beta, statement on 2026-11-08:\n“I will vote against it.”\nHot Topic: Signals opposition')
+    expect(xml).toContain('Bill: Signed on\nHot Topic: Yes (through Bill)\nhttp://sporelight.test/q/hot-bill/ann-alpha')
+    expect(xml).toContain('Bob Beta, statement on 2026-11-08:\n“I will vote against it.”\nHot Topic: No')
   })
 
   it('takes a question and everything under it', async () => {
