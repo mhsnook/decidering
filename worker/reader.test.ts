@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { draftFromReading, MAX_ACTS_PER_ARTICLE, modelOutputSchema, modelPrompt, MODEL, quoteIsInArticle, readArticle, type ModelAct, type ReadingContext } from './reader.ts'
+import { draftFromReading, findInArticle, MAX_ACTS_PER_ARTICLE, modelOutputSchema, modelPrompt, MODEL, quoteIsInArticle, readArticle, type ModelAct, type ReadingContext } from './reader.ts'
 
 const ARTICLE = `Ann Alpha told reporters on Monday: “I will vote for this bill — and I’ll whip votes for it.”
 The senator  from the north,
@@ -34,6 +34,26 @@ const act = (overrides: Partial<Record<keyof ModelAct, unknown>> = {}) => ({
   summary: 'Says she will vote for it.',
   reason: 'A direct statement of how she will vote.',
   ...overrides,
+})
+
+describe('findInArticle', () => {
+  it('returns the article’s own words for a quote the model wrapped in curly quotes', () => {
+    expect(findInArticle('“I will vote for this bill”', ARTICLE)).toBe('I will vote for this bill')
+  })
+
+  it('returns the article’s casing and punctuation, not the model’s', () => {
+    expect(findInArticle("i will vote for this bill - and i'll whip votes", ARTICLE)).toBe('I will vote for this bill — and I’ll whip votes')
+  })
+
+  it('keeps an apostrophe that ends the quote', () => {
+    const text = 'The vote rests with the committee members’ letter, sent on Friday.'
+    expect(findInArticle("the committee members'", text)).toBe('the committee members’')
+  })
+
+  it('cuts the match out correctly after characters outside the basic plane', () => {
+    const text = 'Reacting 😀😀 online, Ann Alpha wrote: I will vote for this bill.'
+    expect(findInArticle('I will vote for this bill', text)).toBe('I will vote for this bill')
+  })
 })
 
 describe('modelOutputSchema', () => {
@@ -107,6 +127,18 @@ describe('readArticle', () => {
     expect(kept.quote.length).toBeLessThanOrEqual(2000)
     expect(kept.summary.length).toBeLessThanOrEqual(300)
     expect(kept.reason.length).toBeLessThanOrEqual(1000)
+  })
+})
+
+describe('readArticle dates', () => {
+  it('drops a date after today, which is a date promised rather than the date of the act', async () => {
+    const reading = await read({ acts: [act({ occurred_on: '2026-12-03' })] })
+    expect(reading.ok && reading.acts[0].occurred_on).toBeNull()
+  })
+
+  it('keeps a date on or before today', async () => {
+    const reading = await read({ acts: [act({ occurred_on: '2026-11-19' })] })
+    expect(reading.ok && reading.acts[0].occurred_on).toBe('2026-11-19')
   })
 })
 
