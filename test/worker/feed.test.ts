@@ -89,7 +89,7 @@ describe('GET /feed.xml', () => {
     await caches.default.delete(new Request('http://sporelight.test/feed.xml'))
     const xml = await (await feed()).text()
     expect(xml).toContain('Source: news.example (archived: https://web.archive.org/web/20261111000000/https://news.example/b)')
-    expect(xml).toContain('Source: Ann &lt;signs&gt; on https://news.example/a?x=1&amp;y=2\n')
+    expect(xml).toContain('Source: Ann &lt;signs&gt; on https://news.example/a?x=1&amp;y=2</content>')
     await env.DB.prepare(`UPDATE sources SET archive_url = NULL WHERE id = 'src-2'`).run()
     await caches.default.delete(new Request('http://sporelight.test/feed.xml'))
   })

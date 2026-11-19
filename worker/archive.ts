@@ -10,10 +10,12 @@
 const AVAILABILITY = 'https://archive.org/wayback/available'
 const SAVE = 'https://web.archive.org/save'
 
-// Sources looked at in one scheduled run. Each costs at most three outside
-// requests (a lookup, a capture request and a status check), so a run makes at
-// most 15. See "Calls per run" in the README for how this fits beside the news
-// search under the Workers Free limit of 50.
+// The pass has its own cron, apart from the news search's, so it has the run's
+// outside requests to itself. Must match an entry in wrangler.jsonc.
+export const ARCHIVE_CRON = '47 */6 * * *'
+// Sources looked at in one run. Each costs at most three outside requests (a
+// lookup, a capture request and a status check). Save Page Now allows 7
+// captures a minute, and at REQUEST_SPACING_MS a run stays under that.
 export const MAX_ARCHIVE_SOURCES_PER_RUN = 5
 // The availability API answered 429 to a handful of requests a second apart, so
 // requests to the archive are spaced.

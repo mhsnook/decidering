@@ -1,7 +1,10 @@
+import { createScheduledController } from 'cloudflare:test'
 import { env, exports } from 'cloudflare:workers'
 import { getServerByName } from 'partyserver'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { archiveNow, archiveSources, MAX_ARCHIVE_SOURCES_PER_RUN } from '../../worker/archive.ts'
+import { ARCHIVE_CRON, archiveNow, archiveSources, MAX_ARCHIVE_SOURCES_PER_RUN } from '../../worker/archive.ts'
+import worker from '../../worker/index.ts'
+import wranglerConfig from '../../wrangler.jsonc?raw'
 import type { Tracker } from '../../worker/tracker.ts'
 import { EDITOR_TOKEN, partySocket, rows, seed, until } from './helpers.ts'
 
@@ -280,5 +283,32 @@ describe('POST /api/editor/archive', () => {
   it('answers 400 without a source id and 404 for one that does not exist', async () => {
     expect((await call({}, EDITOR_TOKEN)).status).toBe(400)
     expect((await call({ source_id: 'nope' }, EDITOR_TOKEN)).status).toBe(404)
+  })
+})
+
+describe('the scheduled run', () => {
+  it('has its own cron in wrangler.jsonc, beside the news search', () => {
+    const crons = JSON.parse(`[${/"triggers":\s*\{\s*"crons":\s*\[([^\]]*)\]/.exec(wranglerConfig)?.[1] ?? ''}]`) as string[]
+    expect(crons).toContain(ARCHIVE_CRON)
+    expect(crons).toHaveLength(2)
+  })
+
+  const fire = (cron: string) => worker.scheduled(createScheduledController({ scheduledTime: NOW, cron }), env)
+
+  it('archives on its own cron, without searching the news', async () => {
+    await addSource('t')
+    const websearch = vi.spyOn(env.AI, 'websearch')
+    archive({ available: (page) => snapshot(page, '20261102000000') })
+    await fire(ARCHIVE_CRON)
+    expect(await archiveUrl('t')).toBe('https://web.archive.org/web/20261102000000/https://news.example/t')
+    expect(websearch).not.toHaveBeenCalled()
+  })
+
+  it('does not archive on the news search cron', async () => {
+    await addSource('u')
+    vi.spyOn(env.AI, 'websearch').mockImplementation(async () => Response.json({ items: [] }))
+    const ia = archive()
+    await fire('17 14 * * *')
+    expect(ia.calls).toEqual([])
   })
 })

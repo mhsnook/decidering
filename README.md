@@ -158,9 +158,6 @@ A run reads at most 15 articles (`MAX_READS_PER_RUN` in `worker/news.ts`); resul
 | Markdown conversions | 15 | Cloudflare services |
 | Model calls | 15 | Cloudflare services |
 | D1 queries | about 10 per result looked at | Cloudflare services |
-| Archive lookups, capture requests and status checks | at most 15 (see [Archiving sources](#archiving-sources)) | outside requests |
-
-Together the article fetches and the archiving pass make at most 30 outside requests, which leaves 20 for redirects under the Workers Free limit of 50.
 
 A model call sends up to about 15,000 tokens of article and gets back a few hundred. At $0.30 per million input tokens and $1.20 per million output tokens that is under half a cent per article, and under 10 cents for a full run, which is once a day. Spending limits set on the gateway cap this; a run that hits one stops reading, as above. The model needs the Workers Paid plan or prepaid AI Gateway credits. It allows 20 requests a minute on standard billing, which a run of 15 reads one at a time stays under.
 
@@ -174,12 +171,12 @@ Web pages move and disappear, so each published source (one with at least one re
 
 ### The scheduled pass
 
-The same run that searches the news, every six hours, also takes the five oldest published sources with a URL and no archived copy that are due (`MAX_ARCHIVE_SOURCES_PER_RUN` in `worker/archive.ts`). For each one it:
+Every six hours (`47 */6 * * *`, a cron of its own, apart from the news search's) the Worker takes the five oldest published sources with a URL and no archived copy that are due (`MAX_ARCHIVE_SOURCES_PER_RUN` in `worker/archive.ts`). For each one it:
 
 1. asks the [availability API](https://archive.org/help/wayback_api.php) for the capture closest to when we recorded the source, and stores it unless it was taken more than 30 days before then (an older capture may predate what the source says);
 2. otherwise, if the Worker has an archive.org key, asks [Save Page Now 2](https://docs.google.com/document/d/1Nsv52MvSjbLb2PCpHlat0gkzw0EvtSgpKHu4mk0MnrA) for a new capture and records the job.
 
-The pass runs beside the news search, so while the news search reads articles it waits 90 seconds and then asks Save Page Now once how each of its jobs went. A finished capture is stored. A job still running is left for the next run, which looks the page up again near the time the capture was asked for. The stored address is written through the Tracker room's `commit`, like a proposal, so every open browser gets it through the sync log.
+The pass then waits 90 seconds and asks Save Page Now once how each of its jobs went. A finished capture is stored. A job still running is left for the next run, which looks the page up again near the time the capture was asked for. The stored address is written through the Tracker room's `commit`, like a proposal, so every open browser gets it through the sync log. The pass runs whether or not the news search is skipping its runs, since it waits on no editor.
 
 The table `archive_attempts` keeps one row per source the pass has worked on: the outcome, the time, failures in a row, when it is next due, and the Save Page Now job and error. It is a plain table and is not synced to browsers. A failed capture is tried again after 12 hours, then 24, 48, 96 and 192; after six failures in a row the pass stops trying. A page the archive says it cannot capture (not found, access denied, blocked, a login wall, an address that does not resolve) is given up on at once. A source that has no URL is never picked up, and an address already on a source, such as one an editor gave, is never replaced.
 
@@ -187,7 +184,7 @@ If the availability API or Save Page Now answers 429, or Save Page Now refuses t
 
 ### Requests per run
 
-Each source costs at most three outside requests: a lookup, a capture request and a status check. A run therefore makes at most 15, alongside the news search's article fetches (see the news search's [calls per run](#calls-per-run)). At five sources a run and four runs a day, a backlog of published sources clears at about 20 a day. On the Workers Paid plan the cap can be raised; Save Page Now allows 7 captures a minute and 30,000 a day per account, and 5 captures of one URL a day.
+Each source costs at most three outside requests: a lookup, a capture request and a status check. A run therefore makes at most 15, well under the Workers Free limit of 50, and since it has its own cron it never shares a run with the news search's article fetches. At five sources a run and four runs a day, a backlog of published sources clears at about 20 a day. The cap is kept low for Save Page Now, which allows 7 captures a minute and 30,000 a day per account, and 5 captures of one URL a day; with requests three seconds apart, five sources a run stays under the per-minute limit.
 
 ### What the owner has to set up
 
