@@ -46,6 +46,14 @@ const ORIGIN_LABEL: Record<Proposal['origin'], string> = {
   model: 'Read by a model',
 }
 
+// What the editor is told about an item's words before checking them.
+const QUOTE_LABEL: Record<Proposal['origin'], string> = {
+  reader: 'Reader’s quote, not yet checked',
+  news_search: 'Search excerpt, not a checked quote',
+  partner: 'Partner’s quote, not yet checked',
+  model: 'Found in the article text by a model; check what it shows',
+}
+
 // How many waiting proposals to list beside the open one.
 const UP_NEXT = 12
 
@@ -117,10 +125,12 @@ function Queue() {
         </div>
       </div>
 
+      <ReadArticleTrial />
+
       {!selected ? (
         <div className="card card-lg mt-10 bg-mint px-5 py-7 text-center sm:mt-12 sm:p-12">
           <h2 className="text-2xl font-black sm:text-[32px]">{tab === 'pending' ? 'The queue is empty.' : 'Nothing reviewed yet.'}</h2>
-          {tab === 'pending' && <p className="mt-2 text-[15px] sm:text-[17px]">Every lead has been reviewed. The next news search runs in a few hours.</p>}
+          {tab === 'pending' && <p className="mt-2 text-[15px] sm:text-[17px]">Every lead has been reviewed. The news search runs once a day.</p>}
         </div>
       ) : (
         <div className="mt-6 grid items-start gap-9 sm:mt-8 lg:grid-cols-[minmax(0,1fr)_minmax(260px,340px)]">
@@ -199,7 +209,6 @@ function Review({ proposal, items, notes, behind }: { proposal: Proposal; items:
   if (!source) return <p className="text-muted">This proposal points at a source that no longer exists.</p>
 
   const isPending = proposal.status === 'pending'
-  const fromSearch = proposal.origin === 'news_search'
   const submitterNotes = notes.filter((n) => n.kind === 'submitter')
   const reviewNote = notes.find((n) => n.kind === 'review' && !n.proposal_item_id)
   const several = items.length > 1
@@ -266,9 +275,9 @@ function Review({ proposal, items, notes, behind }: { proposal: Proposal; items:
                 {source.url} ↗
               </a>
             )}
-            {submitterNotes.map((n) => (
+            {submitterNotes.filter((n) => !n.proposal_item_id).map((n) => (
               <p key={n.id} className="mt-2 text-sm">
-                {fromSearch ? 'Note' : 'Reader’s note'}: {n.body}
+                {proposal.origin === 'reader' ? 'Reader’s note' : 'Note'}: {n.body}
               </p>
             ))}
           </div>
@@ -280,8 +289,9 @@ function Review({ proposal, items, notes, behind }: { proposal: Proposal; items:
               number={several ? i + 1 : null}
               sameActAs={items.slice(0, i).findIndex((other) => other.act_id === item.act_id) + 1 || null}
               nextSort={Math.max(...items.map((x) => x.sort)) + 1}
-              comment={notes.find((n) => n.proposal_item_id === item.id)?.body ?? ''}
-              fromSearch={fromSearch}
+              comment={notes.find((n) => n.kind === 'review' && n.proposal_item_id === item.id)?.body ?? ''}
+              itemNote={submitterNotes.find((n) => n.proposal_item_id === item.id)?.body ?? null}
+              origin={proposal.origin}
               isPending={isPending}
             />
           ))}
@@ -316,7 +326,8 @@ function ItemFields({
   sameActAs,
   nextSort,
   comment,
-  fromSearch,
+  itemNote,
+  origin,
   isPending,
 }: {
   item: ProposalItem
@@ -324,7 +335,8 @@ function ItemFields({
   sameActAs: number | null
   nextSort: number
   comment: string
-  fromSearch: boolean
+  itemNote: string | null
+  origin: Proposal['origin']
   isPending: boolean
 }) {
   const { tracker } = useTracker()
@@ -417,9 +429,10 @@ function ItemFields({
 
         <div className="rounded-[14px] border-2 border-dashed border-line bg-paper px-3.5 py-3 sm:px-[18px] sm:py-4">
           <label className="tag text-[10px] text-faint sm:text-xs" htmlFor={field('quote')}>
-            {actChoice !== 'new' ? 'How this source words it' : fromSearch ? 'Search excerpt, not a checked quote' : 'Reader’s quote, not yet checked'}
+            {actChoice !== 'new' ? 'How this source words it' : QUOTE_LABEL[origin]}
           </label>
           <textarea id={field('quote')} name={field('quote')} required rows={3} defaultValue={item.quote} className="field mt-2 leading-normal sm:text-lg" />
+          {itemNote && <p className="mt-2 text-sm">{itemNote}</p>}
         </div>
 
         {actChoice === 'new' && (
@@ -558,5 +571,65 @@ function NewsSearchButton() {
         {state === 'running' ? 'Searching…' : 'Search the news now'}
       </button>
     </>
+  )
+}
+
+// Runs the article reader on one page without queueing anything, to see what
+// the model makes of it.
+function ReadArticleTrial() {
+  const { tracker } = useTracker()
+  const [result, setResult] = useState<string | null>(null)
+  const [running, setRunning] = useState(false)
+  const questions = [...tracker.questionById.values()].filter((q) => !q.parent_id).sort((a, b) => a.short_title.localeCompare(b.short_title))
+
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const f = new FormData(e.currentTarget)
+    setRunning(true)
+    try {
+      const res = await editorFetch('/api/editor/read-article', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url: f.get('trial_url'), question_id: f.get('trial_question') }),
+      })
+      setResult(JSON.stringify(await res.json(), null, 2))
+    } catch (err) {
+      setResult(String(err))
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  return (
+    <details className="mt-4">
+      <summary className="cursor-pointer text-sm font-bold">Try the article reader on one page</summary>
+      <form onSubmit={onSubmit} className="mt-3 flex flex-col gap-3">
+        <p className="text-sm text-muted">Fetches the page and has the model read it for everyone on the question’s roster it names. Shows what would be queued; queues nothing.</p>
+        <div className="grid gap-3 sm:grid-cols-[1fr_16rem_auto] sm:items-end">
+          <div>
+            <label className="label" htmlFor="trial_url">
+              Article URL
+            </label>
+            <input id="trial_url" name="trial_url" type="url" required className="field" />
+          </div>
+          <div>
+            <label className="label" htmlFor="trial_question">
+              Question
+            </label>
+            <select id="trial_question" name="trial_question" className="field">
+              {questions.map((q) => (
+                <option key={q.id} value={q.id}>
+                  {q.short_title}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button className="btn btn-sm" disabled={running}>
+            {running ? 'Reading…' : 'Read it'}
+          </button>
+        </div>
+        {result && <pre className="max-h-96 overflow-auto rounded-[14px] border-2 border-line bg-paper p-3 text-xs whitespace-pre-wrap">{result}</pre>}
+      </form>
+    </details>
   )
 }

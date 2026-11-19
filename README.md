@@ -20,7 +20,7 @@ The first data set is the United States Congress and Medicare for All. Nothing i
 - **Closing.** A question can close, and its closing date can lie ahead: a bill dies when its Congress ends. A closed measure keeps showing who had signed on when it closed. On its parent, those commitments stop counting as on the record and stay as dated history.
 - **Footing.** Every position links to dated acts. Footing is derived from them: on the record (a direct use of office, or a direct commitment still in force), fresh, established, sparse, stale, or unknown. The rules live in `shared/standing.ts`.
 - **Seat charts.** A question's page draws each chamber as a hemicycle, one dot per voting seat, packed so neighbours along a row sit as far apart as the rows do, ordered from support on the left to opposition on the right with the undecided in between. A line marks how many seats carry the question: a simple majority unless the question sets its own threshold, such as 38 of 50 states. It runs between the seats with exactly that many on its left, crossing each row through a gap and curving from one gap to the next, and a bloc that reaches it has the votes. A body with no chambers gets a single chart.
-- **Review queue.** A proposal is a suggested set of changes from one source. Each item in it is one act by one person, read on one question, with the position and summary it would leave them with. Readers send in proposals from any person's page, and a scheduled news search adds one for each result that names people on the roster. An editor at `/editor` accepts or rejects each item and publishes the accepted ones together. Nothing reaches the record until then. An editor can also merge two acts that turn out to be the same one.
+- **Review queue.** A proposal is a suggested set of changes from one source. Each item in it is one act by one person, read on one question, with the position and summary it would leave them with. Readers send in proposals from any person's page, and a scheduled news search has a model read each article that names people on the roster and adds one for each that records something. An editor at `/editor` accepts or rejects each item and publishes the accepted ones together. Nothing reaches the record until then. An editor can also merge two acts that turn out to be the same one.
 - **Discussion.** Each person-and-question page has a comment thread. A reader loads and hears only the threads they have open. Comments post under a username the reader picks the first time they post. Editors can remove comments.
 
 ## Stack
@@ -28,7 +28,7 @@ The first data set is the United States Congress and Medicare for All. Nothing i
 - Cloudflare Worker + D1, with a React SPA served as static assets
 - [party-db](https://github.com/mhsnook/party-db) syncs every public table to the browser over one Durable Object room; pages are live queries over the local copy
 - TanStack Router (file-based routes in `src/routes`), TanStack DB, Tailwind
-- Cloudflare [Web Search API](https://developers.cloudflare.com/web-search/) with Exa, through AI Gateway, for the news search
+- Cloudflare [Web Search API](https://developers.cloudflare.com/web-search/) with Exa, and Workers AI, through AI Gateway, for the news search and reading the articles it finds
 
 Editors write through the same collections with optimistic transactions. Readers get read-only access. Unreviewed proposals are synced to readers too, though no page shows them yet; the notes a submitter or reviewer writes for editors are kept in a separate table that is only sent to editor connections. Readers post proposals and comments through the Worker, which validates them and limits each address to 6 posts a minute.
 
@@ -57,7 +57,7 @@ pnpm test          # unit and Worker tests together
 
 `pnpm typecheck` needs a `.dev.vars` (copy `.dev.vars.example`), since that is where `wrangler types` finds `EDITOR_TOKEN`.
 
-The Worker tests run in workerd through [`@cloudflare/vitest-plugin`](https://developers.cloudflare.com/workers/testing/vitest-integration/), with the bindings in `wrangler.jsonc` and a local D1 that has every migration in `migrations/` applied. They call the Worker's `fetch` and the party endpoint the way a browser does, over HTTP and WebSockets. Each test file gets its own database and Durable Object storage, and the tests in a file share them. The news search is tested with `env.AI.websearch` replaced, so nothing reaches the network.
+The Worker tests run in workerd through [`@cloudflare/vitest-plugin`](https://developers.cloudflare.com/workers/testing/vitest-integration/), with the bindings in `wrangler.jsonc` and a local D1 that has every migration in `migrations/` applied. They call the Worker's `fetch` and the party endpoint the way a browser does, over HTTP and WebSockets. Each test file gets its own database and Durable Object storage, and the tests in a file share them. The news search and the article reader are tested with the AI binding and `fetch` replaced, so nothing reaches the network or a model.
 
 The browser tests reset and seed the local database with `pnpm db:reset`, which throws away anything written to it locally, then start the dev server on port 5179 and drive it with Playwright. They use the editor token in `.dev.vars`. Install Chromium once with `pnpm exec playwright install chromium`.
 
@@ -120,8 +120,43 @@ wrangler preview base-config secret put EDITOR_TOKEN
 
 Without the secret a Preview still runs, but nobody can sign in at `/editor`. Cron Triggers only fire in production, so the news search runs on a Preview only when an editor starts it.
 
-The news search routes through the AI Gateway named `default` and pays from its credits, or from an Exa key stored on the gateway.
+The news search and the article reader route through the AI Gateway named `sporelight` (the `AI_GATEWAY` var), which has to be created in the dashboard. Searches pay from AI Gateway credits, or from an Exa key stored on that gateway.
 
 ## News search
 
-Every six hours the Worker runs a few searches for each question marked as in the news. A result becomes a lead when its title or excerpt names someone on that body's roster. Leads carry the search excerpt and no position; the editor reads the source, fixes the quote, and chooses what it shows before anything is published.
+Once a day (14:17 UTC) the Worker runs four searches for each question marked as in the news. A result is followed up when its title or excerpt names one to three people on that body's roster.
+
+The daily run is skipped while the queue is unattended: when leads it queued earlier are still waiting and no editor has reviewed one in the last day. The next run after a review goes ahead. "Search the news now" in `/editor` always runs.
+
+### Reading the article
+
+For each result followed up, the Worker:
+
+1. Fetches the page (10 second timeout, 3 MB at most) and turns it into plain text with Workers AI [Markdown Conversion](https://developers.cloudflare.com/workers-ai/features/markdown-conversion/) (`env.AI.toMarkdown`, text output). HTML, PDF and plain text are read; the text is cut at 60,000 characters.
+2. Sends the text to `@cf/deepseek-ai/deepseek-v4.1-flash-1017` on Workers AI, with reasoning off and JSON output in a fixed schema. The model is told the question, its open sub-questions, and which of them are put to each person named, by the same rules the question pages use. It returns each act it finds: who, on which question, the kind, the words, the date, what it shows, whether it bears on the question directly, a one-line summary, and a reason for the editor.
+3. Keeps an act only if its words appear in the fetched text (ignoring case, whitespace, and the style of quote marks and dashes), its person is one the article was read for, and its question is one put to that person. It keeps one act per person and question, and at most eight from one article.
+4. Queues the article as one proposal from origin `model`, with one item per act, already filled in. The model's reason goes in a note on each item and the model's id in a note on the proposal; only editors receive notes.
+
+An article the model reads and finds nothing in queues nothing. If the page cannot be fetched (many news sites turn away bots), has almost no text, or the model fails or answers out of shape, the result is queued as before: a lead with the search excerpt and no reading, with a note saying why the article was not read.
+
+Each article is read once per question. The table `article_reads` records the URL, question, time, outcome and model, and a result already in it, or already proposed from on that question, is skipped without fetching. It is a plain table and is not synced to browsers.
+
+The model id is `MODEL` in `worker/reader.ts`. The search and the model both go through the AI Gateway named in `AI_GATEWAY` (`wrangler.jsonc`), so their cost shows on that gateway.
+
+### Calls per run
+
+A run reads at most 15 articles (`MAX_READS_PER_RUN` in `worker/news.ts`); results beyond that are left for the next run, which finds them again if the search still returns them. A model call that fails (a spending limit on the gateway, a rate limit, an outage) also ends reading for the run: that result falls back to its excerpt lead and the rest wait. With two questions in the news, one run spends at most:
+
+| Call | Count | Counts against |
+| --- | --- | --- |
+| Web searches | 4 per question, so 8 | Cloudflare services |
+| Article fetches | 15, plus redirects | outside requests (50 a run on Workers Free) |
+| Markdown conversions | 15 | Cloudflare services |
+| Model calls | 15 | Cloudflare services |
+| D1 queries | about 10 per result looked at | Cloudflare services |
+
+A model call sends up to about 15,000 tokens of article and gets back a few hundred. At $0.30 per million input tokens and $1.20 per million output tokens that is under half a cent per article, and under 10 cents for a full run, which is once a day. Spending limits set on the gateway cap this; a run that hits one stops reading, as above. The model needs the Workers Paid plan or prepaid AI Gateway credits. It allows 20 requests a minute on standard billing, which a run of 15 reads one at a time stays under.
+
+### Trying the reader on one page
+
+An editor can run the reader on one URL without queueing anything: open "Try the article reader on one page" at the top of `/editor`, paste a URL and pick a question. It fetches the page, reads it for everyone on that question's roster the page names (up to eight), and shows what would be queued, what was left out and why, or why the page could not be read. The same is available as `POST /api/editor/read-article` with `{ "url": "...", "question_id": "..." }` and the editor token. On a Preview this calls the real model and bills the account.

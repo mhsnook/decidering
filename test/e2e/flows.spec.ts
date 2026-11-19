@@ -183,6 +183,55 @@ test('evidence a reader sends reaches the editor under its question and, once ap
   await expect(page.locator('section.card').getByText(standingLabel('support', { kind: 'position', act_label: null }), { exact: true })).toBeVisible()
 })
 
+test('an item read by a model says its words were found in the article, and shows the model’s note apart from the editor’s', async ({ page, request }) => {
+  const stamp = Date.now()
+  const now = TODAY.toISOString()
+  const ids = { source: `src-${stamp}`, proposal: `prop-${stamp}`, item: `item-${stamp}` }
+  const quote = 'I will vote to make the ferry free, and I will say so at every stop.'
+  const sourceTitle = `Sato on the ferry ${stamp}`
+  // The rows a news search run queues for a model-read article, written here
+  // through the editor's party endpoint since no model runs in tests.
+  const write = await request.post('/parties/tracker/main?proto=party-db', {
+    headers: { authorization: `Bearer ${editorToken()}` },
+    data: [
+      { channel: 'sources', ops: [{ type: 'insert', value: { id: ids.source, url: `https://example.com/harbor-ledger/model-${stamp}`, title: sourceTitle, publisher: null, published_on: null, kind: null, archive_url: null, stored_copy: null, created_at: now } }] },
+      { channel: 'proposals', ops: [{ type: 'insert', value: { id: ids.proposal, source_id: ids.source, origin: 'model', submitted_by: null, status: 'pending', created_at: now, reviewed_at: null } }] },
+      {
+        channel: 'proposal_items',
+        ops: [
+          {
+            type: 'insert',
+            value: { id: ids.item, proposal_id: ids.proposal, sort: 0, decider_id: 'demo-bartholomew-sato', question_id: 'free-ferry', act_id: `act-${stamp}`, kind: 'says', occurred_on: '2026-11-15', quote, reading: 'support', bearing: 'direct', position: null, summary: 'Says he will vote for a free ferry.', status: 'pending' },
+          },
+        ],
+      },
+      {
+        channel: 'proposal_notes',
+        ops: [
+          { type: 'insert', value: { id: `note-${stamp}`, proposal_id: ids.proposal, proposal_item_id: null, kind: 'submitter', body: 'Read by a test model.', created_at: now } },
+          { type: 'insert', value: { id: `note-item-${stamp}`, proposal_id: ids.proposal, proposal_item_id: ids.item, kind: 'submitter', body: "Model's reason: He says how he will vote.", created_at: now } },
+        ],
+      },
+    ],
+  })
+  expect(write.ok()).toBe(true)
+
+  await page.goto('/editor')
+  await page.getByLabel('Editor token').fill(editorToken())
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  const upNext = page.getByRole('button').filter({ hasText: sourceTitle })
+  if (await upNext.count()) await upNext.click()
+  await expect(page.getByRole('heading', { name: sourceTitle })).toBeVisible()
+  await expect(page.getByText('Read by a model ·')).toBeVisible()
+  await expect(page.getByText('Note: Read by a test model.')).toBeVisible()
+  const item = page.getByRole('region', { name: 'Item 1: Bartholomew Sato' })
+  await expect(item.getByLabel('Found in the article text by a model; check what it shows')).toHaveValue(quote)
+  await expect(item.getByText("Model's reason: He says how he will vote.")).toBeVisible()
+  // The model's note is its own, not the editor's note on the item.
+  await expect(item.getByLabel(/Note on this item/)).toHaveValue('')
+  await expect(item.getByLabel('One-line summary')).toHaveValue('Says he will vote for a free ferry.')
+})
+
 test('choosing the next term shows the viewing-another-day strip, and its link returns to today', async ({ page }) => {
   const [body] = query<{ next_term_on: string; next_term_label: string }>(`SELECT next_term_on, next_term_label FROM bodies WHERE id = 'us-congress'`)
   expect(body.next_term_on > DAY, 'the next term lies ahead of the fixed clock').toBe(true)

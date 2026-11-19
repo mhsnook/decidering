@@ -287,11 +287,13 @@ export const proposalInputSchema = z.object({
 })
 export type ProposalInput = z.infer<typeof proposalInputSchema>
 
-// What the Worker turns into a proposal. Each item is a separate act.
+// What the Worker turns into a proposal. Each item is a separate act. An item's
+// note is kept in proposal_notes, where only editors read it.
 export type ProposalDraft = {
   source: { url: string; title: string | null }
   note: string | null
-  items: Pick<ProposalItem, 'question_id' | 'decider_id' | 'kind' | 'occurred_on' | 'quote' | 'reading'>[]
+  items: (Pick<ProposalItem, 'question_id' | 'decider_id' | 'kind' | 'occurred_on' | 'quote' | 'reading'> &
+    Partial<Pick<ProposalItem, 'bearing' | 'summary'>> & { note?: string | null })[]
 }
 
 // Whether a question is still open on a day. A closing date can lie ahead: a

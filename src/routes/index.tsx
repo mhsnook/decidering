@@ -168,7 +168,7 @@ function HowItWorks() {
       <div className="mt-6 grid gap-x-10 gap-y-8 sm:mt-8 lg:grid-cols-3">
         <div className="flex flex-col gap-3.5 sm:gap-[18px]">
           <Step n={1} numberClass="bg-mixed" title="Find news reports">
-            Every few hours, a web search looks for reports of decision-makers taking a stance.
+            Once a day, a web search looks for reports of decision-makers taking a stance, and a model reads each report for what it records.
           </Step>
           <div className="flex-1 rounded-2xl border-2 border-dashed border-ink bg-surface p-4 sm:p-5">
             <p className="tag text-faint">Found by news search · 15 Nov</p>

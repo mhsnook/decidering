@@ -23,7 +23,39 @@ describe.each([
     const res = await call(path, method, EDITOR_TOKEN)
     expect(res.status).toBe(200)
     // This file seeds no questions, so the news search runs without searching.
-    expect(await res.json()).toEqual(path.endsWith('session') ? { ok: true } : { questions: [] })
+    expect(await res.json()).toEqual(path.endsWith('session') ? { ok: true } : { questions: [], deferred: 0 })
+  })
+})
+
+describe('/api/editor/read-article', () => {
+  it('is refused without a token', async () => {
+    expect((await call('/api/editor/read-article', 'POST')).status).toBe(401)
+  })
+
+  const dryRun = (body: unknown) =>
+    exports.default.fetch('http://sporelight.test/api/editor/read-article', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${EDITOR_TOKEN}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
+  it('needs a web address and a question', async () => {
+    expect((await call('/api/editor/read-article', 'POST', EDITOR_TOKEN)).status).toBe(400)
+  })
+
+  it.each([
+    ['a file address', { url: 'file:///etc/passwd', question_id: 'hot' }],
+    ['a script address', { url: 'javascript:alert(1)', question_id: 'hot' }],
+    ['an address that is not text', { url: 42, question_id: 'hot' }],
+    ['a question id that is not text', { url: 'https://news.example/a', question_id: ['hot'] }],
+  ])('refuses %s', async (_, body) => {
+    expect((await dryRun(body)).status).toBe(400)
+  })
+
+  it('answers 404 for a question that does not exist, without fetching', async () => {
+    const res = await dryRun({ url: 'https://news.example/a', question_id: 'no-such-question' })
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: 'Unknown question.' })
   })
 })
 

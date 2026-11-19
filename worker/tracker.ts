@@ -15,6 +15,7 @@ import { isEditorToken } from './editor.ts'
 import { alreadyProposed } from './leads.ts'
 
 const MAX_PENDING = 500
+const MAX_NOTE_CHARS = 4000
 
 // `queued` counts the items that were new. Zero means something already proposed from this source stood in the way of every one.
 export type SubmitResult = { ok: true; queued: number } | { ok: false; status: number; error: string }
@@ -78,27 +79,36 @@ export class Tracker extends PartyDbServer<Env> {
       created_at: now,
     }
     const proposal: Proposal = { id: crypto.randomUUID(), source_id: source.id, origin, submitted_by: null, status: 'pending', created_at: now, reviewed_at: null }
-    const rows: ProposalItem[] = items.map((item, sort) => ({
+    const rows: ProposalItem[] = items.map(({ note: _, ...item }, sort) => ({
       ...item,
       id: crypto.randomUUID(),
       proposal_id: proposal.id,
       sort,
       act_id: crypto.randomUUID(),
-      bearing: 'direct',
+      bearing: item.bearing ?? 'direct',
       position: null,
-      summary: null,
+      summary: item.summary ?? null,
       status: 'pending',
     }))
-    const note: ProposalNote | null = draft.note
-      ? { id: crypto.randomUUID(), proposal_id: proposal.id, proposal_item_id: null, kind: 'submitter', body: draft.note, created_at: now }
-      : null
+    const noteRow = (body: string, itemId: string | null): ProposalNote => ({
+      id: crypto.randomUUID(),
+      proposal_id: proposal.id,
+      proposal_item_id: itemId,
+      kind: 'submitter',
+      body: body.slice(0, MAX_NOTE_CHARS),
+      created_at: now,
+    })
+    const notes = [
+      ...(draft.note ? [noteRow(draft.note, null)] : []),
+      ...items.flatMap((item, i) => (item.note ? [noteRow(item.note, rows[i].id)] : [])),
+    ]
     try {
       // In this order: each batch may only point at rows an earlier one wrote.
       await this.commit([
         ...(known ? [] : [{ channel: 'sources', ops: [{ type: 'insert' as const, value: source }] }]),
         { channel: 'proposals', ops: [{ type: 'insert', value: proposal }] },
         { channel: 'proposal_items', ops: rows.map((value) => ({ type: 'insert' as const, value })) },
-        ...(note ? [{ channel: 'proposal_notes', ops: [{ type: 'insert' as const, value: note }] }] : []),
+        ...(notes.length ? [{ channel: 'proposal_notes', ops: notes.map((value) => ({ type: 'insert' as const, value })) }] : []),
       ])
       return { ok: true, queued: rows.length }
     } catch (e) {

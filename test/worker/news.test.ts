@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers'
 import { getServerByName } from 'partyserver'
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SearchHit } from '../../worker/leads.ts'
 import { searchNews } from '../../worker/news.ts'
 import type { Tracker } from '../../worker/tracker.ts'
@@ -34,6 +34,15 @@ const leads = () =>
   )
 
 beforeAll(seed)
+
+// Every article refuses the fetch, so each hit falls back to a lead built from
+// the search excerpt. Reading articles is tested in reading.test.ts.
+beforeEach(() => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('no', { status: 403 }))
+})
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 describe('searchNews', () => {
   it('searches only open, in-the-news, non-demo questions and queues hits naming the roster', async () => {
@@ -70,6 +79,8 @@ describe('searchNews', () => {
     for (const lead of leadsWithNotes) {
       expect(lead.notes).toBe(1)
       expect(lead.body).toMatch(/not a verified quote/i)
+      // Every article in this file refuses the fetch, so the editor is told why the lead is only an excerpt.
+      expect(lead.body).toMatch(/The article was not read: The site answered 403\./)
     }
   })
 
@@ -84,7 +95,7 @@ describe('searchNews', () => {
     const { env, websearch } = stubbedEnv(() => new Response('gateway says no', { status: 502 }))
     const report = await searchNews(env, await tracker(), NOW)
     expect(websearch).toHaveBeenCalledTimes(1)
-    expect(report).toEqual({ error: 'Web search failed (502: gateway says no)', questions: [{ question: 'Hot Topic', hits: 0, queued: 0 }] })
+    expect(report).toEqual({ error: 'Web search failed (502: gateway says no)', questions: [{ question: 'Hot Topic', hits: 0, read: 0, queued: 0 }], deferred: 0 })
   })
 
   it('stops and reports a search that throws', async () => {
