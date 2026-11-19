@@ -54,8 +54,8 @@ function Latest() {
         <p className="max-w-2xl text-muted">What has been added to the record, newest first. Each entry is one thing one person said or did, with what it shows on each question it bears on.</p>
       </header>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-0 flex-1 sm:max-w-sm">
+      <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-end">
+        <div className="min-w-0 sm:max-w-sm sm:flex-1">
           <label className="label" htmlFor="feed-question">
             Question
           </label>
@@ -64,7 +64,7 @@ function Latest() {
             <QuestionOptions tracker={tracker} />
           </select>
         </div>
-        <div className="min-w-0 flex-1 sm:max-w-56">
+        <div className="min-w-0 sm:max-w-56 sm:flex-1">
           <label className="label" htmlFor="feed-body">
             Body
           </label>
