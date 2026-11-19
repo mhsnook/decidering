@@ -1,0 +1,41 @@
+# Working on Sporelight
+
+The README describes what the app is and how to run it. This file is how changes are made here.
+
+## Commands
+
+- pnpm only; the version is pinned in `package.json` (`packageManager`). Build-script permissions and the one-day `minimumReleaseAge` live in `pnpm-workspace.yaml`.
+- Before pushing: `pnpm typecheck`, `pnpm test:unit`, `pnpm test:worker`, `pnpm build`, `pnpm test:e2e`. `pnpm typecheck` needs a `.dev.vars` (copy `.dev.vars.example`).
+- `pnpm test:e2e` resets the local database first.
+
+## Pull requests
+
+- One theme per pull request. PRs are squash-merged, so the PR description becomes the commit message on `main`. Put the reasoning there.
+- Start the description with anything the owner has to do before merging: dashboard steps, migrations on both databases (`pnpm db:migrate:remote`, `pnpm db:migrate:preview`), secrets.
+- Say what was run and what passed, and name what has never run for real (anything that needs Cloudflare credentials, a real model, or a real news site).
+- An agent's GitHub token cannot push changes to `.github/workflows/`. Leave those to the owner and say so.
+
+## Code
+
+- A comment earns its place in one of two ways:
+  - It stops the next person from making a specific wrong assumption about that line: a footgun, an ordering constraint, something that looks wrong but isn't.
+  - It is a one-line signpost saying what a block does and why, such as "Parse the model's answer to match the review form's fields".
+
+  Why a change was made goes in the commit message or PR, not in a comment.
+- Prefer a two-word name that makes a comment unnecessary over a generic one-word name that needs one: `articleText` over `text` with a note saying which text.
+- When a library or a Cloudflare feature covers a job, use it fully. One snag is not a reason to drop it and write its job by hand. If you do drop one, say so and why.
+- Anything written as the project (README, UI copy, PR text, test names, prompts) is plain and factual, with no emphasis for effect.
+- Unreviewed proposals are public. Text only editors should see goes in `proposal_notes`, never in a column of a synced public table.
+- A schema change is a new file in `migrations/`. Previews share one database, so a migration on one branch reaches every Preview.
+
+## The news search and the article reader
+
+- The AI Gateway id is the `AI_GATEWAY` var in `wrangler.jsonc`, set at the top level and in the `previews` block. Both the search and the model go through it, because the gateway is where the spending limits are.
+- The model id is `MODEL` in `worker/reader.ts`. Check the Workers AI catalogue for a deprecation date before changing it.
+- An act the model returns is kept only if its words are found in the fetched article text. Do not loosen that check: an editor trusts a pre-filled form.
+
+## Tests
+
+- Worker tests run in workerd (`test/worker/`). The real `env.AI` cannot be called. Pass a stubbed env (`{ ...env, AI: { ... } } as unknown as Env`), and stub outside fetches with `vi.spyOn(globalThis, 'fetch')`.
+- Tests in one file share a database. Each test sets up the state it depends on instead of relying on rows an earlier test left behind.
+- Test behaviour and misuse, not constants. Compare against the value in config (`env.AI_GATEWAY`), not a copy of it.
