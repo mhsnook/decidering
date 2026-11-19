@@ -36,9 +36,9 @@ export async function searchNews(env: Env, tracker: Submitter, now: Date = new D
     const roster = await env.DB.prepare(
       `SELECT DISTINCT d.id, d.name, d.sort_name
        FROM roles r JOIN seats s ON s.id = r.seat_id JOIN deciders d ON d.id = r.decider_id
-       WHERE s.body_id = ?`,
+       WHERE s.body_id = ?1 OR s.body_id IN (SELECT body_id FROM question_bodies WHERE question_id = ?2)`,
     )
-      .bind(question.body_id)
+      .bind(question.body_id, question.id)
       .all<RosterEntry>()
     const match = rosterMatcher(roster.results)
 
