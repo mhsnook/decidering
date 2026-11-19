@@ -1,14 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { readFileSync } from 'node:fs'
-
-const TODAY = new Date('2026-11-19T15:00:00Z')
-
-const editorToken = () => {
-  const vars = readFileSync(new URL('../../.dev.vars', import.meta.url), 'utf8')
-  const token = vars.match(/^EDITOR_TOKEN=(.*)$/m)?.[1]?.trim()
-  if (!token) throw new Error('EDITOR_TOKEN is not set in .dev.vars')
-  return token
-}
+import { TODAY, partyWrite } from './fixtures.ts'
 
 test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(TODAY)
@@ -111,35 +102,29 @@ test('with the mode off a reader is sent no proposals; turned on, it shows what 
   })
   const source = (id: string) => ({ type: 'insert', value: { id, url: `https://example.com/${id}`, title: id, publisher: null, published_on: null, kind: null, archive_url: null, stored_copy: null, created_at: now } })
   const proposal = (id: string, sourceId: string, origin: string) => ({ type: 'insert', value: { id, source_id: sourceId, origin, submitted_by: null, status: 'pending', created_at: now, reviewed_at: null } })
-  const write = await request.post('/parties/tracker/main?proto=party-db', {
-    headers: { authorization: `Bearer ${editorToken()}` },
-    data: [
-      { channel: 'sources', ops: names.map((n) => source(`${n}-${stamp}`)) },
-      { channel: 'proposals', ops: [proposal(`p-claim-${stamp}`, `claim-${stamp}`, 'reader'), proposal(`p-rej-${stamp}`, `rej-${stamp}`, 'reader'), proposal(`p-lead-${stamp}`, `lead-${stamp}`, 'news_search')] },
-      {
-        channel: 'proposal_items',
-        ops: [
-          item(`i-claim-${stamp}`, `p-claim-${stamp}`, claimed, 'support', 'pending'),
-          item(`i-rej-${stamp}`, `p-rej-${stamp}`, rejected, 'oppose', 'rejected'),
-          item(`i-lead-${stamp}`, `p-lead-${stamp}`, lead, null, 'pending'),
-        ],
-      },
-      { channel: 'proposal_notes', ops: [{ type: 'insert', value: { id: `note-${stamp}`, proposal_id: `p-claim-${stamp}`, proposal_item_id: null, kind: 'submitter', body: 'Only editors read this note.', created_at: now } }] },
-    ],
-  })
+  const write = await partyWrite(request, [
+    { channel: 'sources', ops: names.map((n) => source(`${n}-${stamp}`)) },
+    { channel: 'proposals', ops: [proposal(`p-claim-${stamp}`, `claim-${stamp}`, 'reader'), proposal(`p-rej-${stamp}`, `rej-${stamp}`, 'reader'), proposal(`p-lead-${stamp}`, `lead-${stamp}`, 'news_search')] },
+    {
+      channel: 'proposal_items',
+      ops: [
+        item(`i-claim-${stamp}`, `p-claim-${stamp}`, claimed, 'support', 'pending'),
+        item(`i-rej-${stamp}`, `p-rej-${stamp}`, rejected, 'oppose', 'rejected'),
+        item(`i-lead-${stamp}`, `p-lead-${stamp}`, lead, null, 'pending'),
+      ],
+    },
+    { channel: 'proposal_notes', ops: [{ type: 'insert', value: { id: `note-${stamp}`, proposal_id: `p-claim-${stamp}`, proposal_item_id: null, kind: 'submitter', body: 'Only editors read this note.', created_at: now } }] },
+  ])
   expect(write.ok()).toBe(true)
   // The editor flows expect the queue to hold only what they put there.
   const remove = (channel: string, ids: string[]) => ({ channel, ops: ids.map((id) => ({ type: 'delete', value: { id } })) })
   cleanup = () =>
-    request.post('/parties/tracker/main?proto=party-db', {
-      headers: { authorization: `Bearer ${editorToken()}` },
-      data: [
-        remove('proposal_notes', [`note-${stamp}`]),
-        remove('proposal_items', names.map((n) => `i-${n}-${stamp}`)),
-        remove('proposals', names.map((n) => `p-${n}-${stamp}`)),
-        remove('sources', names.map((n) => `${n}-${stamp}`)),
-      ],
-    })
+    partyWrite(request, [
+      remove('proposal_notes', [`note-${stamp}`]),
+      remove('proposal_items', names.map((n) => `i-${n}-${stamp}`)),
+      remove('proposals', names.map((n) => `p-${n}-${stamp}`)),
+      remove('sources', names.map((n) => `${n}-${stamp}`)),
+    ])
 
   const frames = recordFrames(page)
   await page.goto('/latest')

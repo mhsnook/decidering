@@ -1,5 +1,5 @@
 import type { Act, Decider, Proposal, ProposalItem, Question, Reading, Report, Source } from '../../shared/schema.ts'
-import type { Tracker } from './build-tracker.ts'
+import { groupBy, type Tracker } from './build-tracker.ts'
 
 // One published act, with every question it is read on.
 export type FeedEntry = {
@@ -17,11 +17,8 @@ export type FeedEntry = {
 export type WaitingEntry = {
   key: string
   proposal: Proposal
-  source: Source | undefined
   decider: Decider
-  kind: ProposalItem['kind']
-  occurred_on: string | null
-  quote: string
+  // The first claim's item carries the act's kind, date and words.
   claims: { item: ProposalItem; question: Question; reading: NonNullable<ProposalItem['reading']> }[]
   isDemo: boolean
 }
@@ -33,18 +30,13 @@ export type FeedFilter = { questionId?: string; bodyId?: string }
 export const FEED_PAGE = 50
 
 // A question and every question under it, at any depth.
-export function questionFamily(tracker: Pick<Tracker, 'questions'>, questionId: string): Set<string> {
-  const family = new Set([questionId])
-  let grew = true
-  while (grew) {
-    grew = false
-    for (const q of tracker.questions) {
-      if (q.parent_id && family.has(q.parent_id) && !family.has(q.id)) {
-        family.add(q.id)
-        grew = true
-      }
-    }
+export function questionFamily(tracker: Pick<Tracker, 'measuresOf' | 'asksOf'>, questionId: string): Set<string> {
+  const family = new Set<string>()
+  const visit = (id: string) => {
+    family.add(id)
+    for (const child of [...(tracker.measuresOf.get(id) ?? []), ...(tracker.asksOf.get(id) ?? [])]) visit(child.id)
   }
+  visit(questionId)
   return family
 }
 
@@ -65,18 +57,7 @@ const isDemoQuestion = (tracker: Tracker, question: Question) => tracker.bodyByI
 // questions is one entry.
 export function buildFeed(tracker: Tracker, filter: FeedFilter = {}): FeedEntry[] {
   const match = matcher(tracker, filter)
-  const readingsByAct = new Map<string, Reading[]>()
-  for (const r of tracker.readings) {
-    const list = readingsByAct.get(r.act_id)
-    if (list) list.push(r)
-    else readingsByAct.set(r.act_id, [r])
-  }
-  const reportsByAct = new Map<string, Report[]>()
-  for (const r of tracker.reports) {
-    const list = reportsByAct.get(r.act_id)
-    if (list) list.push(r)
-    else reportsByAct.set(r.act_id, [r])
-  }
+  const readingsByAct = groupBy(tracker.readings, (r) => r.act_id)
 
   const entries: FeedEntry[] = []
   for (const act of tracker.acts) {
@@ -91,14 +72,8 @@ export function buildFeed(tracker: Tracker, filter: FeedFilter = {}): FeedEntry[
       })
       // The question read directly before any it was written on by implication.
       .sort((a, b) => Number(a.via !== undefined) - Number(b.via !== undefined) || a.question.sort - b.question.sort)
-    if (readings.length === 0 || !readings.some((r) => match.question(r.question))) continue
-    const reports = (reportsByAct.get(act.id) ?? [])
-      .flatMap((report) => {
-        const source = tracker.sourceById.get(report.source_id)
-        return source ? [{ report, source }] : []
-      })
-      .sort((a, b) => Number(b.source.id === act.primary_source_id) - Number(a.source.id === act.primary_source_id) || a.report.created_at.localeCompare(b.report.created_at))
-    entries.push({ act, decider, enteredAt: act.created_at, readings, reports, isDemo: readings.some((r) => isDemoQuestion(tracker, r.question)) })
+    if (!readings.some((r) => match.question(r.question))) continue
+    entries.push({ act, decider, enteredAt: act.created_at, readings, reports: tracker.reportsOf(act), isDemo: readings.some((r) => isDemoQuestion(tracker, r.question)) })
   }
   return entries.sort(
     (a, b) => b.enteredAt.localeCompare(a.enteredAt) || b.act.occurred_on.localeCompare(a.act.occurred_on) || a.act.id.localeCompare(b.act.id),
@@ -129,11 +104,7 @@ export function buildWaiting(tracker: Tracker, proposals: Proposal[], items: Pro
     byKey.set(key, {
       key,
       proposal,
-      source: tracker.sourceById.get(proposal.source_id),
       decider,
-      kind: item.kind,
-      occurred_on: item.occurred_on,
-      quote: item.quote,
       claims: [claim],
       isDemo: isDemoQuestion(tracker, question),
     })

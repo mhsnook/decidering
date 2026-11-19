@@ -1,12 +1,12 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { useMemo, useState, type ReactNode } from 'react'
 import { useLiveQuery } from '@tanstack/react-db'
-import type { Proposal, Question } from '../../shared/schema.ts'
+import type { Bearing, Decider, Position, Proposal, Question } from '../../shared/schema.ts'
 import { db } from '../lib/db.ts'
 import { atomHref, buildFeed, buildWaiting, byDay, feedPage, type FeedEntry, type FeedFilter, type WaitingEntry } from '../lib/feed.ts'
 import { useTracker, type Tracker } from '../lib/tracker.tsx'
 import { KIND_LABEL, formatDate, readingLabel } from '../lib/position.ts'
-import { Syncing, Token } from '../components/bits.tsx'
+import { StandingDot, Syncing } from '../components/bits.tsx'
 import { ActWords, IndirectTag, SourceLinks } from '../components/RecordItem.tsx'
 
 type FeedSearch = { question?: string; waiting?: true; before?: string }
@@ -36,7 +36,7 @@ function Latest() {
   const navigate = Route.useNavigate()
   const { tracker, isReady } = useTracker()
   const question = search.question ? tracker.questionBySlug.get(search.question) : undefined
-  const body = bodySlug ? tracker.bodies.find((b) => b.slug === bodySlug) : undefined
+  const body = bodySlug ? tracker.bodyBySlug.get(bodySlug) : undefined
   const filter: FeedFilter = { questionId: question?.id, bodyId: body?.id }
   const feed = useMemo(() => buildFeed(tracker, filter), [tracker, filter.questionId, filter.bodyId])
 
@@ -80,9 +80,7 @@ function Latest() {
           </label>
           <select id="feed-body" className="field" value={body?.slug ?? ''} onChange={(e) => set({ body: e.target.value || undefined })}>
             <option value="">Every body</option>
-            {[...tracker.bodies]
-              .sort((a, b) => Number(a.is_demo) - Number(b.is_demo) || a.sort - b.sort)
-              .map((b) => (
+            {tracker.bodiesInOrder.map((b) => (
                 <option key={b.id} value={b.slug}>
                   {b.name}
                   {b.is_demo ? ' (demo)' : ''}
@@ -144,18 +142,16 @@ function Latest() {
 }
 
 function QuestionOptions({ tracker }: { tracker: Tracker }) {
-  const childrenOf = (q: Question) => tracker.questions.filter((c) => c.parent_id === q.id).sort((a, b) => a.sort - b.sort)
+  const childrenOf = (q: Question) => [...(tracker.measuresOf.get(q.id) ?? []), ...(tracker.asksOf.get(q.id) ?? [])]
   const option = (q: Question, depth: number): ReactNode[] => [
     <option key={q.id} value={q.slug}>
-      {' '.repeat(depth)}
+      {'\u2003'.repeat(depth)}
       {depth ? q.short_title : q.title}
     </option>,
     ...childrenOf(q).flatMap((c) => option(c, depth + 1)),
   ]
-  const roots = tracker.questions.filter((q) => !q.parent_id)
-  const bodies = [...tracker.bodies].sort((a, b) => Number(a.is_demo) - Number(b.is_demo) || a.sort - b.sort)
-  return bodies.map((b) => {
-    const listed = roots.filter((q) => q.body_id === b.id).sort((x, y) => x.sort - y.sort)
+  return tracker.bodiesInOrder.map((b) => {
+    const listed = tracker.questionsIn(b.id).filter((q) => q.body_id === b.id)
     return listed.length === 0 ? null : (
       <optgroup key={b.id} label={b.is_demo ? `${b.name} (demo)` : b.name}>
         {listed.flatMap((q) => option(q, 0))}
@@ -164,39 +160,54 @@ function QuestionOptions({ tracker }: { tracker: Tracker }) {
   })
 }
 
+// The name, what kind of act it is, and when, above the act's words.
+function EntryHead({ decider, slug, isDemo, children }: { decider: Decider; slug: string; isDemo: boolean; children: ReactNode }) {
+  return (
+    <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+      <Link to="/q/$slug/$decider" params={{ slug, decider: decider.slug }} className="font-bold hover:underline">
+        {decider.name}
+      </Link>
+      <span className="text-xs text-muted">{children}</span>
+      {isDemo && <span className="tag text-muted">demo data</span>}
+    </div>
+  )
+}
+
+function ReadingRow({ decider, question, position, bearing, children }: { decider: Decider; question: Question; position: Position; bearing: Bearing; children?: ReactNode }) {
+  return (
+    <li className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      {children}
+      <Link to="/q/$slug/$decider" params={{ slug: question.slug, decider: decider.slug }} className="link font-semibold">
+        {question.short_title}
+      </Link>
+      <span>{readingLabel(position, question)}</span>
+      {bearing === 'indirect' && (
+        <span className="text-xs text-muted">
+          <IndirectTag />
+        </span>
+      )}
+    </li>
+  )
+}
+
 function FeedItem({ entry }: { entry: FeedEntry }) {
   const { act, decider, readings, reports, isDemo } = entry
   return (
     <li className="rounded-xl border-2 border-ink bg-surface p-4">
-      <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <Link to="/q/$slug/$decider" params={{ slug: readings[0].question.slug, decider: decider.slug }} className="font-bold hover:underline">
-          {decider.name}
-        </Link>
-        <span className="text-xs text-muted">
-          {KIND_LABEL[act.kind]} ·{' '}
-          <time dateTime={act.occurred_on} className="font-semibold text-ink">
-            {formatDate(act.occurred_on)}
-          </time>
-          {act.withdrawn_on && ` · withdrawn ${formatDate(act.withdrawn_on)}`}
-        </span>
-        {isDemo && <span className="tag text-muted">demo data</span>}
-      </div>
+      <EntryHead decider={decider} slug={readings[0].question.slug} isDemo={isDemo}>
+        {KIND_LABEL[act.kind]} ·{' '}
+        <time dateTime={act.occurred_on} className="font-semibold text-ink">
+          {formatDate(act.occurred_on)}
+        </time>
+        {act.withdrawn_on && ` · withdrawn ${formatDate(act.withdrawn_on)}`}
+      </EntryHead>
       <ActWords kind={act.kind} words={act.body} />
       <ul className="mt-3 space-y-1 text-sm">
         {readings.map(({ reading, question, via }) => (
-          <li key={reading.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <Token standing={reading.position} className="size-3.5" />
-            <Link to="/q/$slug/$decider" params={{ slug: question.slug, decider: decider.slug }} className="link font-semibold">
-              {question.short_title}
-            </Link>
-            <span>{readingLabel(reading.position, question)}</span>
-            {via && <span className="text-xs text-muted">through {via.short_title}</span>}
-            {reading.bearing === 'indirect' && (
-              <span className="text-xs text-muted">
-                <IndirectTag />
-              </span>
-            )}
-          </li>
+          <ReadingRow key={reading.id} decider={decider} question={question} position={reading.position} bearing={reading.bearing}>
+            <StandingDot standing={reading.position} />
+            {via && <span className="order-last text-xs text-muted">through {via.short_title}</span>}
+          </ReadingRow>
         ))}
       </ul>
       <SourceLinks sources={reports.map((r) => ({ key: r.report.id, source: r.source }))} />
@@ -245,35 +256,23 @@ function Waiting({ filter }: { filter: FeedFilter }) {
 }
 
 function WaitingItem({ entry }: { entry: WaitingEntry }) {
-  const { proposal, source, decider, kind, occurred_on, quote, claims, isDemo } = entry
+  const { tracker } = useTracker()
+  const { proposal, decider, claims, isDemo } = entry
+  const { kind, occurred_on, quote } = claims[0].item
+  const source = tracker.sourceById.get(proposal.source_id)
   return (
     <li className="rounded-xl border-2 border-dashed border-ink bg-paper p-3.5" data-waiting>
       <p className="tag mb-2">Not checked yet · {ORIGIN[proposal.origin]}</p>
-      <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <Link to="/q/$slug/$decider" params={{ slug: claims[0].question.slug, decider: decider.slug }} className="font-bold hover:underline">
-          {decider.name}
-        </Link>
-        <span className="text-xs text-muted">
-          {KIND_LABEL[kind]}
-          {occurred_on && ` · ${formatDate(occurred_on)}`}
-        </span>
-        {isDemo && <span className="tag text-muted">demo data</span>}
-      </div>
+      <EntryHead decider={decider} slug={claims[0].question.slug} isDemo={isDemo}>
+        {KIND_LABEL[kind]}
+        {occurred_on && ` · ${formatDate(occurred_on)}`}
+      </EntryHead>
       <ActWords kind={kind} words={quote} />
       <ul className="mt-3 space-y-1 text-sm">
         {claims.map(({ item, question, reading }) => (
-          <li key={item.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <ReadingRow key={item.id} decider={decider} question={question} position={reading} bearing={item.bearing}>
             <span className="text-muted">Claimed:</span>
-            <Link to="/q/$slug/$decider" params={{ slug: question.slug, decider: decider.slug }} className="link font-semibold">
-              {question.short_title}
-            </Link>
-            <span>{readingLabel(reading, question)}</span>
-            {item.bearing === 'indirect' && (
-              <span className="text-xs text-muted">
-                <IndirectTag />
-              </span>
-            )}
-          </li>
+          </ReadingRow>
         ))}
       </ul>
       {source && <SourceLinks sources={[{ key: source.id, source }]} />}

@@ -1,19 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { readFileSync } from 'node:fs'
 import { SPECTRUM, STANDINGS, STANDING_COLOR, standingLabel, type Standing } from '../../src/lib/position.ts'
 import { query } from './db.ts'
-
-// "Today" in the app is the browser's date, and the next-term toggle only shows
-// while a body's next term lies ahead. Fixing the clock keeps these flows
-// meaning the same thing after the 120th Congress starts on 2027-01-03.
-const TODAY = new Date('2026-11-19T15:00:00Z')
-
-const editorToken = () => {
-  const vars = readFileSync(new URL('../../.dev.vars', import.meta.url), 'utf8')
-  const token = vars.match(/^EDITOR_TOKEN=(.*)$/m)?.[1]?.trim()
-  if (!token) throw new Error('EDITOR_TOKEN is not set in .dev.vars')
-  return token
-}
+import { TODAY, editorToken, partyWrite } from './fixtures.ts'
 
 test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(TODAY)
@@ -191,29 +179,26 @@ test('an item read by a model says its words were found in the article, and show
   const sourceTitle = `Sato on the ferry ${stamp}`
   // The rows a news search run queues for a model-read article, written here
   // through the editor's party endpoint since no model runs in tests.
-  const write = await request.post('/parties/tracker/main?proto=party-db', {
-    headers: { authorization: `Bearer ${editorToken()}` },
-    data: [
-      { channel: 'sources', ops: [{ type: 'insert', value: { id: ids.source, url: `https://example.com/harbor-ledger/model-${stamp}`, title: sourceTitle, publisher: null, published_on: null, kind: null, archive_url: null, stored_copy: null, created_at: now } }] },
-      { channel: 'proposals', ops: [{ type: 'insert', value: { id: ids.proposal, source_id: ids.source, origin: 'model', submitted_by: null, status: 'pending', created_at: now, reviewed_at: null } }] },
-      {
-        channel: 'proposal_items',
-        ops: [
-          {
-            type: 'insert',
-            value: { id: ids.item, proposal_id: ids.proposal, sort: 0, decider_id: 'demo-bartholomew-sato', question_id: 'free-ferry', act_id: `act-${stamp}`, kind: 'says', occurred_on: '2026-11-15', quote, reading: 'support', bearing: 'direct', position: null, summary: 'Says he will vote for a free ferry.', status: 'pending' },
-          },
-        ],
-      },
-      {
-        channel: 'proposal_notes',
-        ops: [
-          { type: 'insert', value: { id: `note-${stamp}`, proposal_id: ids.proposal, proposal_item_id: null, kind: 'submitter', body: 'Read by a test model.', created_at: now } },
-          { type: 'insert', value: { id: `note-item-${stamp}`, proposal_id: ids.proposal, proposal_item_id: ids.item, kind: 'submitter', body: "Model's reason: He says how he will vote.", created_at: now } },
-        ],
-      },
-    ],
-  })
+  const write = await partyWrite(request, [
+    { channel: 'sources', ops: [{ type: 'insert', value: { id: ids.source, url: `https://example.com/harbor-ledger/model-${stamp}`, title: sourceTitle, publisher: null, published_on: null, kind: null, archive_url: null, stored_copy: null, created_at: now } }] },
+    { channel: 'proposals', ops: [{ type: 'insert', value: { id: ids.proposal, source_id: ids.source, origin: 'model', submitted_by: null, status: 'pending', created_at: now, reviewed_at: null } }] },
+    {
+      channel: 'proposal_items',
+      ops: [
+        {
+          type: 'insert',
+          value: { id: ids.item, proposal_id: ids.proposal, sort: 0, decider_id: 'demo-bartholomew-sato', question_id: 'free-ferry', act_id: `act-${stamp}`, kind: 'says', occurred_on: '2026-11-15', quote, reading: 'support', bearing: 'direct', position: null, summary: 'Says he will vote for a free ferry.', status: 'pending' },
+        },
+      ],
+    },
+    {
+      channel: 'proposal_notes',
+      ops: [
+        { type: 'insert', value: { id: `note-${stamp}`, proposal_id: ids.proposal, proposal_item_id: null, kind: 'submitter', body: 'Read by a test model.', created_at: now } },
+        { type: 'insert', value: { id: `note-item-${stamp}`, proposal_id: ids.proposal, proposal_item_id: ids.item, kind: 'submitter', body: "Model's reason: He says how he will vote.", created_at: now } },
+      ],
+    },
+  ])
   expect(write.ok()).toBe(true)
 
   await page.goto('/editor')
