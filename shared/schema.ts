@@ -64,12 +64,18 @@ export const CERTAINTIES = ['certain', 'likely', 'possible'] as const
 export const certaintySchema = z.enum(CERTAINTIES)
 export type Certainty = z.infer<typeof certaintySchema>
 
+// A role is one claim on a seat: who, between which dates, and how sure. There
+// is no separate kind for a challenger. Someone running for a seat is a possible
+// holder from the next term, a member-elect a certain one, and whoever holds
+// it today a certain one with no end known.
+export const CONTESTS = ['primary', 'general', 'runoff', 'recount'] as const
+
 export const roleSchema = z.object({
   id: z.string(),
   seat_id: z.string(),
   decider_id: z.string(),
-  kind: z.enum(['incumbent', 'challenger']),
-  contest: z.enum(['primary', 'general']).nullable(),
+  // What the claim still depends on, for one that is not settled.
+  contest: z.enum(CONTESTS).nullable(),
   affiliation: z.string().nullable(),
   starts_on: z.string().nullable(),
   ends_on: z.string().nullable(),

@@ -12,7 +12,7 @@ import { Modal } from '../components/Modal.tsx'
 import { AskStatus, CloseAsk, ClosedNote } from '../components/Asks.tsx'
 import { MergeAct, WithdrawAct } from '../components/MergeAct.tsx'
 import { isEditor } from '../lib/editor.ts'
-import { formatDate } from '../lib/position.ts'
+import { claimLabel, formatDate } from '../lib/position.ts'
 
 export const Route = createFileRoute('/q/$slug/$decider')({ component: DeciderOnQuestion })
 
@@ -48,10 +48,10 @@ function DeciderOnQuestion() {
       ...tenures.filter((t) => span(t.holder)).map((t) => t.office.label + span(t.holder)),
     ]),
   ]
-  const seatSpan = span(me.role)
-  const holds =
-    me.role.certainty === 'certain' ? seatSpan && `holds the seat${seatSpan}` : `${me.role.certainty === 'likely' ? 'likely to hold' : 'may hold'} the seat${seatSpan}, not settled`
-  const rivals = (tracker.rolesBySeat.get(seat.id) ?? [])
+  const claim = claimLabel(me.role, tracker.asOf)
+  const holds = claim === 'holds the seat' ? '' : claim
+  // Everyone else with a claim on this seat, now or later.
+  const rivals = [...(tracker.rolesBySeat.get(seat.id) ?? []), ...(tracker.upcomingBySeat.get(seat.id) ?? [])]
     .filter((r) => r.decider_id !== decider.id)
     .map((r) => tracker.contender(question, r))
     .filter((c) => c !== undefined)
@@ -66,7 +66,6 @@ function DeciderOnQuestion() {
           <div>
             <h2 className="text-2xl font-semibold">{decider.name}</h2>
             <p className="text-sm text-muted">
-              {me.role.kind === 'challenger' && `Running in the ${me.role.contest ?? ''} for `}
               {seat.label}
               {seat.chamber && `, ${seat.chamber}`}
               {me.role.affiliation && ` · ${me.role.affiliation}`}
@@ -175,10 +174,10 @@ function DeciderOnQuestion() {
         <aside className="space-y-6">
           {rivals.length > 0 && (
             <section>
-              <h2 className="mb-2 text-base font-semibold">Also in the running for {seat.label}</h2>
+              <h2 className="mb-2 text-base font-semibold">Others holding or seeking {seat.label}</h2>
               <ul className="space-y-2">
                 {rivals.map((r) => (
-                  <li key={r.decider.id}>
+                  <li key={r.role.id}>
                     <Link
                       to="/q/$slug/$decider"
                       params={{ slug: question.slug, decider: r.decider.slug }}
@@ -188,8 +187,8 @@ function DeciderOnQuestion() {
                         <span className="font-medium">{r.decider.name}</span>
                         <StandingPill standing={r.standing} question={question} />
                       </span>
-                      <span className="text-xs text-muted">
-                        {r.role.kind === 'incumbent' ? 'Incumbent' : `Challenger, ${r.role.contest ?? 'undeclared'}`}
+                      <span className="block text-xs text-muted first-letter:uppercase">
+                        {claimLabel(r.role, tracker.asOf)}
                         {r.role.affiliation && ` · ${r.role.affiliation}`}
                       </span>
                     </Link>

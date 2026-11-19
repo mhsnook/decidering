@@ -28,7 +28,7 @@ export const question = (id: string, over: Partial<Question> = {}): Question => 
 
 export const decider = (id: string): Decider => ({ id, slug: id, name: id, sort_name: id, external_id: null, url: null })
 export const seat = (id: string, over: Partial<Seat> = {}): Seat => ({ id, body_id: 'body', chamber: null, region: null, label: id, is_voting: true, next_election_on: null, ...over })
-export const role = (seatId: string, deciderId: string, over: Partial<Role> = {}): Role => ({ id: `${seatId}:${deciderId}`, seat_id: seatId, decider_id: deciderId, kind: 'incumbent', contest: null, affiliation: null, starts_on: null, ends_on: null, certainty: 'certain', ...over })
+export const role = (seatId: string, deciderId: string, over: Partial<Role> = {}): Role => ({ id: `${seatId}:${deciderId}`, seat_id: seatId, decider_id: deciderId, contest: null, affiliation: null, starts_on: null, ends_on: null, certainty: 'certain', ...over })
 export const office = (id: string, over: Partial<Office> = {}): Office => ({ id, body_id: 'body', chamber: null, label: id, sort: 0, ...over })
 export const holder = (officeId: string, deciderId: string, starts_on: string | null = null, ends_on: string | null = null, certainty: OfficeHolder['certainty'] = 'certain'): OfficeHolder => ({
   id: `${officeId}:${deciderId}`,

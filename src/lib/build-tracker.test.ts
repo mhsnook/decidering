@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { claimLabel, claimTag } from './position.ts'
 import { act, decider, holder, link, office, question, reading, report, role, seat, source, stance, track } from './fixtures.ts'
 
 const policy = question('policy')
@@ -82,7 +83,7 @@ describe('asks', () => {
   const tracker = track({
       deciders: [decider('ann'), decider('bob'), decider('cy')],
       seats: [seat('s1'), seat('s2'), seat('s3')],
-      roles: [role('s1', 'ann'), role('s2', 'bob'), role('s3', 'cy', { kind: 'challenger' })],
+      roles: [role('s1', 'ann'), role('s2', 'bob'), role('s3', 'cy', { starts_on: '2027-05-04', certainty: 'possible', contest: 'general' })],
       questions: [policy, bill, markup, hearing],
       questionDeciders: [link('markup', 'bob', 'Chair'), link('hearing', 'ann', 'Vice chair')],
       stances: [stance('markup', 'bob', 'lean_support')],
@@ -319,5 +320,49 @@ describe('a seat or office whose holder is not settled', () => {
   it("finds someone's surest seat first", () => {
     expect(next.roleIn(policy, 'holder')?.certainty).toBe('possible')
     expect(now.roleIn(policy, 'holder')?.certainty).toBe('certain')
+  })
+})
+
+describe('one kind of claim on a seat', () => {
+  const policy = question('policy')
+  const ELECTION = '2027-05-04'
+  const rows = {
+    deciders: [decider('sitting'), decider('running'), decider('elect')],
+    seats: [seat('open'), seat('won')],
+    roles: [
+      role('open', 'sitting'),
+      role('open', 'running', { starts_on: ELECTION, certainty: 'possible', contest: 'general' }),
+      role('won', 'sitting', { id: 'won:sitting', ends_on: '2027-01-03' }),
+      role('won', 'elect', { starts_on: '2027-01-03' }),
+    ],
+    questions: [policy],
+    stances: [stance('policy', 'running', 'support')],
+  }
+  const seatOf = (t: ReturnType<typeof track>, id: string) => t.board(policy).find((r) => r.seat.id === id)!
+  const now = track(rows)
+
+  it('lists a challenger and a member-elect the same way: as claims that start later', () => {
+    expect(seatOf(now, 'open').upcoming.map((c) => [c.decider.id, c.role.certainty, c.standing])).toEqual([['running', 'possible', 'support']])
+    expect(seatOf(now, 'won').upcoming.map((c) => [c.decider.id, c.role.certainty])).toEqual([['elect', 'certain']])
+    expect(seatOf(now, 'open').incumbent?.decider.id).toBe('sitting')
+  })
+
+  it('turns a claim into the holding, or a possible one, once its day comes', () => {
+    const later = track(rows, '2027-06-01')
+    expect([seatOf(later, 'won').incumbent?.decider.id, seatOf(later, 'won').upcoming.length]).toEqual(['elect', 0])
+    expect(seatOf(later, 'open').incumbent?.decider.id).toBe('sitting')
+    expect(seatOf(later, 'open').alternates.map((c) => c.decider.id)).toEqual(['running'])
+  })
+
+  it('says where each claim stands in the same words whoever holds it', () => {
+    const say = (r: Parameters<typeof claimLabel>[0], day = '2026-11-19') => [claimLabel(r, day), claimTag(r, day)]
+    const claim = (over: object) => ({ starts_on: null, ends_on: null, certainty: 'certain' as const, contest: null, ...over })
+    expect(say(claim({}))).toEqual(['holds the seat', 'now'])
+    expect(say(claim({ ends_on: '2027-01-03' }))[0]).toBe('holds the seat until Jan 3, 2027')
+    expect(say(claim({ starts_on: '2027-01-03' }))).toEqual(['takes the seat Jan 3, 2027', 'from Jan 3, 2027'])
+    expect(say(claim({ starts_on: '2027-01-03', certainty: 'likely', contest: 'recount' }))).toEqual(['likely to take the seat Jan 3, 2027, recount pending', 'likely from Jan 3, 2027'])
+    expect(say(claim({ starts_on: '2027-01-03', certainty: 'possible', contest: 'runoff' }))).toEqual(['may take the seat Jan 3, 2027, runoff pending', 'runoff'])
+    expect(say(claim({ starts_on: '2027-05-04', certainty: 'possible', contest: 'general' }))).toEqual(['running in the general election', 'general election'])
+    expect(say(claim({ ends_on: '2027-01-03' }), '2027-02-01')[0]).toBe('held the seat until Jan 3, 2027')
   })
 })

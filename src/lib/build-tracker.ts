@@ -44,10 +44,12 @@ export type SeatRow = {
   seat: Seat
   // Whoever certainly or likely holds the seat on the day viewed.
   incumbent: Contender | undefined
-  // Others who may yet hold it: the other side of a recount, or the candidates
-  // in a runoff. Never drawn as the holder.
+  // Others who may hold it on the day viewed: the other side of a recount, or
+  // the candidates in a runoff. Never drawn as the holder.
   alternates: Contender[]
-  challengers: Contender[]
+  // Those with a claim that starts after the day viewed, soonest and surest
+  // first: a member-elect, the leader in a recount, someone running for it.
+  upcoming: Contender[]
 }
 
 export type HeldSeat = SeatRow & { incumbent: Contender }
@@ -94,6 +96,10 @@ export function buildTracker(c: TrackerData, asOf: string) {
   // Surest first, so anything that takes the first holder takes the surest.
   const rolesInEffect = c.roles.filter((r) => inEffect(r, asOf)).sort((a, b) => SURENESS[a.certainty] - SURENESS[b.certainty])
   const rolesBySeat = groupBy(rolesInEffect, (r) => r.seat_id)
+  const upcomingBySeat = groupBy(
+    c.roles.filter((r) => r.starts_on !== null && r.starts_on > asOf).sort((a, b) => a.starts_on!.localeCompare(b.starts_on!) || SURENESS[a.certainty] - SURENESS[b.certainty]),
+    (r) => r.seat_id,
+  )
   const rolesByDecider = groupBy(rolesInEffect, (r) => r.decider_id)
   const everyRoleByDecider = groupBy(c.roles, (r) => r.decider_id)
   const officeById = indexBy(c.offices, (o) => o.id)
@@ -212,20 +218,16 @@ export function buildTracker(c: TrackerData, asOf: string) {
     const seats = (seatsByBody.get(bodyId) ?? []).filter((s) => !question.chamber || s.chamber === question.chamber)
     return seats
       .map((seat) => {
-        const contenders = (rolesBySeat.get(seat.id) ?? [])
-          .filter((r) => appliesTo(question, r.decider_id))
-          .map((r) => contender(question, r))
-          .filter((x) => x !== undefined)
-        const holders = contenders.filter((x) => x.role.kind === 'incumbent')
+        const present = (roles: Role[] | undefined) =>
+          (roles ?? [])
+            .filter((r) => appliesTo(question, r.decider_id))
+            .map((r) => contender(question, r))
+            .filter((x) => x !== undefined)
+        const holders = present(rolesBySeat.get(seat.id))
         const incumbent = holders.find((x) => x.role.certainty !== 'possible')
-        return {
-          seat,
-          incumbent,
-          alternates: holders.filter((x) => x !== incumbent),
-          challengers: contenders.filter((x) => x.role.kind === 'challenger'),
-        }
+        return { seat, incumbent, alternates: holders.filter((x) => x !== incumbent), upcoming: present(upcomingBySeat.get(seat.id)) }
       })
-      .filter((row) => !isAsk(question) || row.incumbent || row.alternates.length > 0 || row.challengers.length > 0)
+      .filter((row) => !isAsk(question) || row.incumbent || row.alternates.length > 0 || row.upcoming.length > 0)
   }
 
   // The seat someone holds, on the day viewed, in a body the question is put
@@ -287,6 +289,7 @@ export function buildTracker(c: TrackerData, asOf: string) {
     questionsIn,
     measuresIn,
     asOf,
+    upcomingBySeat,
     recordFor,
     standingFor,
     isOpen,

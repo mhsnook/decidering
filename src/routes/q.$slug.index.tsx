@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import type { Question } from '../../shared/schema.ts'
 import { NEEDS_ATTENTION } from '../../shared/standing.ts'
 import { isHeld, useTracker, useViewedBody, type HeldSeat } from '../lib/tracker.tsx'
-import { SPECTRUM, STANDINGS, STANDING_BG, formatDate, standingLabel, type Standing } from '../lib/position.ts'
+import { SPECTRUM, STANDINGS, STANDING_BG, claimTag, formatDate, standingLabel, type Standing } from '../lib/position.ts'
 import { CertaintyTag, FootingTag, NotFound, StandingDot, StandingPill, Syncing, tally } from '../components/bits.tsx'
 import { Hemicycle } from '../components/Hemicycle.tsx'
 import { QuestionHeader } from '../components/QuestionHeader.tsx'
@@ -44,7 +44,10 @@ function Board() {
   const set = (patch: BoardSearch) => navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true })
   const chambers = [...new Set(rows.map((r) => r.seat.chamber).filter((c) => c !== null))].sort()
   const chamber = chambers.includes(search.chamber ?? '') ? search.chamber : undefined
-  const hasChallengers = rows.some((r) => r.challengers.length > 0)
+  // Everyone with a claim on the seat besides its holder: possible holders on
+  // the day viewed and anyone due, likely or running to take it later.
+  const others = (r: HeldSeat) => [...r.alternates, ...r.upcoming]
+  const hasOthers = rows.some((r) => others(r).length > 0)
   const needle = search.q?.toLowerCase()
 
   // Everything but the chamber, which decides which charts are drawn rather
@@ -53,9 +56,9 @@ function Board() {
     const inc = r.incumbent
     if (search.standing && inc.standing !== search.standing) return false
     if (search.thin && !NEEDS_ATTENTION.has(inc.footing)) return false
-    if (search.contested && !r.challengers.some((c) => c.stance)) return false
+    if (search.contested && !others(r).some((c) => c.stance)) return false
     if (needle) {
-      const haystack = [inc.decider.name, r.seat.label, inc.role.affiliation, ...r.challengers.map((c) => c.decider.name)].join(' ').toLowerCase()
+      const haystack = [inc.decider.name, r.seat.label, inc.role.affiliation, ...others(r).map((c) => c.decider.name)].join(' ').toLowerCase()
       if (!haystack.includes(needle)) return false
     }
     return true
@@ -136,9 +139,9 @@ function Board() {
         <Toggle on={!!search.thin} onChange={(thin) => set({ thin: thin || undefined })}>
           Thin evidence
         </Toggle>
-        {hasChallengers && (
+        {hasOthers && (
           <Toggle on={!!search.contested} onChange={(contested) => set({ contested: contested || undefined })}>
-            Challenger on record
+            Challenger or successor on record
           </Toggle>
         )}
         <span className="ml-auto text-sm text-muted tabular-nums">
@@ -249,6 +252,7 @@ function Toggle({ on, onChange, children }: { on: boolean; onChange: (on: boolea
 }
 
 function SeatCard({ row, question }: { row: HeldSeat; question: Question }) {
+  const { tracker } = useTracker()
   const inc = row.incumbent
   return (
     <li className="relative overflow-hidden rounded-xl border-2 border-ink bg-surface">
@@ -280,14 +284,14 @@ function SeatCard({ row, question }: { row: HeldSeat; question: Question }) {
           ))}
         </p>
       )}
-      {row.challengers.length > 0 && (
+      {row.upcoming.length > 0 && (
         <ul className="border-t border-line py-1.5 pr-3 pl-4 text-xs">
-          {row.challengers.map((c) => (
-            <li key={c.decider.id}>
+          {row.upcoming.map((c) => (
+            <li key={c.role.id}>
               <Link to="/q/$slug/$decider" params={{ slug: question.slug, decider: c.decider.slug }} className="flex items-center gap-1.5 py-0.5 hover:underline">
                 <span className={`size-2 shrink-0 rounded-full ${STANDING_BG[c.standing]}`} />
                 <span className="truncate">
-                  <span className="text-muted">{c.role.contest ?? 'challenger'}:</span> {c.decider.name}
+                  <span className="text-muted">{claimTag(c.role, tracker.asOf)}:</span> {c.decider.name}
                 </span>
                 <span className="ml-auto whitespace-nowrap text-muted">{standingLabel(c.standing, question)}</span>
               </Link>

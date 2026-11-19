@@ -159,7 +159,6 @@ for (const m of congress.members) {
     id: `${seatId}:${m.bioguide}`,
     seat_id: seatId,
     decider_id: m.bioguide,
-    kind: 'incumbent',
     contest: null,
     affiliation: m.party,
     starts_on: null,
@@ -171,7 +170,7 @@ for (const m of congress.members) {
 // Someone who holds a seat from the day the next term starts. A sitting member
 // keeps their id and record; anyone else is new here, under an id that is not a
 // Bioguide id, since they get one only when sworn in.
-function seatFromNextTerm(seatId: string, who: { bioguide?: string; name: string; sort_name?: string; party: string }, certainty: string) {
+function seatFromNextTerm(seatId: string, who: { bioguide?: string; name: string; sort_name?: string; party: string }, certainty: string, contest: string | null = null) {
   let deciderId = who.bioguide
   if (deciderId) {
     if (!members.has(deciderId)) throw new Error(`${seatId} names ${deciderId}, who is not in the roster`)
@@ -182,7 +181,7 @@ function seatFromNextTerm(seatId: string, who: { bioguide?: string; name: string
   }
   // A returning holder already has a role in this seat, the one that ends, so
   // the role from the next term needs an id of its own.
-  insert('roles', { id: `${seatId}:${deciderId}:${TERM}`, seat_id: seatId, decider_id: deciderId, kind: 'incumbent', contest: null, affiliation: who.party, starts_on: TERM, ends_on: null, certainty })
+  insert('roles', { id: `${seatId}:${deciderId}:${TERM}`, seat_id: seatId, decider_id: deciderId, contest, affiliation: who.party, starts_on: TERM, ends_on: null, certainty })
 }
 
 for (const s of congressElect.seats) seatFromNextTerm(congressSeat(s), s.winner, 'certain')
@@ -192,9 +191,9 @@ for (const s of congressElect.seats) seatFromNextTerm(congressSeat(s), s.winner,
 for (const s of congressElect.pending) {
   const seatId = congressSeat(s)
   const holder = members.get(s.holder)
-  if (s.likely) seatFromNextTerm(seatId, s.likely, 'likely')
+  if (s.likely) seatFromNextTerm(seatId, s.likely, 'likely', s.contest)
   for (const p of s.possible) {
-    seatFromNextTerm(seatId, p === 'holder' ? { bioguide: holder.bioguide, name: holder.name, party: holder.party } : p, 'possible')
+    seatFromNextTerm(seatId, p === 'holder' ? { bioguide: holder.bioguide, name: holder.name, party: holder.party } : p, 'possible', s.contest)
   }
 }
 
@@ -354,7 +353,7 @@ for (const state of era.states) {
   const seatId = `${STATES}:${state.code}`
   insert('deciders', { id, slug: slugify(state.name), name: state.name, sort_name: state.name, external_id: state.code, url: null })
   insert('seats', { id: seatId, body_id: STATES, chamber: null, region: state.code, label: state.code, is_voting: true, next_election_on: null })
-  insert('roles', { id: `${seatId}:${id}`, seat_id: seatId, decider_id: id, kind: 'incumbent', contest: null, affiliation: null })
+  insert('roles', { id: `${seatId}:${id}`, seat_id: seatId, decider_id: id, contest: null, affiliation: null })
   if (!state.ratified_on) continue
 
   const isLate = state.ratified_on > era.deadline
@@ -407,9 +406,10 @@ function demoSeats(bodyId: string, seats: any[], next_election_on: string | null
     const seatId = `${bodyId}:${slugify(`${bodyId} ${seat.label}`).slice(bodyId.length + 1)}`
     insert('seats', { id: seatId, body_id: bodyId, chamber: null, region: null, label: seat.label, is_voting: true, next_election_on })
     const [name, affiliation] = seat.incumbent
-    insert('roles', { id: `${seatId}:${person(name)}`, seat_id: seatId, decider_id: person(name), kind: 'incumbent', contest: null, affiliation })
+    insert('roles', { id: `${seatId}:${person(name)}`, seat_id: seatId, decider_id: person(name), contest: null, affiliation })
     for (const [cName, cAffiliation, contest] of seat.challengers ?? []) {
-      insert('roles', { id: `${seatId}:${person(cName)}`, seat_id: seatId, decider_id: person(cName), kind: 'challenger', contest, affiliation: cAffiliation })
+      // Someone running for the seat may hold it from the election on.
+      insert('roles', { id: `${seatId}:${person(cName)}`, seat_id: seatId, decider_id: person(cName), contest, affiliation: cAffiliation, starts_on: next_election_on, certainty: 'possible' })
     }
   }
 }
