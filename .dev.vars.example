@@ -3,3 +3,9 @@ EDITOR_TOKEN=change-me
 # An archive.org S3 key, as accesskey:secret, from https://archive.org/account/s3.php.
 # Left empty, the archiving pass only looks for captures that already exist.
 ARCHIVE_ORG_KEY=
+# Signs Better Auth's session cookies. Any long random string locally; in production `wrangler secret put BETTER_AUTH_SECRET`.
+BETTER_AUTH_SECRET=change-me-to-a-long-random-string
+# The dev server's host, which sign-in has to answer on.
+AUTH_HOSTS=localhost:*
+# The address sign-in codes are sent from. Locally the email binding does not deliver mail, so any address will do.
+EMAIL_FROM=sign-in@example.org

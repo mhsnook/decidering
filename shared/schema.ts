@@ -395,10 +395,24 @@ export function sourceUrl(url: string): string {
   return (hash === -1 ? url : url.slice(0, hash)).trim()
 }
 
+// Someone who has signed in. The id is their sign-in account's id; their email
+// address is kept with that account and never here, since this table is public.
+export const personSchema = z.object({
+  id: z.string(),
+  display_name: z.string().nullable(),
+  muted_at: z.string().nullable(),
+  created_at: z.string(),
+})
+export type Person = z.infer<typeof personSchema>
+
+export const displayNameSchema = z.string().trim().min(1).max(60)
+
 export const commentSchema = z.object({
   id: z.string(),
   thread_id: z.string(),
   author_name: z.string(),
+  // Null for a comment posted while signed out.
+  person_id: z.string().nullable(),
   body: z.string(),
   created_at: z.string(),
 })
@@ -407,13 +421,14 @@ export type Comment = z.infer<typeof commentSchema>
 export const commentInputSchema = z.object({
   question_id: z.string().min(1),
   decider_id: z.string().min(1),
-  author_name: z.string().trim().min(1).max(60),
+  author_name: displayNameSchema,
   body: z.string().trim().min(1).max(2000),
 })
 export type CommentInput = z.infer<typeof commentInputSchema>
 
 // The only identity this room's `auth` hook ever verifies is an editor, so
-// 'authed' here means "editor". Don't hand reader accounts a uid in this room.
+// 'authed' here means "editor". Readers who sign in are verified by the Worker
+// on the requests they post; don't hand them a uid in this room.
 const editorWrites = { read: 'public', insert: 'authed', update: 'authed', delete: 'authed' } as const
 
 export const publicCollections = [
@@ -469,6 +484,10 @@ export const commentsCollection = definePartyCollection({
   access: { read: 'public', delete: 'authed' },
 })
 
+// Rows are added by the Worker when someone first signs in, and an editor mutes
+// a person by setting muted_at.
+export const peopleCollection = definePartyCollection({ name: 'people', key: 'id', schema: personSchema, access: { read: 'public', update: 'authed' } })
+
 export const proposalContextsCollection = definePartyCollection({ name: 'proposal_contexts', key: 'id', schema: proposalContextSchema, access: 'authed' })
 export const proposalMentionsCollection = definePartyCollection({ name: 'proposal_mentions', key: 'id', schema: proposalMentionSchema, access: 'authed' })
 
@@ -480,6 +499,7 @@ export const allCollections = [
   proposalContextsCollection,
   proposalMentionsCollection,
   commentsCollection,
+  peopleCollection,
 ] as const
 
 export const pairId = (questionId: string, deciderId: string) => `${questionId}:${deciderId}`
