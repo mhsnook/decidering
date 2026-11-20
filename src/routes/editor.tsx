@@ -48,7 +48,7 @@ const UP_NEXT = 12
 const LEAVE_MS = 470
 const TOAST_MS = 4200
 
-// What the editor had on a card, kept so it can be put back if publishing it fails.
+// What the editor had on a card. It is kept while they look at another card, and put back if publishing it fails.
 type Work = { drafts: EntryDraft[]; reviewNote: string }
 type Finish = { writes: Write[]; how: 'publishing' | 'dismissing'; message: string; work: Work }
 
@@ -65,7 +65,8 @@ function Queue() {
   const [leaving, setLeaving] = useState<{ id: string; how: Finish['how'] } | null>(null)
   const [toast, setToast] = useState<{ text: string; shown: boolean }>({ text: '', shown: false })
   const [error, setError] = useState<string | null>(null)
-  const [restored, setRestored] = useState<{ id: string; work: Work; attempt: number } | null>(null)
+  const [started, setStarted] = useState<Record<string, Work>>({})
+  const [attempts, setAttempts] = useState(0)
   const timers = useRef<ReturnType<typeof setTimeout>[]>([])
   useEffect(() => () => timers.current.forEach(clearTimeout), [])
 
@@ -88,7 +89,7 @@ function Queue() {
   const others = list.filter((p) => p.id !== selected?.id)
   const selectedSource = selected && tracker.sourceById.get(selected.source_id)
   // The list shrinks as cards are finished, so the page asked for may be past its end.
-  const shownPage = Math.min(listPage, Math.max(0, Math.ceil(others.length / UP_NEXT) - 1))
+  const shownPage = Math.min(listPage, Math.max(0, Math.ceil(list.length / UP_NEXT) - 1))
   const listFrom = shownPage * UP_NEXT
 
   useEffect(() => {
@@ -107,6 +108,12 @@ function Queue() {
     return () => window.removeEventListener('keydown', onKey)
   })
 
+  // The list turns to the page the open card is on, so J and K can be followed down it.
+  const selectedAt = list.findIndex((p) => p.id === selected?.id)
+  useEffect(() => {
+    if (selectedAt !== -1) setListPage(Math.floor(selectedAt / UP_NEXT))
+  }, [selected?.id, tab])
+
   if (!isReady || !proposals.isReady || !allItems.isReady || !allNotes.isReady || !allContexts.isReady || !allMentions.isReady) return <Syncing />
 
   // The card leaves first. The writes go in once it is gone, which brings the next card up from the stack.
@@ -120,7 +127,8 @@ function Queue() {
       commit(writes).catch((err: unknown) => {
         setToast((t) => ({ ...t, shown: false }))
         setError(err instanceof Error ? err.message : String(err))
-        setRestored((r) => ({ id: proposalId, work, attempt: (r?.attempt ?? 0) + 1 }))
+        setStarted((all) => ({ ...all, [proposalId]: work }))
+        setAttempts((n) => n + 1)
         setSelectedId(proposalId)
       })
       setLeaving(null)
@@ -181,8 +189,9 @@ function Queue() {
         </div>
       ) : (
         <Desk
-          key={restored?.id === selected.id ? `${selected.id}:${restored.attempt}` : selected.id}
-          restored={restored?.id === selected.id ? restored.work : undefined}
+          key={`${selected.id}:${attempts}`}
+          restored={started[selected.id]}
+          onLeave={(work) => setStarted(({ [selected.id]: _, ...rest }) => (work ? { ...rest, [selected.id]: work } : rest))}
           proposal={selected}
           source={selectedSource}
           items={itemsOf(selected.id)}
@@ -193,11 +202,11 @@ function Queue() {
           leaving={leaving?.id === selected.id ? leaving.how : null}
           onFinish={(done) => finish(selected.id, done)}
         >
-          {others.length > 0 && (
+          {list.length > 1 && (
             <>
-              <h2 className="text-base font-black sm:text-lg">{tab === 'pending' ? 'Up next' : 'Reviewed'}</h2>
+              <h2 className="text-base font-black sm:text-lg">{tab === 'pending' ? 'Waiting' : 'Reviewed'}</h2>
               <ul className="flex flex-col gap-2 sm:gap-2.5">
-                {others.slice(listFrom, listFrom + UP_NEXT).map((p) => {
+                {list.slice(listFrom, listFrom + UP_NEXT).map((p) => {
                   const items = itemsOf(p.id)
                   const names = [...new Set(items.map((i) => tracker.deciderById.get(i.decider_id)?.name ?? i.decider_id))]
                   const accepted = items.filter((i) => i.status === 'accepted').length
@@ -208,12 +217,14 @@ function Queue() {
                       <button
                         type="button"
                         onClick={() => setSelectedId(p.id)}
-                        className={`flex w-full cursor-pointer items-start gap-3 rounded-[14px] border-ink bg-surface px-3.5 py-3 text-left hover:shadow-hard-md ${across ? 'border-[3px]' : unread ? 'border-2 border-dashed' : 'border-2'}`}
+                        aria-current={p.id === selected.id ? 'true' : undefined}
+                        className={`flex w-full cursor-pointer items-start gap-3 rounded-[14px] border-ink px-3.5 py-3 text-left hover:shadow-hard-md ${p.id === selected.id ? 'bg-mint shadow-hard-md' : 'bg-surface'} ${across ? 'border-[3px]' : unread ? 'border-2 border-dashed' : 'border-2'}`}
                       >
                         <Token standing={items.find((i) => i.reading)?.reading ?? 'unknown'} className="mt-0.5 size-[22px]" />
                         <span className="min-w-0 flex-1">
                           <span className="flex items-baseline justify-between gap-2 font-bold">
                             <span className="truncate">{names.join(', ')}</span>
+                            {p.id === selected.id ? <span className="tag shrink-0">open</span> : started[p.id] && <span className="tag shrink-0 text-accent">started</span>}
                             {p.status !== 'pending' && (
                               <span className="tag shrink-0">{accepted === 0 ? 'dismissed' : accepted === items.length ? 'published' : `${accepted} of ${items.length} published`}</span>
                             )}
@@ -225,15 +236,15 @@ function Queue() {
                   )
                 })}
               </ul>
-              {others.length > UP_NEXT && (
-                <nav aria-label={tab === 'pending' ? 'Pages of what is up next' : 'Pages of what was reviewed'} className="flex items-center justify-between gap-2 text-sm font-semibold">
+              {list.length > UP_NEXT && (
+                <nav aria-label={tab === 'pending' ? 'Pages of what is waiting' : 'Pages of what was reviewed'} className="flex items-center justify-between gap-2 text-sm font-semibold">
                   <button type="button" className="btn btn-sm min-h-9 px-3" disabled={shownPage === 0} onClick={() => setListPage(shownPage - 1)}>
                     Previous
                   </button>
                   <span className="text-muted tabular-nums">
-                    {listFrom + 1}–{Math.min(listFrom + UP_NEXT, others.length)} of {others.length}
+                    {listFrom + 1}–{Math.min(listFrom + UP_NEXT, list.length)} of {list.length}
                   </span>
-                  <button type="button" className="btn btn-sm min-h-9 px-3" disabled={listFrom + UP_NEXT >= others.length} onClick={() => setListPage(shownPage + 1)}>
+                  <button type="button" className="btn btn-sm min-h-9 px-3" disabled={listFrom + UP_NEXT >= list.length} onClick={() => setListPage(shownPage + 1)}>
                     Next
                   </button>
                 </nav>
@@ -262,6 +273,7 @@ function Desk({
   behind,
   leaving,
   restored,
+  onLeave,
   onFinish,
   children,
 }: {
@@ -274,6 +286,8 @@ function Desk({
   behind: number
   leaving: Finish['how'] | null
   restored: Work | undefined
+  // Called when the editor turns to another card: with their work if they changed anything, or nothing.
+  onLeave: (work: Work | undefined) => void
   onFinish: (done: Finish) => void
   children: ReactNode
 }) {
@@ -286,6 +300,21 @@ function Desk({
   )
   const [reviewNote, setReviewNote] = useState(restored?.reviewNote ?? notes.find((n) => n.kind === 'review' && !n.proposal_item_id)?.body ?? '')
   const [error, setError] = useState<string | null>(null)
+  // What to hand back on leaving. A finished card hands back nothing: the queue keeps its work only if the write fails.
+  const leaveWith = useRef<Work | undefined>(restored)
+  const touched = useRef(restored !== undefined)
+  const finished = useRef(false)
+  leaveWith.current = touched.current && !finished.current ? { drafts, reviewNote } : undefined
+  useEffect(() => () => onLeave(leaveWith.current), [])
+  const changeDrafts = (update: (drafts: EntryDraft[]) => EntryDraft[]) => {
+    touched.current = true
+    setDrafts(update)
+  }
+  const changeReviewNote = (note: string) => {
+    touched.current = true
+    setReviewNote(note)
+  }
+
   function finish(dismissAll: boolean) {
     const decide = (d: EntryDraft) => {
       const question = tracker.questionById.get(d.question_id)
@@ -297,6 +326,7 @@ function Desk({
       const published = verdict.entries.filter((e) => e.publish).length
       const title = `“${sourceLabel(source)}”`
       setError(null)
+      finished.current = true
       onFinish({
         writes,
         work: { drafts, reviewNote },
@@ -317,10 +347,10 @@ function Desk({
         contexts={contexts}
         mentions={mentions}
         drafts={drafts}
-        setDrafts={setDrafts}
+        setDrafts={changeDrafts}
         dateOffer={dateOffer(proposal, source)}
         reviewNote={reviewNote}
-        setReviewNote={setReviewNote}
+        setReviewNote={changeReviewNote}
         behind={behind}
         readOnly={readOnly}
         leaving={leaving}

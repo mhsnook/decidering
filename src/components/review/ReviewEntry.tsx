@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { ACT_KINDS, DIRECTIONS, POSITIONS, WEIGHTS, type Direction, type Position, type Proposal, type ProposalContext, type Question, type Source } from '../../../shared/schema.ts'
 import { useTracker } from '../../lib/tracker.tsx'
-import { missingFrom, movedTo, outlook, relatedChoices, reportingAct, withWeight, type EntryDraft, type RelatedChoice } from '../../lib/review-form.ts'
+import { addRelatedQuestion } from '../../lib/review.ts'
+import { missingFrom, movedTo, outlook, relatedChoices, relatedQuestionRows, reportingAct, withWeight, type EntryDraft, type RelatedChoice } from '../../lib/review-form.ts'
 import { DIRECTION_LABEL, KIND_CHOICE, KIND_LABEL, KIND_NOUN, STANDING_BG, WEIGHT_HINT, WEIGHT_LABEL, formatDate, hostOf, sourceLabel, standingLabel, type Standing } from '../../lib/position.ts'
 import { Token } from '../bits.tsx'
 import { Marked, RecordItem, splitPassage } from '../RecordItem.tsx'
@@ -110,9 +111,14 @@ export function ReviewEntry({
   readOnly: boolean
 }) {
   const { tracker } = useTracker()
-  const [open, setOpen] = useState<{ related?: boolean; note?: boolean; setPosition?: boolean; passage?: boolean; facts?: boolean; person?: boolean; words?: boolean; record?: boolean }>({})
+  const [open, setOpen] = useState<{ related?: boolean; note?: boolean; setPosition?: boolean; passage?: boolean; facts?: boolean; person?: boolean; words?: boolean; record?: boolean; addQuestion?: boolean }>({})
   const toggle = (what: keyof typeof open) => setOpen((o) => ({ ...o, [what]: !o[what] }))
   const passageText = useRef<HTMLDivElement>(null)
+  const dialog = useRef<HTMLDivElement>(null)
+  const [dialogHeight, setDialogHeight] = useState(0)
+  useLayoutEffect(() => {
+    if (open.passage && dialog.current) setDialogHeight(dialog.current.offsetHeight + 20)
+  }, [open.passage, entry.passage, entry.quote])
   const [markError, setMarkError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -139,6 +145,7 @@ export function ReviewEntry({
   const onFile = tracker.actById.has(entry.act_id)
   const actsOnFile = decider ? [...(tracker.actsByDecider.get(decider.id) ?? [])].sort((a, b) => b.occurred_on.localeCompare(a.occurred_on)) : []
 
+  const root = (question.parent_id && tracker.questionById.get(question.parent_id)) || question
   const choices = relatedChoices(tracker, entry)
   const offered = new Set(choices.map((c) => c.question.id))
   // A reading the proposal came with, on a question that is not offered any more.
@@ -177,7 +184,7 @@ export function ReviewEntry({
       <>
         <DirectionButtons small withNone value={value} onPick={(d) => setRelated(choice.question.id, d)} label={`${choice.question.short_title}: which way it points`} />
         <button type="button" onClick={() => onChange(movedTo(entry, choice.question.id))} className={`${LINK} self-start text-[13px]`}>
-          Read it on this question instead of {question.short_title}
+          It is about {choice.question.short_title} only, not {question.short_title}
         </button>
       </>
     )
@@ -235,7 +242,9 @@ export function ReviewEntry({
   return (
     <section
       aria-label={name}
-      className={`relative -mx-3 rounded border-t-2 border-dashed border-line transition-colors duration-300`}
+      // Room for the passage dialog, which covers this entry and may be taller than it.
+      style={{ minHeight: open.passage ? dialogHeight : undefined }}
+      className="relative -mx-3 rounded border-t-2 border-dashed border-line transition-[min-height] duration-300"
     >
       <Reveal open={entry.dismissed}>
         <div className="flex items-center gap-3 px-3 py-[18px]">
@@ -305,6 +314,11 @@ export function ReviewEntry({
                 {hasWider && <span className="link mt-2 block text-[13px] font-bold text-ink">Read the wider passage</span>}
               </div>
               {entry.passage !== null && !entry.quote && <p className="mt-2 text-[13px] text-faint">No words marked yet. Open the passage, select what they said or did, and mark it.</p>}
+              {isAdded && !readOnly && (
+                <button type="button" onClick={() => onChange({ passage: null, quote: '' })} className={`${LINK} mt-1.5 text-[13px]`}>
+                  Their words are not in this passage: type them instead
+                </button>
+              )}
               {entry.copiedFrom && split && <p className="mt-2 text-[13px] text-faint">Same passage as {entry.copiedFrom}. Open it to mark other words.</p>}
             </div>
           )}
@@ -354,7 +368,7 @@ export function ReviewEntry({
                 {actsOnFile.length > 0 && (
                   <div className="sm:col-span-2">
                     <label className="label" htmlFor={`${entry.key}:act`}>
-                      The act
+                      Which {KIND_NOUN[entry.kind]} is this?
                     </label>
                     <select
                       id={`${entry.key}:act`}
@@ -362,7 +376,7 @@ export function ReviewEntry({
                       onChange={(e) => onChange(reportingAct(entry, tracker.actById.get(e.target.value) ?? null))}
                       className="field"
                     >
-                      {!tracker.actById.has(entry.newActId) && <option value={entry.newActId}>A new act</option>}
+                      {!tracker.actById.has(entry.newActId) && <option value={entry.newActId}>A new {KIND_NOUN[entry.kind]}, not on the record yet</option>}
                       {actsOnFile.map((a) => (
                         <option key={a.id} value={a.id}>
                           On the record: {formatDate(a.occurred_on)} · {KIND_LABEL[a.kind]} · {a.body.slice(0, 60)}
@@ -396,13 +410,13 @@ export function ReviewEntry({
           <div>
             <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,250px),1fr))] gap-5">
               <div>
-                <p className="mb-2 text-sm font-bold">Which way it points</p>
+                <p className="mb-2 text-sm font-bold">Which way it points on {question.short_title}</p>
                 <DirectionButtons
-                  label="Which way it points"
+                  label={`Which way it points on ${question.short_title}`}
                   value={entry.reading}
                   onPick={(d) => onChange({ reading: d })}
                 />
-                {(choices.length > 0 || strays.length > 0) && (
+                {(choices.length > 0 || strays.length > 0 || !readOnly) && (
                   <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
                     <button type="button" aria-expanded={!!open.related} onClick={() => toggle('related')} className="link min-h-8 cursor-pointer text-sm font-bold">
                       {open.related ? 'Hide related proposals' : 'Related proposals'}
@@ -448,6 +462,17 @@ export function ReviewEntry({
                 </div>
                 {solid.map((c) => relatedRow(c, 'solid'))}
                 {dashed.map((c) => relatedRow(c, 'dashed'))}
+                {solid.length + dashed.length === 0 && <p className="text-sm text-muted">Nothing is linked to {root.short_title} yet.</p>}
+                {!readOnly && (
+                  <div>
+                    <button type="button" aria-expanded={!!open.addQuestion} onClick={() => toggle('addQuestion')} className={LINK}>
+                      {open.addQuestion ? 'Cancel' : 'Add a related question'}
+                    </button>
+                    <Reveal open={!!open.addQuestion}>
+                      <AddQuestion to={root} onAdded={(id) => (setRelated(id, entry.reading), setOpen((o) => ({ ...o, addQuestion: false })))} />
+                    </Reveal>
+                  </div>
+                )}
               </div>
             </Reveal>
           </div>
@@ -657,7 +682,8 @@ export function ReviewEntry({
             role="dialog"
             aria-label={`The passage, for ${name}`}
             onClick={(e) => e.stopPropagation()}
-            className={`relative max-h-full w-full max-w-[620px] overflow-auto rounded-[18px] border-2 border-ink bg-paper p-5 shadow-hard-lg transition-transform duration-200 ${open.passage ? '' : 'translate-y-2.5 scale-[0.98]'}`}
+            ref={dialog}
+            className={`relative w-full max-w-[620px] rounded-[18px] border-2 border-ink bg-paper p-5 shadow-hard-lg transition-transform duration-200 ${open.passage ? '' : 'translate-y-2.5 scale-[0.98]'}`}
           >
             <button type="button" aria-label="Close" onClick={() => toggle('passage')} className="absolute top-2 right-2 size-9 cursor-pointer rounded-md text-2xl leading-none text-muted">
               ×
@@ -689,14 +715,72 @@ export function ReviewEntry({
                 <span className="text-[13px] text-faint">{markError ?? 'To mark other words, select them in the text and press this.'}</span>
               </p>
             )}
-            {source.url && (
-              <a href={source.url} target="_blank" rel="noreferrer" className="link mt-2.5 inline-block text-sm font-bold">
-                Read the whole article ↗
-              </a>
-            )}
+            <p className="mt-3.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+              {source.url ? (
+                <a href={source.url} target="_blank" rel="noreferrer" className="link text-sm font-bold">
+                  Read the whole article ↗
+                </a>
+              ) : (
+                <span />
+              )}
+              <button type="button" onClick={() => toggle('passage')} className="btn btn-sm min-h-9">
+                Close
+              </button>
+            </p>
           </div>
         </div>
       )}
     </section>
+  )
+}
+
+// A new question linked to the one the card is about: a smaller step toward it,
+// or a neighbouring question.
+function AddQuestion({ to, onAdded }: { to: Question; onAdded: (questionId: string) => void }) {
+  const { tracker } = useTracker()
+  const [error, setError] = useState<string | null>(null)
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    e.stopPropagation()
+    const form = e.currentTarget
+    const f = new FormData(form)
+    const rows = relatedQuestionRows(to, tracker.questionBodies, tracker.questionRelations, new Set(tracker.questions.map((q) => q.slug)), {
+      short_title: f.get('short_title') as string,
+      title: f.get('title') as string,
+      kind: f.get('kind') === 'related' ? 'related' : 'smaller_step',
+    })
+    setError(null)
+    addRelatedQuestion(rows).then(
+      () => form.reset(),
+      (err: unknown) => setError(err instanceof Error ? err.message : String(err)),
+    )
+    onAdded(rows.question.id)
+  }
+  return (
+    <form onSubmit={onSubmit} className="mt-3 mb-1.5 flex flex-col gap-2.5 rounded-xl border-2 border-ink bg-surface p-[15px]">
+      <div>
+        <label className="label" htmlFor={`${to.id}:new-short`}>
+          Short name
+        </label>
+        <input id={`${to.id}:new-short`} name="short_title" required maxLength={60} placeholder="Medicare at 55" className="field" />
+      </div>
+      <div>
+        <label className="label" htmlFor={`${to.id}:new-title`}>
+          The question, as asked
+        </label>
+        <input id={`${to.id}:new-title`} name="title" required maxLength={200} placeholder="Do they support lowering the Medicare age to 55?" className="field" />
+      </div>
+      <fieldset className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm">
+        <label className="flex min-h-9 cursor-pointer items-center gap-2">
+          <input type="radio" name="kind" value="smaller_step" defaultChecked className="size-4 accent-ink" />A smaller step toward {to.short_title}
+        </label>
+        <label className="flex min-h-9 cursor-pointer items-center gap-2">
+          <input type="radio" name="kind" value="related" className="size-4 accent-ink" />A related issue
+        </label>
+      </fieldset>
+      <p className="text-[13px] text-faint">It is added now, as a question of its own with its own page, and stays whatever happens to this card.</p>
+      {error && <p className="text-sm font-semibold text-oppose">Not added: {error}</p>}
+      <button className="btn btn-sm self-start">Add the question</button>
+    </form>
   )
 }

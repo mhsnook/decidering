@@ -15,12 +15,14 @@ type Asked = { id: string; title: string; short_title: string; description: stri
 export type ReadingContext = {
   question: Asked
   subQuestions: (Asked & { is_ask: boolean })[]
+  // Questions linked to this one in the same body: smaller steps toward it and neighbouring questions.
+  relatedQuestions: (Asked & { relation: 'smaller_step' | 'related' })[]
   people: { id: string; name: string; questions: string[] }[]
 }
 
 export async function readingContext(db: D1Database, questionId: string, people: { id: string; name: string }[], day: string): Promise<ReadingContext | null> {
   const ids = JSON.stringify(people.map((p) => p.id))
-  const [question, children, chambers, asked] = await db.batch([
+  const [question, children, chambers, asked, linked] = await db.batch([
     db.prepare(`SELECT id, title, short_title, description, kind FROM questions WHERE id = ?1`).bind(questionId),
     db
       .prepare(
@@ -48,6 +50,14 @@ export async function readingContext(db: D1Database, questionId: string, people:
            AND (h.starts_on IS NULL OR h.starts_on <= ?3) AND (h.ends_on IS NULL OR ?3 < h.ends_on)`,
       )
       .bind(questionId, ids, day),
+    db
+      .prepare(
+        `SELECT q.id, q.title, q.short_title, q.description, q.kind, r.kind AS relation
+         FROM question_relations r JOIN questions q ON q.id = r.related_id JOIN questions main ON main.id = r.question_id
+         WHERE r.question_id = ?1 AND q.body_id = main.body_id AND (q.status = 'open' OR q.closed_on > ?2)
+         ORDER BY r.sort`,
+      )
+      .bind(questionId, day),
   ])
   const root = question.results[0] as Asked | undefined
   if (!root) return null
@@ -56,10 +66,12 @@ export async function readingContext(db: D1Database, questionId: string, people:
   for (const row of chambers.results as { decider_id: string; chamber: string | null }[]) {
     chambersOf.set(row.decider_id, (chambersOf.get(row.decider_id) ?? new Set()).add(row.chamber))
   }
+  const related = linked.results as ReadingContext['relatedQuestions']
   const askedOf = new Set((asked.results as { question_id: string; decider_id: string }[]).map((r) => `${r.question_id} ${r.decider_id}`))
   return {
     question: { id: root.id, title: root.title, short_title: root.short_title, description: root.description, kind: root.kind },
     subQuestions: subs.map(({ chamber: _, ...q }) => q),
+    relatedQuestions: related,
     people: people.map((p) => ({
       id: p.id,
       name: p.name,
@@ -68,6 +80,7 @@ export async function readingContext(db: D1Database, questionId: string, people:
         ...subs
           .filter((q) => (q.is_ask ? askedOf.has(`${q.id} ${p.id}`) : !q.chamber || chambersOf.get(p.id)?.has(q.chamber)))
           .map((q) => q.id),
+        ...related.map((q) => q.id),
       ],
     })),
   }
@@ -127,16 +140,29 @@ For each act give:
 
 Only list an act the article itself reports. A person merely being mentioned, quoted about something else, or described by someone else's opinion is not an act. Most articles record no act for most people: return an empty list when that is so.
 
+A question whose relation_to_main_question is smaller_step is a narrower version of the main question. Support for the smaller step is not support for the main question: list an act on each question it is about, with what it shows there. One sentence can be support on a smaller step and oppose on the main question.
+
 In named_only, list each person from the list whom the article names but records no act for, with the words that name them copied exactly from the article (for example "was absent").`
 
 export function modelPrompt(context: ReadingContext, article: { url: string; title: string | null; date: string | null; text: string }, today: string) {
-  const questions = [context.question, ...context.subQuestions].map((q) => ({
-    question_id: q.id,
-    title: q.title,
-    description: q.description,
-    asks_whether_they_did_it: q.kind === 'formal_act',
-    is_sub_question_of: q.id === context.question.id ? null : context.question.id,
-  }))
+  const questions = [
+    ...[context.question, ...context.subQuestions].map((q) => ({
+      question_id: q.id,
+      title: q.title,
+      description: q.description,
+      asks_whether_they_did_it: q.kind === 'formal_act',
+      is_sub_question_of: q.id === context.question.id ? null : context.question.id,
+      relation_to_main_question: null as string | null,
+    })),
+    ...context.relatedQuestions.map((q) => ({
+      question_id: q.id,
+      title: q.title,
+      description: q.description,
+      asks_whether_they_did_it: q.kind === 'formal_act',
+      is_sub_question_of: null,
+      relation_to_main_question: q.relation,
+    })),
+  ]
   const user = [
     `Today is ${today}.`,
     `Questions:\n${JSON.stringify(questions, null, 1)}`,

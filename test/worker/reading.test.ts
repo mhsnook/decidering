@@ -161,6 +161,26 @@ describe('reading articles', () => {
     expect(await rows(`SELECT 1 FROM proposal_items WHERE quote LIKE ?1 OR passage LIKE ?1`, '%The committee met%')).toEqual([])
   })
 
+  it('reads for a question linked to the one in the news, in the same body, and queues an act read on it', async () => {
+    const url = 'https://news.example/read-step'
+    await env.DB.batch([
+      env.DB.prepare(`INSERT INTO questions (id, slug, body_id, kind, title, short_title) VALUES ('hot-step', 'hot-step', 'congress', 'position', 'A smaller step?', 'Smaller Step'), ('demo-step', 'demo-step', 'demo', 'position', 'In another body?', 'Elsewhere')`),
+      env.DB.prepare(`INSERT INTO question_relations (id, question_id, related_id, kind, sort) VALUES ('rel-step', 'hot', 'hot-step', 'smaller_step', 0), ('rel-demo', 'hot', 'demo-step', 'related', 1)`),
+    ])
+    const quote = 'I will vote for the smaller step'
+    const s = stubbed({
+      hits: [hit(url)],
+      pages: { [url]: page(`Rep. Alpha said: ${quote}.`) },
+      answer: () => ({ acts: [{ person_id: 'ann', question_id: 'hot-step', kind: 'says', quote, occurred_on: null, position: 'support', weight: 'clear', reason: 'She says so.' }], named_only: [] }),
+    })
+    await searchNews(s.env, await tracker(), NOW)
+    const prompt = (s.run.mock.calls[0][1] as { messages: { content: string }[] }).messages[1].content
+    expect(prompt).toContain('"question_id": "hot-step"')
+    expect(prompt).not.toContain('"question_id": "demo-step"')
+    expect(await itemsFor(url)).toEqual([expect.objectContaining({ decider_id: 'ann', question_id: 'hot-step', reading: 'support' })])
+    await env.DB.batch([env.DB.prepare(`DELETE FROM question_relations WHERE id IN ('rel-step', 'rel-demo')`)])
+  })
+
   it('routes the search and the model through the app gateway', async () => {
     const url = 'https://news.example/read-gateway'
     const s = stubbed({ hits: [hit(url)], pages: { [url]: page('Nothing much.') }, answer: () => ({ acts: [] }) })

@@ -84,6 +84,19 @@ describe('modelOutputSchema', () => {
 
 })
 
+describe('modelPrompt with a smaller step linked to the question', () => {
+  it('lists the step as a question of its own, marked as a smaller step, and tells the model to read each on its own', () => {
+    const step = { id: 'at-55', title: 'Lower the age to 55?', short_title: 'At 55', description: null, kind: 'position' as const, relation: 'smaller_step' as const }
+    const prompt = modelPrompt(
+      { question: { id: 'hot', title: 'Hot question?', short_title: 'Hot', description: null, kind: 'position' }, subQuestions: [], relatedQuestions: [step], people: [{ id: 'ann', name: 'Ann Alpha', questions: ['hot', 'at-55'] }] },
+      { url: 'https://news.example/a', title: null, date: null, text: 'Text.' },
+      '2026-11-19',
+    )
+    expect(prompt.messages[1].content).toMatch(/"question_id": "at-55"[^}]*"relation_to_main_question": "smaller_step"/)
+    expect(prompt.messages[0].content).toContain('Support for the smaller step is not support for the main question')
+  })
+})
+
 describe('an answer that leaves out the people only named', () => {
   it('is read as naming nobody, with its acts kept', () => {
     const parsed = modelOutputSchema.parse({ acts: [] })
@@ -91,13 +104,13 @@ describe('an answer that leaves out the people only named', () => {
   })
 
   it('is still asked for in the shape the model is given', () => {
-    const { response_format } = modelPrompt({ question: { id: 'hot', title: 'Hot question?', short_title: 'Hot', description: null, kind: 'position' }, subQuestions: [], people: [] }, { url: 'https://news.example/a', title: null, date: null, text: 'Text.' }, '2026-11-19')
+    const { response_format } = modelPrompt({ question: { id: 'hot', title: 'Hot question?', short_title: 'Hot', description: null, kind: 'position' }, subQuestions: [], relatedQuestions: [], people: [] }, { url: 'https://news.example/a', title: null, date: null, text: 'Text.' }, '2026-11-19')
     expect((response_format.json_schema.schema as { required: string[] }).required).toEqual(['acts', 'named_only'])
   })
 })
 
 describe('modelPrompt', () => {
-  const context = { question: { id: 'hot', title: 'Hot question?', short_title: 'Hot', description: null, kind: 'position' as const }, subQuestions: [], people: [{ id: 'ann', name: 'Ann Alpha', questions: ['hot'] }] }
+  const context = { question: { id: 'hot', title: 'Hot question?', short_title: 'Hot', description: null, kind: 'position' as const }, subQuestions: [], relatedQuestions: [], people: [{ id: 'ann', name: 'Ann Alpha', questions: ['hot'] }] }
   const prompt = modelPrompt(context, { url: 'https://news.example/a', title: 'A', date: null, text: ARTICLE }, '2026-11-19')
 
   it('gives the model the people it may name and the whole article', () => {
@@ -126,6 +139,7 @@ describe('modelPrompt', () => {
 const context: ReadingContext = {
   question: { id: 'hot', title: 'Hot question?', short_title: 'Hot', description: null, kind: 'position' },
   subQuestions: Array.from({ length: 12 }, (_, i) => ({ id: `sub-${i}`, title: `Sub ${i}?`, short_title: `Sub ${i}`, description: null, kind: 'position' as const, is_ask: false })),
+  relatedQuestions: [],
   people: [{ id: 'ann', name: 'Ann Alpha', questions: ['hot', ...Array.from({ length: 12 }, (_, i) => `sub-${i}`)] }],
 }
 const answering = (answer: unknown) => ({ AI: { run: async () => ({ choices: [{ message: { content: JSON.stringify(answer) } }] }) }, AI_GATEWAY: 'gw' }) as unknown as Env

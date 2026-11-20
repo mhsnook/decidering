@@ -171,7 +171,7 @@ test('evidence a reader sends reaches the editor under its question and, once ap
   await expect(entry.getByText('Reader’s words, not checked against the source')).toBeVisible()
   await expect(entry.getByText(quote)).toBeVisible()
   // The reader's answer and the usual weight for words are filled in.
-  await expect(entry.getByRole('radiogroup', { name: 'Which way it points', exact: true }).getByRole('radio', { name: 'Support' })).toBeChecked()
+  await expect(entry.getByRole('radiogroup', { name: /^Which way it points on/ }).getByRole('radio', { name: 'Support' })).toBeChecked()
   await expect(entry.getByRole('radiogroup', { name: 'How much it counts' }).getByRole('radio', { name: 'Clear' })).toBeChecked()
   await expect(entry.getByText('their first entry')).toBeVisible()
   await editor.getByRole('button', { name: /Publish 1 person/ }).click()
@@ -218,7 +218,7 @@ async function openCard(page: Page, sourceTitle: string) {
   await expect(page.getByRole('heading', { name: 'Review queue' })).toBeVisible()
   const heading = page.getByRole('heading', { name: sourceTitle })
   const inList = page.getByRole('complementary').getByRole('button').filter({ hasText: sourceTitle })
-  const next = page.getByRole('navigation', { name: 'Pages of what is up next' }).getByRole('button', { name: 'Next' })
+  const next = page.getByRole('navigation', { name: 'Pages of what is waiting' }).getByRole('button', { name: 'Next' })
   await expect(page.getByRole('article').first()).toBeVisible()
   while (!(await heading.count()) && !(await inList.count()) && (await next.count()) && (await next.isEnabled())) await next.click()
   if (await inList.count()) await inList.click()
@@ -243,7 +243,8 @@ test('an entry read by a model shows its words marked in the passage, opens the 
   const dialog = entry.getByRole('dialog', { name: 'The passage, for Bartholomew Sato' })
   await expect(dialog.getByText('The council takes up the amendment on December 2.')).toBeVisible()
   await expect(dialog.getByText('We publish this passage')).toBeVisible()
-  await dialog.getByRole('button', { name: 'Close' }).click()
+  await dialog.getByRole('button', { name: 'Close', exact: true }).last().click()
+  await expect(dialog).toBeHidden()
 
   // The model's note is its own, not the editor's note on the entry.
   await entry.getByRole('button', { name: 'Add a note' }).click()
@@ -301,14 +302,14 @@ test('an entry can be published as a report of an act already on the record, rea
   await openCard(page, sourceTitle)
   const entry = page.getByRole('region', { name: 'Marguerite Oyelaran' })
   await entry.getByRole('button', { name: 'Change' }).click()
-  const onRecord = entry.getByLabel('The act').locator('option', { hasText: 'Voted no on advancing the fare study' })
-  await entry.getByLabel('The act').selectOption((await onRecord.getAttribute('value'))!)
+  const onRecord = entry.getByLabel('Which action is this?').locator('option', { hasText: 'Voted no on advancing the fare study' })
+  await entry.getByLabel('Which action is this?').selectOption((await onRecord.getAttribute('value'))!)
   await expect(entry.getByText('an act already on the record')).toBeVisible()
   await expect(entry.getByLabel('Date it happened')).toBeDisabled()
   await expect(entry.getByLabel('Date it happened')).toHaveValue('2026-06-09')
 
   await entry.getByRole('button', { name: 'Related proposals' }).click()
-  await entry.getByRole('button', { name: 'Read it on this question instead of Fare-free ferry' }).first().click()
+  await entry.getByRole('button', { name: 'It is about Ordinance 26-114 only, not Fare-free ferry' }).click()
   await expect(entry.getByText(/Then listed as .* on Ordinance 26-114/)).toBeVisible()
 
   await page.getByRole('button', { name: /Publish 1 person/ }).click()
@@ -323,7 +324,7 @@ test('a card whose publish fails comes back as the editor left it', async ({ pag
   await queueModelRead(request, { decider_id: 'demo-bartholomew-sato', quote, passage: `Sato said: ${quote}`, reading: 'support', weight: 'clear', kind: 'says' }, sourceTitle)
   await openCard(page, sourceTitle)
   const entry = page.getByRole('region', { name: 'Bartholomew Sato' })
-  await entry.getByRole('radiogroup', { name: 'Which way it points', exact: true }).getByRole('radio', { name: 'Mixed' }).click()
+  await entry.getByRole('radiogroup', { name: /^Which way it points on/ }).getByRole('radio', { name: 'Mixed' }).click()
   await entry.getByRole('button', { name: 'Add a note' }).click()
   await entry.getByLabel(/Note on Bartholomew Sato/).fill('Checked against the recording.')
 
@@ -332,7 +333,7 @@ test('a card whose publish fails comes back as the editor left it', async ({ pag
   await page.getByRole('button', { name: /Publish 1 person/ }).click()
   await expect(page.getByText(/^Not saved:/)).toBeVisible()
   await expect(page.getByRole('heading', { name: sourceTitle })).toBeVisible()
-  await expect(entry.getByRole('radiogroup', { name: 'Which way it points', exact: true }).getByRole('radio', { name: 'Mixed' })).toBeChecked()
+  await expect(entry.getByRole('radiogroup', { name: /^Which way it points on/ }).getByRole('radio', { name: 'Mixed' })).toBeChecked()
   await entry.getByRole('button', { name: /the note/ }).click()
   await expect(entry.getByLabel(/Note on Bartholomew Sato/)).toHaveValue('Checked against the recording.')
   expect(query(`SELECT status FROM proposals p JOIN sources s ON s.id = p.source_id WHERE s.title = '${sourceTitle}'`)).toEqual([{ status: 'pending' }])
@@ -354,12 +355,13 @@ test('the list beside the open card pages through every waiting proposal', async
   await page.goto('/editor')
   await page.getByLabel('Editor token').fill(editorToken())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  const pages = page.getByRole('navigation', { name: 'Pages of what is up next' })
+  const pages = page.getByRole('navigation', { name: 'Pages of what is waiting' })
   const waiting = query<{ n: number }>(`SELECT COUNT(*) AS n FROM proposals WHERE status = 'pending'`)[0].n
-  await expect(pages).toContainText(`1–12 of ${waiting - 1}`)
+  await expect(pages).toContainText(`1–12 of ${waiting}`)
   await expect(pages.getByRole('button', { name: 'Previous' })).toBeDisabled()
 
-  // Every waiting proposal is the open card or on exactly one page of the list.
+  // Every waiting proposal is on exactly one page of the list, the open card among them.
+  await expect(page.getByRole('complementary').locator('button[aria-current="true"]')).toHaveCount(1)
   const seen = new Set<string>()
   const list = page.getByRole('complementary').getByRole('listitem')
   for (;;) {
@@ -367,14 +369,57 @@ test('the list beside the open card pages through every waiting proposal', async
     if (await pages.getByRole('button', { name: 'Next' }).isDisabled()) break
     await pages.getByRole('button', { name: 'Next' }).click()
   }
-  expect(seen.size).toBe(waiting - 1)
-  await expect(pages).toContainText(`of ${waiting - 1}`)
+  expect(seen.size).toBe(waiting)
+  await expect(pages).toContainText(`of ${waiting}`)
 
   // A card on a later page opens from there.
   const last = list.last()
   const lastTitle = (await last.textContent())!
   await last.getByRole('button').click()
   await expect(page.getByRole('article').getByRole('heading').first()).toContainText(lastTitle.slice(lastTitle.indexOf('Paged')))
+})
+
+test('work on a card is kept while another card is open, and a question added from a card can be read on at once', async ({ page, request }) => {
+  const stamp = Date.now()
+  const first = `Kept ${stamp} first`
+  const second = `Kept ${stamp} second`
+  const quote = 'I am for the free ferry, and for the card version too.'
+  await queueModelRead(request, { decider_id: 'demo-bartholomew-sato', quote, passage: `Sato said: ${quote}`, reading: 'support', weight: 'clear', kind: 'says' }, first)
+  await queueModelRead(request, { decider_id: 'demo-bartholomew-sato', quote: `${quote} Again.`, passage: `${quote} Again.`, reading: 'support', weight: 'clear', kind: 'says' }, second)
+
+  await openCard(page, first)
+  const entry = page.getByRole('region', { name: 'Bartholomew Sato' })
+  await entry.getByRole('button', { name: 'Related proposals' }).click()
+  await entry.getByRole('button', { name: 'Add a related question' }).click()
+  const shortName = `Free on weekends ${stamp}`
+  await entry.getByLabel('Short name').fill(shortName)
+  await entry.getByLabel('The question, as asked').fill('Should the ferry be free on weekends?')
+  await entry.getByRole('button', { name: 'Add the question' }).click()
+  // It starts with the entry's own reading, as a smaller step.
+  const onNew = entry.getByRole('radiogroup', { name: `${shortName}: which way it points` })
+  await expect(onNew.getByRole('radio', { name: 'Support' })).toBeChecked()
+  await entry.getByRole('radiogroup', { name: /^Which way it points on/ }).getByRole('radio', { name: 'Probable' }).click()
+
+  // Another card, then back: the list marks this one as started, and it is as it was left.
+  const list = page.getByRole('complementary')
+  const pagesNav = page.getByRole('navigation', { name: 'Pages of what is waiting' })
+  const find = async (title: string) => {
+    const row = list.getByRole('button').filter({ hasText: title })
+    while (!(await row.count()) && (await pagesNav.getByRole('button', { name: 'Next' }).isEnabled())) await pagesNav.getByRole('button', { name: 'Next' }).click()
+    return row
+  }
+  await (await find(second)).click()
+  await expect(page.getByRole('heading', { name: second })).toBeVisible()
+  const back = await find(first)
+  await expect(back).toContainText('started')
+  await back.click()
+  await expect(page.getByRole('heading', { name: first })).toBeVisible()
+  await expect(entry.getByRole('radiogroup', { name: /^Which way it points on/ }).getByRole('radio', { name: 'Probable' })).toBeChecked()
+
+  await page.getByRole('button', { name: /Publish 1 person/ }).click()
+  await expect(page.getByRole('status')).toContainText('Published 1 person')
+  await expect.poll(() => query(`SELECT rd.position FROM readings rd JOIN questions q ON q.id = rd.question_id WHERE q.short_title = '${shortName}'`)).toEqual([{ position: 'support' }])
+  expect(query(`SELECT r.kind FROM question_relations r JOIN questions q ON q.id = r.related_id WHERE q.short_title = '${shortName}' AND r.question_id = 'free-ferry'`)).toEqual([{ kind: 'smaller_step' }])
 })
 
 test('a lead whose article was not read says so, starts empty, and cannot be published until the words, both answers and a date are in', async ({ page, request }) => {
@@ -396,7 +441,7 @@ test('a lead whose article was not read says so, starts empty, and cannot be pub
   await expect(page.getByText('The site turned our reader away, so nothing on this card is filled in.')).toBeVisible()
   const entry = page.getByRole('region', { name: 'Ikenna Vasquez' })
   await expect(entry.getByLabel('The words, from the source')).toHaveValue('')
-  const direction = entry.getByRole('radiogroup', { name: 'Which way it points', exact: true })
+  const direction = entry.getByRole('radiogroup', { name: /^Which way it points on/ })
   const weight = entry.getByRole('radiogroup', { name: 'How much it counts' })
   await expect(direction.getByRole('radio', { checked: true })).toHaveCount(0)
   await expect(weight.getByRole('radio', { checked: true })).toHaveCount(0)
