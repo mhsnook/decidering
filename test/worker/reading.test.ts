@@ -38,7 +38,8 @@ afterEach(() => {
 })
 
 const FILLER = ' The committee met for several hours and heard from witnesses on both sides of the debate.'.repeat(4)
-const page = (body: string) => `<html><head><title>T</title></head><body><article><p>${body}</p><p>${FILLER}</p></article></body></html>`
+// Three paragraphs once converted to text: the title, the body and the filler.
+const page = (body: string) => `<html><head><title>T</title></head>\n<body><article><p>${body}</p>\n<p>${FILLER}</p></article></body></html>`
 
 type Act = Record<string, unknown>
 const act = (overrides: Act = {}): Act => ({
@@ -48,21 +49,22 @@ const act = (overrides: Act = {}): Act => ({
   quote: 'I will vote for this bill when it reaches the floor',
   occurred_on: '2026-11-16',
   position: 'support',
-  bearing: 'direct',
-  summary: 'Says she will vote for it.',
+  weight: 'clear',
   reason: 'A direct statement of how she will vote.',
   ...overrides,
 })
 
 // A run of the news search in which the search returns `hits` for the hot
 // question only, every page in `pages` can be fetched, and the model answers
-// `answer(url)`.
+// `answer(prompt)`. An answer that lists acts names nobody as only named
+// unless it says so.
 function stubbed({ hits, pages, answer }: { hits: SearchHit[]; pages: Record<string, string | number>; answer: (prompt: string) => unknown }) {
   const websearch = vi.fn(async ({ query }: { query: string }) => Response.json({ items: query.includes('"Hot Topic"') ? hits : [] }))
   const toMarkdown = vi.fn(async (doc: { blob: Blob }) => ({ format: 'text', data: (await doc.blob.text()).replace(/<[^>]+>/g, ' ') }))
   const run = vi.fn(async (_model: string, inputs: { messages: { content: string }[] }) => {
-    const reply = answer(inputs.messages[1].content)
-    if (reply instanceof Error) throw reply
+    const given = answer(inputs.messages[1].content)
+    if (given instanceof Error) throw given
+    const reply = typeof given === 'object' && given !== null && 'acts' in given ? { named_only: [], ...given } : given
     return { choices: [{ message: { role: 'assistant', content: typeof reply === 'string' ? reply : JSON.stringify(reply) } }] }
   })
   const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
@@ -79,10 +81,10 @@ const hit = (url: string, title = 'Ann Alpha on the plan'): SearchHit => ({ url,
 const tracker = () => getServerByName<Env, Tracker>(env.Tracker, 'main')
 
 const proposalsFor = (url: string) =>
-  rows<{ id: string; origin: string }>(`SELECT p.id, p.origin FROM proposals p JOIN sources s ON s.id = p.source_id WHERE s.url = ?`, url)
+  rows<{ id: string; origin: string; unread: string | null }>(`SELECT p.id, p.origin, p.unread FROM proposals p JOIN sources s ON s.id = p.source_id WHERE s.url = ?`, url)
 const itemsFor = (url: string) =>
   rows(
-    `SELECT i.decider_id, i.question_id, i.kind, i.occurred_on, i.quote, i.reading, i.bearing, i.position, i.summary
+    `SELECT i.decider_id, i.question_id, i.kind, i.occurred_on, i.quote, i.reading, i.weight, i.passage
      FROM proposal_items i JOIN proposals p ON p.id = i.proposal_id JOIN sources s ON s.id = p.source_id WHERE s.url = ? ORDER BY i.sort`,
     url,
   )
@@ -91,16 +93,25 @@ const notesFor = (url: string) =>
     `SELECT n.body, n.proposal_item_id IS NOT NULL AS on_item FROM proposal_notes n JOIN proposals p ON p.id = n.proposal_id JOIN sources s ON s.id = p.source_id WHERE s.url = ? ORDER BY on_item, n.body`,
     url,
   )
+const contextsFor = (url: string) =>
+  rows<{ decider_id: string; before: string; after: string }>(
+    `SELECT i.decider_id, c.before, c.after FROM proposal_contexts c JOIN proposal_items i ON i.id = c.proposal_item_id JOIN proposals p ON p.id = c.proposal_id AND p.id = i.proposal_id
+     JOIN sources s ON s.id = p.source_id WHERE s.url = ? ORDER BY i.sort`,
+    url,
+  )
+const mentionsFor = (url: string) =>
+  rows<{ decider_id: string; words: string }>(`SELECT m.decider_id, m.words FROM proposal_mentions m JOIN proposals p ON p.id = m.proposal_id JOIN sources s ON s.id = p.source_id WHERE s.url = ? ORDER BY m.decider_id`, url)
 const readsOf = (url: string) => rows<{ question_id: string; outcome: string; model: string | null; detail: string | null }>(`SELECT question_id, outcome, model, detail FROM article_reads WHERE url = ?`, url)
 
 describe('reading articles', () => {
   it('queues one proposal per article with an item per act whose words are in the article', async () => {
     const url = 'https://news.example/read-1'
+    const body = 'Ann Alpha said: “I will vote for this bill when it reaches the floor.” Bob Beta voted against the rule on Tuesday.'
     const s = stubbed({
       hits: [hit(url, 'Ann Alpha and Bob Beta on the plan')],
-      pages: { [url]: page('Ann Alpha said: “I will vote for this bill when it reaches the floor.” Bob Beta voted against the rule on Tuesday.') },
+      pages: { [url]: page(body) },
       answer: () => ({
-        acts: [act(), act({ person_id: 'bob', kind: 'does', quote: 'Bob Beta voted against the rule on Tuesday', occurred_on: '2026-11-18', position: 'lean_oppose', bearing: 'indirect', summary: 'Voted against the rule.', reason: 'The rule governs debate on the bill.' })],
+        acts: [act(), act({ person_id: 'bob', kind: 'does', quote: 'Bob Beta voted against the rule on Tuesday', occurred_on: '2026-11-18', position: 'oppose', weight: 'passing', reason: 'The rule governs debate on the bill.' })],
       }),
     })
     const report = await searchNews(s.env, await tracker(), NOW)
@@ -108,10 +119,11 @@ describe('reading articles', () => {
     expect(report.questions[0]).toMatchObject({ question: 'Hot Topic', read: 1, queued: 2 })
     expect(s.fetcher).toHaveBeenCalledTimes(1)
     expect(s.run).toHaveBeenCalledTimes(1)
-    expect(await proposalsFor(url)).toEqual([expect.objectContaining({ origin: 'model' })])
+    expect(await proposalsFor(url)).toEqual([expect.objectContaining({ origin: 'model', unread: null })])
+    // Each item carries the weight the model gave it and the paragraph its words sit in.
     expect(await itemsFor(url)).toEqual([
-      { decider_id: 'ann', question_id: 'hot', kind: 'says', occurred_on: '2026-11-16', quote: 'I will vote for this bill when it reaches the floor', reading: 'support', bearing: 'direct', position: null, summary: 'Says she will vote for it.' },
-      { decider_id: 'bob', question_id: 'hot', kind: 'does', occurred_on: '2026-11-18', quote: 'Bob Beta voted against the rule on Tuesday', reading: 'lean_oppose', bearing: 'indirect', position: null, summary: 'Voted against the rule.' },
+      { decider_id: 'ann', question_id: 'hot', kind: 'says', occurred_on: '2026-11-16', quote: 'I will vote for this bill when it reaches the floor', reading: 'support', weight: 'clear', passage: body },
+      { decider_id: 'bob', question_id: 'hot', kind: 'does', occurred_on: '2026-11-18', quote: 'Bob Beta voted against the rule on Tuesday', reading: 'oppose', weight: 'passing', passage: body },
     ])
     const notes = await notesFor(url)
     expect(notes[0]).toMatchObject({ on_item: 0 })
@@ -126,7 +138,7 @@ describe('reading articles', () => {
       const like = `%${reason}%`
       expect(
         await rows(
-          `SELECT 1 FROM proposal_items WHERE quote LIKE ?1 OR summary LIKE ?1
+          `SELECT 1 FROM proposal_items WHERE quote LIKE ?1 OR passage LIKE ?1
            UNION ALL SELECT 1 FROM proposals WHERE submitted_by LIKE ?1
            UNION ALL SELECT 1 FROM sources WHERE title LIKE ?1 OR url LIKE ?1`,
           like,
@@ -134,6 +146,30 @@ describe('reading articles', () => {
       ).toEqual([])
       expect(await rows(`SELECT 1 FROM proposal_notes WHERE body LIKE ?`, like)).toHaveLength(1)
     }
+  })
+
+  it('keeps the text either side of each passage, and the people only named, in tables only editors are sent', async () => {
+    const url = 'https://news.example/read-context-and-mentions'
+    const s = stubbed({
+      hits: [hit(url, 'Ann Alpha and Bob Beta on the plan')],
+      pages: { [url]: page('Ann Alpha said: “I will vote for this bill when it reaches the floor.” Bob Beta was absent.') },
+      answer: () => ({ acts: [act()], named_only: [{ person_id: 'bob', quote: 'Bob Beta was absent' }, { person_id: 'ann', quote: 'Ann Alpha said' }, { person_id: 'bob', quote: 'Bob Beta walked out' }] }),
+    })
+    await searchNews(s.env, await tracker(), NOW)
+    expect(await contextsFor(url)).toEqual([{ decider_id: 'ann', before: 'T', after: FILLER.trim() }])
+    expect(await mentionsFor(url)).toEqual([{ decider_id: 'bob', words: 'Bob Beta was absent' }])
+    expect(await rows(`SELECT 1 FROM proposal_items WHERE quote LIKE ?1 OR passage LIKE ?1`, '%The committee met%')).toEqual([])
+  })
+
+  it('gives the model the rules editors kept for the question', async () => {
+    const url = 'https://news.example/read-guidance'
+    await env.DB.prepare(`INSERT INTO question_guidance (id, question_id, body, created_at) VALUES ('g-hot', 'hot', 'A vote on the rule is a passing signal.', '2026-11-01T00:00:00Z'), ('g-cold', 'cold', 'A rule for another question.', '2026-11-01T00:00:00Z')`).run()
+    const s = stubbed({ hits: [hit(url)], pages: { [url]: page('Words.') }, answer: () => ({ acts: [] }) })
+    await searchNews(s.env, await tracker(), NOW)
+    const prompt = (s.run.mock.calls[0][1] as { messages: { content: string }[] }).messages[1].content
+    expect(prompt).toContain('- A vote on the rule is a passing signal.')
+    expect(prompt).not.toContain('A rule for another question.')
+    await env.DB.prepare(`DELETE FROM question_guidance`).run()
   })
 
   it('routes the search and the model through the app gateway', async () => {
@@ -197,17 +233,19 @@ describe('reading articles', () => {
   })
 
   it.each([
-    ['the site refuses the fetch', 403, () => ({ acts: [] }), 'The site answered 403.'],
-    ['the page has almost no text', '<html><body>Subscribe</body></html>', () => ({ acts: [] }), 'The page has almost no text'],
-    ['the model call fails', page('Words.'), () => new Error('3040: capacity'), 'The model call failed (Error: 3040: capacity).'],
-    ['the model answers with something that is not JSON', page('Words.'), () => 'Sure! Here are the acts:', "The model's answer did not fit the expected shape"],
-    ['the model answers in the wrong shape', page('Words.'), () => ({ statements: [] }), "The model's answer did not fit the expected shape"],
-  ])('falls back to the search excerpt when %s', async (name, body, answer, reason) => {
+    ['the site refuses the fetch', 403, () => ({ acts: [] }), 'The site answered 403.', 'refused'],
+    ['the page is gone', 404, () => ({ acts: [] }), 'The site answered 404.', 'unreachable'],
+    ['the page has almost no text', '<html><body>Subscribe</body></html>', () => ({ acts: [] }), 'The page has almost no text', 'no_text'],
+    ['the model call fails', page('Words.'), () => new Error('3040: capacity'), 'The model call failed (Error: 3040: capacity).', 'model_failed'],
+    ['the model answers with something that is not JSON', page('Words.'), () => 'Sure! Here are the acts:', "The model's answer did not fit the expected shape", 'model_failed'],
+    ['the model answers in the wrong shape', page('Words.'), () => ({ statements: [] }), "The model's answer did not fit the expected shape", 'model_failed'],
+    ['the model leaves out the people only named', page('Words.'), () => ({ acts: [], named_only: undefined }), "The model's answer did not fit the expected shape", 'model_failed'],
+  ])('falls back to the search excerpt, with why the article was not read, when %s', async (name, body, answer, reason, unread) => {
     const url = `https://news.example/read-fallback-${name.replaceAll(' ', '-')}`
     const s = stubbed({ hits: [hit(url)], pages: { [url]: body }, answer })
     await searchNews(s.env, await tracker(), NOW)
-    expect(await proposalsFor(url)).toEqual([expect.objectContaining({ origin: 'news_search' })])
-    expect(await itemsFor(url)).toEqual([expect.objectContaining({ decider_id: 'ann', reading: null, quote: 'Rep. Alpha spoke about the plan this week.' })])
+    expect(await proposalsFor(url)).toEqual([expect.objectContaining({ origin: 'news_search', unread })])
+    expect(await itemsFor(url)).toEqual([expect.objectContaining({ decider_id: 'ann', reading: null, weight: null, passage: null, quote: 'Rep. Alpha spoke about the plan this week.' })])
     expect((await notesFor(url))[0].body).toContain(`The article was not read: ${reason}`)
     expect(await readsOf(url)).toEqual([expect.objectContaining({ outcome: 'not_read', model: null })])
   })
@@ -273,7 +311,7 @@ describe('when queueing fails', () => {
   it('records an article whose every act was already proposed as having nothing new', async () => {
     const url = 'https://news.example/queue-nothing-new'
     const s = stubbed({ hits: [hit(url)], pages: { [url]: page('Ann Alpha said: “I will vote for this bill when it reaches the floor.”') }, answer: () => ({ acts: [act()] }) })
-    await searchNews(s.env, { propose: async () => ({ ok: true as const, queued: 0 }) }, NOW)
+    await searchNews(s.env, { propose: async () => ({ ok: true as const, queued: 0, proposal_id: null }) }, NOW)
     expect(await readsOf(url)).toEqual([expect.objectContaining({ outcome: 'no_acts' })])
   })
 })
@@ -375,7 +413,7 @@ describe('fetchArticle', () => {
   it('refuses a page whose declared size is over the limit, without reading it', async () => {
     serve(() => new Response(body(10), { headers: { 'content-type': 'text/html', 'content-length': String(MAX_BYTES + 1) } }))
     const AI = ai()
-    expect(await fetchArticle({ AI } as unknown as Env, 'https://news.example/huge')).toEqual({ ok: false, reason: 'The page is too large to read.' })
+    expect(await fetchArticle({ AI } as unknown as Env, 'https://news.example/huge')).toEqual({ ok: false, unread: 'not_an_article', reason: 'The page is too large to read.' })
     expect(AI.toMarkdown).not.toHaveBeenCalled()
   })
 
@@ -390,7 +428,7 @@ describe('fetchArticle', () => {
     })
     serve(() => new Response(stream, { headers: { 'content-type': 'text/html' } }))
     const AI = ai()
-    expect(await fetchArticle({ AI } as unknown as Env, 'https://news.example/endless')).toEqual({ ok: false, reason: 'The page is too large to read.' })
+    expect(await fetchArticle({ AI } as unknown as Env, 'https://news.example/endless')).toEqual({ ok: false, unread: 'not_an_article', reason: 'The page is too large to read.' })
     expect(sent).toBeLessThan(10)
     expect(AI.toMarkdown).not.toHaveBeenCalled()
   })
@@ -398,16 +436,44 @@ describe('fetchArticle', () => {
   it('refuses something that is not an article without converting it', async () => {
     serve(() => new Response(body(5000), { headers: { 'content-type': 'image/png' } }))
     const AI = ai()
-    expect(await fetchArticle({ AI } as unknown as Env, 'https://news.example/picture')).toMatchObject({ ok: false })
+    expect(await fetchArticle({ AI } as unknown as Env, 'https://news.example/picture')).toMatchObject({ ok: false, unread: 'not_an_article' })
     expect(AI.toMarkdown).not.toHaveBeenCalled()
   })
 
   it('reports a conversion that fails or throws as a page it could not read', async () => {
     serve(() => new Response(page('Words.'), { headers: { 'content-type': 'text/html' } }))
     const failing = { toMarkdown: async () => ({ format: 'error', error: 'unsupported' }) }
-    expect(await fetchArticle({ AI: failing } as unknown as Env, 'https://news.example/a')).toMatchObject({ ok: false, reason: expect.stringContaining('unsupported') })
+    expect(await fetchArticle({ AI: failing } as unknown as Env, 'https://news.example/a')).toMatchObject({ ok: false, unread: 'no_text', reason: expect.stringContaining('unsupported') })
     const throwing = { toMarkdown: async () => Promise.reject(new Error('binding down')) }
-    expect(await fetchArticle({ AI: throwing } as unknown as Env, 'https://news.example/a')).toMatchObject({ ok: false, reason: expect.stringContaining('binding down') })
+    expect(await fetchArticle({ AI: throwing } as unknown as Env, 'https://news.example/a')).toMatchObject({ ok: false, unread: 'no_text', reason: expect.stringContaining('binding down') })
+  })
+
+  it.each([401, 403, 429])('says the site refused when it answers %i', async (status) => {
+    serve(() => new Response('no', { status }))
+    expect(await fetchArticle({ AI: ai() } as unknown as Env, 'https://news.example/a')).toEqual({ ok: false, unread: 'refused', reason: `The site answered ${status}.` })
+  })
+
+  it.each([404, 500, 503])('says the page could not be reached when the site answers %i', async (status) => {
+    serve(() => new Response('no', { status }))
+    expect(await fetchArticle({ AI: ai() } as unknown as Env, 'https://news.example/a')).toEqual({ ok: false, unread: 'unreachable', reason: `The site answered ${status}.` })
+  })
+
+  it('says the page could not be reached when the fetch throws', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('connection reset'))
+    expect(await fetchArticle({ AI: ai() } as unknown as Env, 'https://news.example/a')).toMatchObject({ ok: false, unread: 'unreachable', reason: expect.stringContaining('connection reset') })
+  })
+
+  it('says the page gave no text when what is left of it is a few words', async () => {
+    serve(() => new Response('Subscribe to read this story.', { headers: { 'content-type': 'text/plain' } }))
+    expect(await fetchArticle({ AI: ai() } as unknown as Env, 'https://news.example/a')).toMatchObject({ ok: false, unread: 'no_text' })
+  })
+
+  it('reads a page of plain text without converting it', async () => {
+    const text = `Ann Alpha said she would vote for it.\n${FILLER.trim()}`
+    serve(() => new Response(text, { headers: { 'content-type': 'text/plain; charset=utf-8' } }))
+    const AI = ai()
+    expect(await fetchArticle({ AI } as unknown as Env, 'https://news.example/a')).toEqual({ ok: true, text, truncated: false })
+    expect(AI.toMarkdown).not.toHaveBeenCalled()
   })
 })
 
@@ -435,6 +501,13 @@ describe('dryRunArticle', () => {
     expect(result).toMatchObject({ outcome: 'acts', model: MODEL, people: ['Ann Alpha'] })
     expect('draft' in result && result.draft.items).toEqual([expect.objectContaining({ decider_id: 'ann', quote: 'I will vote for this bill when it reaches the floor' })])
     expect(await count()).toEqual(before)
+  })
+
+  it('says why when the article could not be read', async () => {
+    const url = 'https://news.example/dry-run-refused'
+    const s = stubbed({ hits: [], pages: { [url]: 403 }, answer: () => ({ acts: [] }) })
+    expect(await dryRunArticle(s.env, url, 'hot', NOW)).toMatchObject({ outcome: 'not_read', unread: 'refused', reason: 'The site answered 403.' })
+    expect(s.run).not.toHaveBeenCalled()
   })
 
   it('says so when the article names nobody on the roster', async () => {

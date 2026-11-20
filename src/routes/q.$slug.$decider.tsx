@@ -12,7 +12,7 @@ import { Modal } from '../components/Modal.tsx'
 import { AskStatus, CloseAsk, ClosedNote } from '../components/Asks.tsx'
 import { MergeAct, WithdrawAct } from '../components/MergeAct.tsx'
 import { isEditor } from '../lib/editor.ts'
-import { claimLabel, formatDate } from '../lib/position.ts'
+import { claimLabel, formatDate, standingLabel } from '../lib/position.ts'
 
 export const Route = createFileRoute('/q/$slug/$decider')({ component: DeciderOnQuestion })
 
@@ -94,7 +94,14 @@ function DeciderOnQuestion() {
           <p className="mt-4 text-sm text-muted">This measure is before the {question.chamber}, so it is not {decider.name}'s to sign.</p>
         ) : (
           <>
-            {me.stance?.summary && <p className="mt-4 text-lg">{me.stance.summary}</p>}
+            {me.set && (
+              <div className="mt-4 border-l-2 border-accent pl-3">
+                <p className="text-lg">{me.set.reason}</p>
+                <p className="mt-1 text-sm text-muted">
+                  Set by editors on {formatDate(me.set.set_at)}. The record alone works out to {standingLabel(me.calculated, question)}.
+                </p>
+              </div>
+            )}
             <p className="mt-2 text-sm text-muted">{FOOTING_HINT[me.footing]}</p>
           </>
         )}

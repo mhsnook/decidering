@@ -13,12 +13,20 @@ export const ACT_KINDS = ['says', 'commits', 'does'] as const
 export const actKindSchema = z.enum(ACT_KINDS)
 export type ActKind = z.infer<typeof actKindSchema>
 
-// How an act bears on the question it is read on. A vote on the bill itself is
-// direct. A vote on something else that tells you about this question is
-// indirect: a signal, but not being on the record here.
-export const BEARINGS = ['direct', 'indirect'] as const
-export const bearingSchema = z.enum(BEARINGS)
-export type Bearing = z.infer<typeof bearingSchema>
+// Which way one act points on a question. It is four of the five positions:
+// an act supports, supports in part or on conditions (lean_support), is mixed,
+// or is against. "Probably no" is only ever where a person is listed.
+export const DIRECTIONS = ['support', 'lean_support', 'mixed', 'oppose'] as const
+export const directionSchema = z.enum(DIRECTIONS)
+export type Direction = z.infer<typeof directionSchema>
+
+// How much an act counts on the question it is read on.
+//   passing   a remark in passing, or about something next to the question: a signal
+//   clear     says where they stand on this question in plain terms
+//   concrete  a vote, a signature, a pledge or another use of office
+export const WEIGHTS = ['passing', 'clear', 'concrete'] as const
+export const weightSchema = z.enum(WEIGHTS)
+export type Weight = z.infer<typeof weightSchema>
 
 export const SOURCE_KINDS = ['article', 'press_release', 'official_record', 'transcript', 'social_post'] as const
 
@@ -150,11 +158,13 @@ export const questionSchema = z.object({
   status: z.enum(['open', 'resolved', 'lapsed']),
   closed_on: z.string().nullable(),
   closed_note: z.string().nullable(),
+  // The day a decision is expected, if one is set.
+  decides_on: z.string().nullable(),
   // What doing the thing this sub-question asks about says on its parent: a
   // supporting reading here also writes this reading there, as cosponsoring a
   // bill is support for its policy and signing a letter against it is not.
   // null means a reading here says nothing about the parent.
-  implies_on_parent: positionSchema.nullable(),
+  implies_on_parent: directionSchema.nullable(),
 })
 export type Question = z.infer<typeof questionSchema>
 
@@ -168,15 +178,30 @@ export const questionDeciderSchema = z.object({
 })
 export type QuestionDecider = z.infer<typeof questionDeciderSchema>
 
-export const stanceSchema = z.object({
+// Links a question to a narrower version of it, or to a neighbouring one.
+// For a smaller step, `question_id` is the fuller proposal and `related_id`
+// the step: supporting the step is not supporting the whole.
+export const RELATION_KINDS = ['smaller_step', 'related'] as const
+export const questionRelationSchema = z.object({
+  id: z.string(),
+  question_id: z.string(),
+  related_id: z.string(),
+  kind: z.enum(RELATION_KINDS),
+  sort: z.number(),
+})
+export type QuestionRelation = z.infer<typeof questionRelationSchema>
+
+// A position editors set by hand. While a row exists the person is listed as
+// this, with the reason beside it, and not as their record works out.
+export const setPositionSchema = z.object({
   id: z.string(),
   question_id: z.string(),
   decider_id: z.string(),
   position: positionSchema,
-  summary: z.string().nullable(),
-  updated_at: z.string(),
+  reason: z.string(),
+  set_at: z.string(),
 })
-export type Stance = z.infer<typeof stanceSchema>
+export type SetPosition = z.infer<typeof setPositionSchema>
 
 export const sourceSchema = z.object({
   id: z.string(),
@@ -212,6 +237,8 @@ export const reportSchema = z.object({
   source_id: z.string(),
   act_id: z.string(),
   excerpt: z.string().nullable(),
+  // The passage of the source the act's words sit in.
+  passage: z.string().nullable(),
   created_at: z.string(),
 })
 export type Report = z.infer<typeof reportSchema>
@@ -220,8 +247,8 @@ export const readingSchema = z.object({
   id: z.string(),
   act_id: z.string(),
   question_id: z.string(),
-  position: positionSchema,
-  bearing: bearingSchema,
+  position: directionSchema,
+  weight: weightSchema,
   // Set on a reading written because a sub-question implies support on this one.
   via_question_id: z.string().nullable(),
   created_at: z.string(),
@@ -230,12 +257,17 @@ export type Reading = z.infer<typeof readingSchema>
 
 export const PROPOSAL_ORIGINS = ['reader', 'news_search', 'partner', 'model'] as const
 
+export const UNREAD_REASONS = ['refused', 'unreachable', 'not_an_article', 'no_text', 'model_failed'] as const
+export type UnreadReason = (typeof UNREAD_REASONS)[number]
+
 export const proposalSchema = z.object({
   id: z.string(),
   source_id: z.string(),
   origin: z.enum(PROPOSAL_ORIGINS),
   submitted_by: z.string().nullable(),
   status: z.enum(['pending', 'reviewed']),
+  // Why a lead's article was not read. null when it was read, or never fetched.
+  unread: z.enum(UNREAD_REASONS).nullable(),
   created_at: z.string(),
   reviewed_at: z.string().nullable(),
 })
@@ -254,11 +286,11 @@ export const proposalItemSchema = z.object({
   kind: actKindSchema,
   occurred_on: z.string().nullable(),
   quote: z.string(),
-  // null on a news-search lead: a search hit names a person, not a position.
-  reading: positionSchema.nullable(),
-  bearing: bearingSchema,
-  position: positionSchema.nullable(),
-  summary: z.string().nullable(),
+  // The passage of the source the quote sits in, when the article was read.
+  passage: z.string().nullable(),
+  // Both null on a news-search lead: a search hit names a person, not a position.
+  reading: directionSchema.nullable(),
+  weight: weightSchema.nullable(),
   status: z.enum(['pending', 'accepted', 'rejected']),
 })
 export type ProposalItem = z.infer<typeof proposalItemSchema>
@@ -272,6 +304,25 @@ export const proposalNoteSchema = z.object({
   created_at: z.string(),
 })
 export type ProposalNote = z.infer<typeof proposalNoteSchema>
+
+// The text either side of an item's passage in the article it was read from.
+export const proposalContextSchema = z.object({
+  id: z.string(),
+  proposal_id: z.string(),
+  proposal_item_id: z.string(),
+  before: z.string(),
+  after: z.string(),
+})
+export type ProposalContext = z.infer<typeof proposalContextSchema>
+
+// Someone the article was read for and names, with nothing to record.
+export const proposalMentionSchema = z.object({
+  id: z.string(),
+  proposal_id: z.string(),
+  decider_id: z.string(),
+  words: z.string(),
+})
+export type ProposalMention = z.infer<typeof proposalMentionSchema>
 
 // What the archiving pass records about a source in archive_attempts.
 export type ArchiveOutcome = 'archived' | 'requested' | 'failed' | 'no_key' | 'gave_up'
@@ -291,7 +342,7 @@ export const proposalInputSchema = z.object({
   question_id: z.string().min(1),
   decider_id: z.string().min(1),
   kind: actKindSchema,
-  reading: positionSchema,
+  reading: directionSchema,
   quote: z.string().trim().min(10).max(2000),
   source_url: webAddressSchema,
   source_title: z.string().trim().max(300).nullable(),
@@ -305,9 +356,14 @@ export type ProposalInput = z.infer<typeof proposalInputSchema>
 export type ProposalDraft = {
   source: { url: string; title: string | null }
   note: string | null
+  unread?: UnreadReason
   items: (Pick<ProposalItem, 'question_id' | 'decider_id' | 'kind' | 'occurred_on' | 'quote' | 'reading'> &
-    Partial<Pick<ProposalItem, 'bearing' | 'summary'>> & { note?: string | null })[]
+    Partial<Pick<ProposalItem, 'weight' | 'passage'>> & { note?: string | null; context?: { before: string; after: string } })[]
+  mentions?: { decider_id: string; words: string }[]
 }
+
+// What an act of a kind counts as until someone says otherwise.
+export const usualWeight = (kind: ActKind): Weight => (kind === 'says' ? 'clear' : 'concrete')
 
 // Whether a question is still open on a day. A closing date can lie ahead: a
 // bill is known to die when its Congress ends.
@@ -352,7 +408,8 @@ export const publicCollections = [
   definePartyCollection({ name: 'offices', key: 'id', schema: officeSchema, access: editorWrites }),
   definePartyCollection({ name: 'office_holders', key: 'id', schema: officeHolderSchema, access: editorWrites }),
   definePartyCollection({ name: 'question_offices', key: 'id', schema: questionOfficeSchema, access: editorWrites }),
-  definePartyCollection({ name: 'stances', key: 'id', schema: stanceSchema, access: editorWrites }),
+  definePartyCollection({ name: 'question_relations', key: 'id', schema: questionRelationSchema, access: editorWrites }),
+  definePartyCollection({ name: 'set_positions', key: 'id', schema: setPositionSchema, access: editorWrites }),
   definePartyCollection({ name: 'sources', key: 'id', schema: sourceSchema, access: editorWrites }),
   definePartyCollection({ name: 'acts', key: 'id', schema: actSchema, access: editorWrites }),
   definePartyCollection({ name: 'reports', key: 'id', schema: reportSchema, access: editorWrites }),
@@ -393,6 +450,28 @@ export const commentsCollection = definePartyCollection({
   access: { read: 'public', delete: 'authed' },
 })
 
-export const allCollections = [...publicCollections, proposalsCollection, proposalItemsCollection, proposalNotesCollection, commentsCollection] as const
+// One thing editors told the librarian about reading a question.
+export const questionGuidanceSchema = z.object({
+  id: z.string(),
+  question_id: z.string(),
+  body: z.string(),
+  created_at: z.string(),
+})
+export type QuestionGuidance = z.infer<typeof questionGuidanceSchema>
 
-export const stanceId = (questionId: string, deciderId: string) => `${questionId}:${deciderId}`
+export const questionGuidanceCollection = definePartyCollection({ name: 'question_guidance', key: 'id', schema: questionGuidanceSchema, access: 'authed' })
+export const proposalContextsCollection = definePartyCollection({ name: 'proposal_contexts', key: 'id', schema: proposalContextSchema, access: 'authed' })
+export const proposalMentionsCollection = definePartyCollection({ name: 'proposal_mentions', key: 'id', schema: proposalMentionSchema, access: 'authed' })
+
+export const allCollections = [
+  ...publicCollections,
+  proposalsCollection,
+  proposalItemsCollection,
+  proposalNotesCollection,
+  proposalContextsCollection,
+  proposalMentionsCollection,
+  questionGuidanceCollection,
+  commentsCollection,
+] as const
+
+export const pairId = (questionId: string, deciderId: string) => `${questionId}:${deciderId}`

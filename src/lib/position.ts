@@ -1,4 +1,4 @@
-import type { Position, Question, ActKind, Role } from '../../shared/schema.ts'
+import type { ActKind, Direction, Position, Question, Role, UnreadReason, Weight } from '../../shared/schema.ts'
 
 export type Standing = Position | 'unknown'
 
@@ -13,7 +13,43 @@ export const POSITION_LABEL: Record<Position, string> = {
   oppose: 'No',
 }
 
-// On a formal-act question a stance records the act, so its absence is a known "no".
+// What one act shows, in the review form. A person is listed as "Probably
+// yes"; an act that supports part of a proposal is "Partial".
+export const DIRECTION_LABEL: Record<Direction, string> = {
+  support: 'Support',
+  lean_support: 'Partial',
+  mixed: 'Mixed',
+  oppose: 'Against',
+}
+
+export const WEIGHT_LABEL: Record<Weight, string> = {
+  passing: 'Passing',
+  clear: 'Clear',
+  concrete: 'Concrete',
+}
+
+export const WEIGHT_HINT: Record<Weight, string> = {
+  passing: 'Passing: a remark in passing, or about something next to the question. Shows as a signal.',
+  clear: 'Clear: says where they stand on this question in plain terms.',
+  concrete: 'Concrete: a vote, a signature, a pledge or another use of office. Puts them on the record.',
+}
+
+// An act of each kind, as a noun in a sentence.
+export const KIND_NOUN: Record<ActKind, string> = {
+  says: 'statement',
+  commits: 'commitment',
+  does: 'action',
+}
+
+export const UNREAD_TEXT: Record<UnreadReason, string> = {
+  refused: 'The site turned our reader away',
+  unreachable: 'The page could not be reached',
+  not_an_article: 'The page is not something our reader can read',
+  no_text: 'The page gave our reader almost no text, which usually means a paywall',
+  model_failed: 'The model did not return a reading',
+}
+
+// On a formal-act question the record says whether they did it, so its absence is a known "no".
 export function standingLabel(standing: Standing, question: Pick<Question, 'kind' | 'act_label'>): string {
   if (standing === 'unknown') return question.kind === 'formal_act' ? 'Has not' : 'No record yet'
   if (question.kind === 'formal_act' && standing === 'support') return question.act_label ?? 'Signed on'

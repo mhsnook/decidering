@@ -58,7 +58,7 @@ function Board() {
     const inc = r.incumbent
     if (search.standing && inc.standing !== search.standing) return false
     if (search.thin && !NEEDS_ATTENTION.has(inc.footing)) return false
-    if (search.contested && !others(r).some((c) => c.stance)) return false
+    if (search.contested && !others(r).some((c) => c.standing !== 'unknown')) return false
     if (needle) {
       const haystack = [inc.decider.name, r.seat.label, inc.role.affiliation, ...others(r).map((c) => c.decider.name)].join(' ').toLowerCase()
       if (!haystack.includes(needle)) return false

@@ -1,11 +1,16 @@
 import { useState, type FormEvent } from 'react'
-import { ACT_KINDS, POSITIONS, type Decider, type Question } from '../../shared/schema.ts'
-import { KIND_CHOICE, POSITION_LABEL } from '../lib/position.ts'
+import { ACT_KINDS, DIRECTIONS, type Decider, type Direction, type Question } from '../../shared/schema.ts'
+import { isAcross } from '../../shared/standing.ts'
+import { DIRECTION_LABEL, KIND_CHOICE } from '../lib/position.ts'
+import { useTracker } from '../lib/tracker.tsx'
+import { AcrossNotice } from './Story.tsx'
 
-type State = { status: 'idle' | 'sending' } | { status: 'sent'; duplicate: boolean } | { status: 'error'; message: string }
+type State = { status: 'idle' | 'sending' } | { status: 'sent'; duplicate: boolean; proposalId: string | null; reading: Direction } | { status: 'error'; message: string }
 
 export function SubmitEvidence({ question, decider, onDone }: { question: Question; decider: Decider; onDone: () => void }) {
   const [state, setState] = useState<State>({ status: 'idle' })
+  const [copied, setCopied] = useState(false)
+  const { tracker } = useTracker()
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -30,20 +35,47 @@ export function SubmitEvidence({ question, decider, onDone }: { question: Questi
           website: text('website'),
         }),
       })
-      const body = (await res.json()) as { error?: string; duplicate?: boolean }
+      const body = (await res.json()) as { error?: string; duplicate?: boolean; proposal_id?: string | null }
       if (!res.ok) return setState({ status: 'error', message: body.error ?? 'Something went wrong.' })
+      const reading = f.get('reading') as Direction
       form.reset()
-      setState({ status: 'sent', duplicate: !!body.duplicate })
+      setState({ status: 'sent', duplicate: !!body.duplicate, proposalId: body.proposal_id ?? null, reading })
     } catch {
       setState({ status: 'error', message: 'Could not reach the server. Try again in a moment.' })
     }
   }
 
   if (state.status === 'sent') {
+    const set = tracker.listingFor(question, decider.id).set
+    const link = state.proposalId ? `${window.location.origin}/latest#proposal-${state.proposalId}` : null
     return (
-      <div className="rounded-lg border border-support/50 bg-support/10 p-4 text-sm">
-        <p className="font-semibold">{state.duplicate ? 'We already have that source in the queue.' : 'Thanks. An editor will check it against the source.'}</p>
-        <div className="mt-3 flex gap-2">
+      <div className="flex flex-col gap-3.5 rounded-2xl border-2 border-dashed border-ink bg-paper p-4 text-sm">
+        <div>
+          <p className="tag text-muted">{state.duplicate ? 'Already in the queue' : 'Sent · not checked yet'}</p>
+          <p className="mt-1 font-display text-[22px] leading-[1.15] font-black">{state.duplicate ? 'We already have that source in the queue.' : 'Thank you. Your report is waiting for an editor.'}</p>
+        </div>
+        {!state.duplicate && set && isAcross(set.position, state.reading) && <AcrossNotice decider={decider} question={question} set={set} yours />}
+        {link && (
+          <div className="flex flex-col gap-2.5">
+            <p className="text-[15px] leading-normal">Others can check it too. Send them the link: they can compare the words with the source and say what is wrong in the discussion on {decider.name}’s page.</p>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => {
+                  void navigator.clipboard.writeText(link).then(() => {
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 2000)
+                  })
+                }}
+              >
+                {copied ? 'Link copied' : 'Copy link'}
+              </button>
+              <span className="font-mono text-[13px] break-all text-muted">{link.replace(/^https?:\/\//, '')}</span>
+            </div>
+          </div>
+        )}
+        <div className="flex gap-2">
           <button
             type="button"
             className="btn btn-primary"
@@ -106,9 +138,9 @@ export function SubmitEvidence({ question, decider, onDone }: { question: Questi
             What it shows
           </label>
           <select id="reading" name="reading" className="field">
-            {POSITIONS.map((p) => (
-              <option key={p} value={p}>
-                {POSITION_LABEL[p]}
+            {DIRECTIONS.map((d) => (
+              <option key={d} value={d}>
+                {DIRECTION_LABEL[d]}
               </option>
             ))}
           </select>
