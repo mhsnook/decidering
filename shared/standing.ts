@@ -75,6 +75,7 @@ const newestOf = (reads: Read[]) => {
 //      result one step toward the middle.
 //   4. With no concrete act, the most recent clear statement is where they stand.
 //   5. Passing remarks count only when there is nothing else, and then only as a lean.
+//   6. What someone else says of them counts only when there is nothing of their own, also as a lean.
 export function calculatePosition(reads: Read[]): Position | null {
   const counted = reads.filter((r) => r.inForce)
   const concrete = counted.filter((r) => r.weight === 'concrete')
@@ -87,9 +88,10 @@ export function calculatePosition(reads: Read[]): Position | null {
     return since.length && since.some((r) => sideOf(r.position) !== sideOf(base)) ? TOWARD_MIDDLE[base] : base
   }
   if (clear.length) return together(newestOf(clear).map((r) => r.position))
-  const passing = newestOf(counted)
-  if (!passing.length) return null
-  const side = together(passing.map((r) => r.position))
+  const passing = counted.filter((r) => r.weight === 'passing')
+  const least = newestOf(passing.length ? passing : counted)
+  if (!least.length) return null
+  const side = together(least.map((r) => r.position))
   return side === 'support' ? 'lean_support' : side === 'oppose' ? 'lean_oppose' : side
 }
 

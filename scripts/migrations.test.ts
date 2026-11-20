@@ -491,3 +491,30 @@ describe('the seed', () => {
     })
   })
 })
+
+describe('0013_presumed_weight', () => {
+  const db = database('0013')
+  db.exec(`
+    INSERT INTO bodies (id, slug, name) VALUES ('b', 'b', 'Body');
+    INSERT INTO deciders (id, slug, name, sort_name) VALUES ('ann', 'ann', 'Ann', 'Ann');
+    INSERT INTO questions (id, slug, body_id, kind, title, short_title) VALUES ('policy', 'policy', 'b', 'position', 'Policy?', 'Policy');
+    INSERT INTO sources (id, url, created_at) VALUES ('s', 'https://news.example/a', '2026-01-01');
+    INSERT INTO acts (id, decider_id, kind, occurred_on, body, created_at) VALUES ('a', 'ann', 'does', '2026-01-01', 'Voted.', '2026-01-01');
+    INSERT INTO readings (id, act_id, question_id, position, weight, created_at) VALUES ('r', 'a', 'policy', 'support', 'concrete', '2026-01-01');
+    INSERT INTO proposals (id, source_id, origin, created_at) VALUES ('p', 's', 'model', '2026-01-01');
+    INSERT INTO proposal_items (id, proposal_id, decider_id, question_id, act_id, kind, quote, reading, weight) VALUES
+      ('read', 'p', 'ann', 'policy', 'x', 'says', 'Words.', 'support', 'passing'), ('lead', 'p', 'ann', 'policy', 'y', 'says', 'Excerpt.', NULL, NULL);
+  `)
+  db.exec(migration('0013_presumed_weight.sql'))
+
+  it('keeps every weight as it was, a lead still having none', () => {
+    expect(all(db, `SELECT weight FROM readings`)).toEqual([{ weight: 'concrete' }])
+    expect(all(db, `SELECT id, weight FROM proposal_items ORDER BY id`)).toEqual([{ id: 'lead', weight: null }, { id: 'read', weight: 'passing' }])
+  })
+
+  it('takes a presumed weight, and still refuses one that is not a weight', () => {
+    db.exec(`UPDATE readings SET weight = 'presumed'; UPDATE proposal_items SET weight = 'presumed' WHERE id = 'read'`)
+    expect(() => db.exec(`UPDATE readings SET weight = 'heavy'`)).toThrow()
+    expect(() => db.exec(`UPDATE proposal_items SET weight = 'heavy' WHERE id = 'read'`)).toThrow()
+  })
+})

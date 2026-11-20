@@ -25,6 +25,8 @@ export type EntryDraft = {
   // The item whose surrounding text the passage dialog shows.
   contextItemId: string | null
   reading: Direction | null
+  // The act says nothing on the entry's own question, only on the related ones it is read on.
+  mainSkipped: boolean
   weight: Weight | null
   // Readings on other questions, by question id. null is "none".
   related: Record<string, Direction | null>
@@ -68,6 +70,7 @@ export function draftEntries(items: ProposalItem[]): EntryDraft[] {
       passage: item.passage,
       contextItemId: item.id,
       reading: item.reading,
+      mainSkipped: false,
       weight: item.weight,
       related: {},
       dismissed: item.status === 'rejected',
@@ -93,6 +96,7 @@ export function addedEntry(first: EntryDraft, copiedFrom: string, newId: () => s
     newActId: actId,
     items: [],
     quote: '',
+    mainSkipped: false,
     related: { ...first.related },
     dismissed: false,
     note: '',
@@ -107,11 +111,10 @@ export function addedEntry(first: EntryDraft, copiedFrom: string, newId: () => s
 export const reportingAct = (entry: EntryDraft, act: Act | null): EntryDraft =>
   act ? { ...entry, act_id: act.id, kind: act.kind, occurred_on: act.occurred_on } : { ...entry, act_id: entry.newActId }
 
-// The entry read on another question in place of the one it came on. A reading
-// already given there is kept; otherwise the entry's reading moves with it.
-export function movedTo(entry: EntryDraft, questionId: string): EntryDraft {
-  const { [questionId]: there, ...related } = entry.related
-  return { ...entry, question_id: questionId, reading: there ?? entry.reading, related }
+// An entry for someone the source only describes: what it says of them, to be
+// counted as presumed, with no answer filled in.
+export function presumedEntry(first: EntryDraft, deciderId: string, words: string, newId: () => string = () => crypto.randomUUID()): EntryDraft {
+  return { ...addedEntry(first, '', newId), decider_id: deciderId, kind: 'says', quote: words, passage: null, contextItemId: null, reading: null, weight: 'presumed', related: {}, copiedFrom: null }
 }
 
 // A concrete reading is a commitment or a use of office, so words become an act.
@@ -121,7 +124,8 @@ export const withWeight = (entry: EntryDraft, weight: Weight): EntryDraft => ({ 
 export function missingFrom(entry: EntryDraft): string | null {
   if (!entry.decider_id) return 'the person'
   if (!entry.quote.trim()) return 'the words'
-  if (!entry.reading || !entry.weight) return 'both answers'
+  const isRead = entry.mainSkipped ? Object.values(entry.related).some((r) => r !== null) : entry.reading !== null
+  if (!isRead || !entry.weight) return 'both answers'
   if (!entry.occurred_on) return 'the date'
   return null
 }
@@ -158,7 +162,8 @@ export type Outlook = {
 
 // Where publishing this entry's reading on a question would leave the person.
 // `then` is null until both answers are in.
-export function outlook(tracker: Pick<Tracker, 'actById' | 'listingFor' | 'recordFor'>, entry: EntryDraft, question: Question, reading: Direction | null): Outlook {
+export function outlook(tracker: Pick<Tracker, 'actById' | 'listingFor' | 'recordFor'>, entry: EntryDraft, question: Question, given: Direction | null): Outlook {
+  const reading = entry.mainSkipped && question.id === entry.question_id ? null : given
   const deciderId = entry.decider_id ?? ''
   const now = tracker.listingFor(question, deciderId)
   if (!reading || !entry.weight || !entry.decider_id) return { now, then: null, across: undefined }
@@ -222,7 +227,7 @@ export function verdictOf(drafts: EntryDraft[], reviewNote: string, decide: (ent
       passage: d.passage,
       weight: d.weight!,
       readings: [
-        { question_id: d.question_id, reading: d.reading!, item: itemOn(d.question_id) },
+        ...(d.mainSkipped ? [] : [{ question_id: d.question_id, reading: d.reading!, item: itemOn(d.question_id) }]),
         ...Object.entries(d.related).flatMap(([question_id, reading]) => (reading ? [{ question_id, reading, item: itemOn(question_id) }] : [])),
       ],
       decision,

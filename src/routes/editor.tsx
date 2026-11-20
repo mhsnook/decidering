@@ -12,7 +12,7 @@ import { useTracker } from '../lib/tracker.tsx'
 import { sourceLabel } from '../lib/position.ts'
 import { Syncing, Token } from '../components/bits.tsx'
 import { Reveal } from '../components/review/Reveal.tsx'
-import { ReviewCard, upNextLine } from '../components/review/ReviewCard.tsx'
+import { ReviewCard } from '../components/review/ReviewCard.tsx'
 
 export const Route = createFileRoute('/editor')({ component: Editor })
 
@@ -211,6 +211,7 @@ function Queue() {
                   const names = [...new Set(items.map((i) => tracker.deciderById.get(i.decider_id)?.name ?? i.decider_id))]
                   const accepted = items.filter((i) => i.status === 'accepted').length
                   const across = p.status === 'pending' && isAcross(p.id)
+                  const source = tracker.sourceById.get(p.source_id)
                   const unread = p.origin === 'news_search' && items.every((i) => i.reading === null)
                   return (
                     <li key={p.id}>
@@ -223,13 +224,16 @@ function Queue() {
                         <Token standing={items.find((i) => i.reading)?.reading ?? 'unknown'} className="mt-0.5 size-[22px]" />
                         <span className="min-w-0 flex-1">
                           <span className="flex items-baseline justify-between gap-2 font-bold">
-                            <span className="truncate">{names.join(', ')}</span>
+                            <span className="line-clamp-2 leading-snug">{source ? sourceLabel(source) : 'A source that no longer exists'}</span>
                             {p.id === selected.id ? <span className="tag shrink-0">open</span> : started[p.id] && <span className="tag shrink-0 text-accent">started</span>}
                             {p.status !== 'pending' && (
                               <span className="tag shrink-0">{accepted === 0 ? 'dismissed' : accepted === items.length ? 'published' : `${accepted} of ${items.length} published`}</span>
                             )}
                           </span>
-                          <span className="mt-0.5 line-clamp-1 text-sm leading-snug text-muted sm:line-clamp-2">{upNextLine(tracker.sourceById.get(p.source_id), p, items, across)}</span>
+                          <span className="mt-0.5 line-clamp-1 text-sm leading-snug text-muted sm:line-clamp-2">
+                            {across ? 'Contradicts our recorded position · ' : unread ? 'Not read · ' : ''}
+                            {names.join(', ')}
+                          </span>
                         </span>
                       </button>
                     </li>

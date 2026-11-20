@@ -1,4 +1,5 @@
 import {
+  carriesUp,
   pairId,
   type Act,
   type ActKind,
@@ -159,9 +160,9 @@ export function planReview(
       if (!question) throw new Error(`Unknown question ${r.question_id}`)
       read(entry.act_id, question.id, r.reading, entry.weight, null)
       // Doing the thing a sub-question asks about says something on its parent
-      // too, if the sub-question says what. A passing reading is too loose to
-      // carry upward.
-      if (question.implies_on_parent && question.parent_id && r.reading === 'support' && entry.weight !== 'passing') {
+      // too, if the sub-question says what. A passing or presumed reading is too loose
+      // to carry upward.
+      if (question.implies_on_parent && question.parent_id && r.reading === 'support' && carriesUp(entry.weight)) {
         read(entry.act_id, question.parent_id, question.implies_on_parent, entry.weight, question.id)
       }
       if (r.item) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { PositionDecision } from './review-plan.ts'
-import { addedEntry, decisionOf, dateOffer, draftEntries, missingFrom, movedTo, outlook, relatedChoices, relatedQuestionRows, reportingAct, verdictOf, withWeight, type EntryDraft } from './review-form.ts'
+import { addedEntry, decisionOf, dateOffer, draftEntries, missingFrom, outlook, presumedEntry, relatedChoices, relatedQuestionRows, reportingAct, verdictOf, withWeight, type EntryDraft } from './review-form.ts'
 import { act, decider, item, link, proposal, question, reading, relation, role, seat, setPosition, source, track } from './fixtures.ts'
 
 
@@ -406,21 +406,30 @@ describe('reportingAct', () => {
   })
 })
 
-describe('movedTo', () => {
+describe('an entry that leaves its own question out', () => {
   const onPolicy = item('i1', 'p1', 'ann', 'policy', { act_id: 'a', reading: 'support', weight: 'clear', occurred_on: '2026-11-10' })
   const onMarkup = item('i2', 'p1', 'ann', 'markup', { act_id: 'a', sort: 1, reading: 'oppose', weight: 'clear', occurred_on: '2026-11-10' })
 
-  it('reads the entry on the other question only, with the reading it was given there', () => {
-    const moved = movedTo(draftEntries([onPolicy, onMarkup])[0], 'markup')
-    expect(moved).toMatchObject({ question_id: 'markup', reading: 'oppose', related: {} })
-    const [entry] = verdictOf([moved], '').entries
+  it('is published on the related questions only, and still holds the item it left so the plan dismisses it', () => {
+    const skipped = { ...draftEntries([onPolicy, onMarkup])[0], mainSkipped: true }
+    const [entry] = verdictOf([skipped], '').entries
     expect(entry.publish && entry.readings).toEqual([{ question_id: 'markup', reading: 'oppose', item: onMarkup }])
-    // The item on the question it left is still the entry's, so the plan dismisses it.
     expect(entry.items).toEqual([onPolicy, onMarkup])
   })
 
-  it('carries the entry’s reading to a question it had none on', () => {
-    expect(movedTo(draftEntries([onPolicy])[0], 'markup')).toMatchObject({ question_id: 'markup', reading: 'support', related: {} })
+  it('cannot be published with no related question read either', () => {
+    const skipped = { ...draftEntries([onPolicy])[0], mainSkipped: true }
+    expect(missingFrom(skipped)).toBe('both answers')
+    expect(() => verdictOf([skipped], '')).toThrow('both answers')
+  })
+})
+
+describe('presumedEntry', () => {
+  it('starts from what the source says of someone, counted as presumed, with no answer and no passage', () => {
+    const first = draftEntries([item('i1', 'p1', 'ann', 'policy', { reading: 'support', weight: 'clear', occurred_on: '2026-11-10', passage: 'Ann said so.', quote: 'Ann said so.' })])[0]
+    const made = presumedEntry(first, 'bob', 'does not support it', () => 'new')
+    expect(made).toMatchObject({ decider_id: 'bob', items: [], quote: 'does not support it', passage: null, reading: null, weight: 'presumed', kind: 'says', occurred_on: '2026-11-10', related: {} })
+    expect(missingFrom(made)).toBe('both answers')
   })
 })
 

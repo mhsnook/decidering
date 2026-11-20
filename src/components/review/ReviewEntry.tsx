@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 're
 import { ACT_KINDS, DIRECTIONS, POSITIONS, WEIGHTS, type Direction, type Position, type Proposal, type ProposalContext, type Question, type Source } from '../../../shared/schema.ts'
 import { useTracker } from '../../lib/tracker.tsx'
 import { addRelatedQuestion } from '../../lib/review.ts'
-import { missingFrom, movedTo, outlook, relatedChoices, relatedQuestionRows, reportingAct, withWeight, type EntryDraft, type RelatedChoice } from '../../lib/review-form.ts'
+import { missingFrom, outlook, relatedChoices, relatedQuestionRows, reportingAct, withWeight, type EntryDraft, type RelatedChoice } from '../../lib/review-form.ts'
 import { DIRECTION_LABEL, KIND_CHOICE, KIND_LABEL, KIND_NOUN, STANDING_BG, WEIGHT_HINT, WEIGHT_LABEL, formatDate, hostOf, sourceLabel, standingLabel, type Standing } from '../../lib/position.ts'
 import { Token } from '../bits.tsx'
 import { Marked, RecordItem, splitPassage } from '../RecordItem.tsx'
@@ -94,6 +94,7 @@ export function ReviewEntry({
   notes,
   roster,
   dateOffer,
+  continued,
   readOnly,
 }: {
   entry: EntryDraft
@@ -108,6 +109,8 @@ export function ReviewEntry({
   roster: { id: string; name: string }[]
   // A date to offer when the entry came with none.
   dateOffer: { date: string; from: 'source' | 'proposal' }
+  // The entry above is another act by the same person.
+  continued: boolean
   readOnly: boolean
 }) {
   const { tracker } = useTracker()
@@ -180,14 +183,7 @@ export function ReviewEntry({
   const relatedRow = (choice: RelatedChoice, looks: 'solid' | 'dashed') => {
     const value = entry.related[choice.question.id] ?? null
     const picking = looks === 'solid' || value !== null || choice.question.id in entry.related
-    const buttons = (
-      <>
-        <DirectionButtons small withNone value={value} onPick={(d) => setRelated(choice.question.id, d)} label={`${choice.question.short_title}: which way it points`} />
-        <button type="button" onClick={() => onChange(movedTo(entry, choice.question.id))} className={`${LINK} self-start text-[13px]`}>
-          It is about {choice.question.short_title} only, not {question.short_title}
-        </button>
-      </>
-    )
+    const buttons = <DirectionButtons small withNone value={value} onPick={(d) => setRelated(choice.question.id, d)} label={`${choice.question.short_title}: which way it points`} />
     return looks === 'solid' ? (
       <div key={choice.question.id} className="flex flex-col gap-3 rounded-xl border-2 border-ink bg-surface p-[15px] shadow-hard-sm">
         <div className="flex items-start justify-between gap-2">
@@ -221,7 +217,7 @@ export function ReviewEntry({
           </span>
         </div>
         <Reveal open={picking}>
-          <div className="flex flex-col gap-3 pt-[13px] pb-1">{buttons}</div>
+          <div className="pt-[13px] pb-1">{buttons}</div>
         </Reveal>
       </div>
     )
@@ -262,18 +258,20 @@ export function ReviewEntry({
 
       <Reveal open={!entry.dismissed}>
         <div className="flex flex-col gap-[18px] px-3 py-6">
-          <div className="flex items-start gap-3">
-            <Token standing={then ?? 'unknown'} className={`size-10 transition-colors duration-300 ${then && then !== 'unknown' ? 'shadow-hard-sm' : ''}`} />
+          <div className={`flex gap-3 ${continued ? 'items-center' : 'items-start'}`}>
+            <Token standing={then ?? 'unknown'} className={`transition-colors duration-300 ${continued ? 'size-6' : 'size-10'} ${then && then !== 'unknown' && !continued ? 'shadow-hard-sm' : ''}`} />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1">
-                <h3 className="text-[22px] leading-[1.1] font-black">{decider ? decider.name : 'Choose a person'}</h3>
+                <h3 className={continued ? 'text-base leading-[1.2] font-extrabold' : 'text-[22px] leading-[1.1] font-black'}>
+                  {continued ? `Also from ${name}: another ${KIND_NOUN[entry.kind]}` : decider ? decider.name : 'Choose a person'}
+                </h3>
                 {isAdded && decider && (
                   <button type="button" aria-label="Change the person" onClick={() => toggle('person')} className="size-9 shrink-0 cursor-pointer rounded-lg border-2 border-transparent text-lg leading-none hover:border-ink">
                     ✎
                   </button>
                 )}
               </div>
-              {sub && <p className="mt-1 text-sm text-muted">{sub}</p>}
+              {sub && !continued && <p className="mt-1 text-sm text-muted">{sub}</p>}
             </div>
             {!readOnly && (
               <button type="button" onClick={() => onDismiss(true)} className="inline-flex min-h-10 shrink-0 cursor-pointer items-center rounded-full border-2 border-ink bg-surface px-3.5 py-1 text-sm font-semibold">
@@ -413,9 +411,19 @@ export function ReviewEntry({
                 <p className="mb-2 text-sm font-bold">Which way it points on {question.short_title}</p>
                 <DirectionButtons
                   label={`Which way it points on ${question.short_title}`}
-                  value={entry.reading}
-                  onPick={(d) => onChange({ reading: d })}
+                  value={entry.mainSkipped ? null : entry.reading}
+                  onPick={(d) => onChange({ reading: d, mainSkipped: false })}
                 />
+                {!readOnly && (entry.mainSkipped || chosen.length > 0) && (
+                  <p className="mt-2.5 text-[13px] text-muted">
+                    {entry.mainSkipped ? `Left out: this says nothing on ${question.short_title} itself. Pick an answer above to bring it back.` : `Only about ${chosen.map((c) => c.question.short_title).join(' and ')}? `}
+                    {!entry.mainSkipped && (
+                      <button type="button" onClick={() => onChange({ mainSkipped: true })} className={`${LINK} text-[13px]`}>
+                        Leave {question.short_title} out
+                      </button>
+                    )}
+                  </p>
+                )}
                 {(choices.length > 0 || strays.length > 0 || !readOnly) && (
                   <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
                     <button type="button" aria-expanded={!!open.related} onClick={() => toggle('related')} className="link min-h-8 cursor-pointer text-sm font-bold">
@@ -433,7 +441,7 @@ export function ReviewEntry({
               </div>
               <div>
                 <p className="mb-2 text-sm font-bold">How much it counts</p>
-                <div role="radiogroup" aria-label="How much it counts" className="grid grid-cols-3 gap-1.5">
+                <div role="radiogroup" aria-label="How much it counts" className="grid grid-cols-4 gap-1.5">
                   {WEIGHTS.map((w) => {
                     const on = entry.weight === w
                     return (
@@ -443,14 +451,14 @@ export function ReviewEntry({
                         role="radio"
                         aria-checked={on}
                         onClick={() => onChange(withWeight(entry, w))}
-                        className={`min-h-[58px] cursor-pointer rounded-xl border-2 border-ink px-0.5 py-1.5 text-sm font-bold transition-[transform,background-color,color] duration-150 ${on ? '-translate-y-[3px] bg-ink text-paper shadow-hard-go' : 'bg-surface'}`}
+                        className={`min-h-[58px] cursor-pointer rounded-xl border-2 border-ink px-0.5 py-1.5 text-[13px] font-bold transition-[transform,background-color,color] duration-150 ${on ? '-translate-y-[3px] bg-ink text-paper shadow-hard-go' : 'bg-surface'}`}
                       >
                         {WEIGHT_LABEL[w]}
                       </button>
                     )
                   })}
                 </div>
-                <p className="mt-2 text-[13px] leading-[1.4] text-muted">{entry.weight ? WEIGHT_HINT[entry.weight] : 'Nothing is filled in. Pick Passing, Clear or Concrete.'}</p>
+                <p className="mt-2 text-[13px] leading-[1.4] text-muted">{entry.weight ? WEIGHT_HINT[entry.weight] : 'Nothing is filled in. Pick how much it counts.'}</p>
               </div>
             </div>
 
@@ -479,6 +487,12 @@ export function ReviewEntry({
 
           {!across && (
             <div className="flex flex-col gap-1.5">
+              {entry.mainSkipped ? (
+                <p className="flex items-center gap-2 text-[15px] text-muted">
+                  <Token standing="unknown" className="size-3.5" />
+                  Not read on {question.short_title}
+                </p>
+              ) : (
               <ResultLine
                 lead="Then listed as"
                 standing={then}
@@ -495,6 +509,7 @@ export function ReviewEntry({
                           : `was ${standingLabel(view.now.standing, question)}`
                 }
               />
+              )}
               {chosen.map((c) => {
                 const other = outlook(tracker, entry, c.question, entry.related[c.question.id]!)
                 const to = other.then?.standing ?? null

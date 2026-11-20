@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { isWebAddress, type Act, type Question, type Source } from '../../shared/schema.ts'
+import { isWebAddress, type Act, type Question, type Source, type Weight } from '../../shared/schema.ts'
 import { ArchiveControls } from './ArchiveControls.tsx'
 import type { RecordEntry } from '../lib/tracker.tsx'
 import { KIND_LABEL, POSITION_LABEL, STANDING_BG, formatDate, sourceLabel } from '../lib/position.ts'
@@ -15,7 +15,7 @@ export function RecordItem({ entry, question, edit = false, children }: { entry:
         <span>·</span>
         <span>{KIND_LABEL[act.kind]}</span>
         {via && via.id !== question?.id && <span className="rounded bg-paper px-1.5 py-0.5">{via.short_title}</span>}
-        {reading.weight === 'passing' && <SignalTag />}
+        <WeightTag weight={reading.weight} />
         {lapse === 'withdrawn' && act.withdrawn_on && <span className="rounded bg-paper px-1.5 py-0.5">Withdrawn {formatDate(act.withdrawn_on)}</span>}
         {lapse === 'closed' && via && <span className="rounded bg-paper px-1.5 py-0.5">{via.short_title} has closed</span>}
         <span className="ml-auto flex items-center gap-1.5">
@@ -44,10 +44,19 @@ export function RecordItem({ entry, question, edit = false, children }: { entry:
   )
 }
 
-export function SignalTag() {
+// Marks a reading that is less than the person saying where they stand: a signal, or someone else's account of them.
+export function WeightTag({ weight }: { weight: Weight | null }) {
+  if (weight !== 'passing' && weight !== 'presumed') return null
   return (
-    <span className="rounded border border-dashed border-line px-1.5 py-0.5" title="A remark in passing, or about something next to the question. It tells you something here without putting them on the record.">
-      Signal
+    <span
+      className="rounded border border-dashed border-line px-1.5 py-0.5"
+      title={
+        weight === 'passing'
+          ? 'A remark in passing, or about something next to the question. It tells you something here without putting them on the record.'
+          : 'Someone else’s account of where they stand. We have no words or act of their own for this yet.'
+      }
+    >
+      {weight === 'passing' ? 'Signal' : 'Presumed, no quote of their own yet'}
     </span>
   )
 }

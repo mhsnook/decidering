@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { SOURCE_KINDS, type Decider, type Proposal, type ProposalContext, type ProposalItem, type ProposalMention, type ProposalNote, type Source } from '../../../shared/schema.ts'
 import { useTracker } from '../../lib/tracker.tsx'
-import { addedEntry, missingFrom, outlook, type EntryDraft } from '../../lib/review-form.ts'
+import { addedEntry, missingFrom, outlook, presumedEntry, type EntryDraft } from '../../lib/review-form.ts'
 import { KIND_NOUN, UNREAD_TEXT, formatDate, hostOf, sourceLabel, standingLabel } from '../../lib/position.ts'
 import { Token } from '../bits.tsx'
 import { ArchivedCopy } from '../RecordItem.tsx'
@@ -102,6 +102,9 @@ export function ReviewCard({
   const roster = [...rosterById.values()].sort((a, b) => a.sort_name.localeCompare(b.sort_name))
 
   const open = drafts.filter((d) => !d.dismissed)
+  // A person's entries sit together, where their first one is.
+  const firstAt = (d: EntryDraft) => drafts.findIndex((x) => x.decider_id !== null && x.decider_id === d.decider_id)
+  const inOrder = drafts.map((d, i) => ({ d, at: firstAt(d) === -1 ? i : firstAt(d), i })).sort((a, b) => a.at - b.at || a.i - b.i).map(({ d }) => d)
   const dismissed = drafts.length - open.length
   const missing = open.map(missingFrom).find((m) => m !== null) ?? null
   // Entries that sit across from a position editors set. One makes this a bigger decision than a routine review.
@@ -118,7 +121,9 @@ export function ReviewCard({
   const proposalNotes = notes.filter((n) => n.kind === 'submitter' && !n.proposal_item_id)
   const itemNotes = (d: EntryDraft) => notes.filter((n) => n.kind === 'submitter' && n.proposal_item_id && d.items.some((i) => i.id === n.proposal_item_id)).map((n) => n.body)
 
-  let publishLabel: ReactNode = open.length ? `Publish ${people(open.length)}` : 'Nothing left to publish'
+  // Two acts by one person are two entries and one person.
+  const count = (entries: EntryDraft[]) => new Set(entries.map((d) => d.decider_id ?? d.key)).size
+  let publishLabel: ReactNode = open.length ? `Publish ${people(count(open))}` : 'Nothing left to publish'
   if (missing) publishLabel = `Publish needs ${missing}`
   else if (across && open.length === 1) {
     const { draft, question, view } = across
@@ -205,11 +210,11 @@ export function ReviewCard({
           )}
 
           <p className={`${TAG} flex justify-between gap-2 pt-3.5 pb-3`}>
-            <span>{isLead ? `${people(drafts.length)} named in the excerpt` : `${people(drafts.length)} in this source`}</span>
+            <span>{isLead ? `${people(count(drafts))} named in the excerpt` : `${people(count(drafts))} in this source`}</span>
             {sameRoot && root && <span>{root.short_title}</span>}
           </p>
           <fieldset disabled={readOnly} className="min-w-0">
-            {drafts.map((d) => (
+            {inOrder.map((d, i) => (
               <ReviewEntry
                 key={d.key}
                 entry={d}
@@ -221,6 +226,7 @@ export function ReviewCard({
                 notes={itemNotes(d)}
                 roster={roster}
                 dateOffer={dateOffer}
+                continued={i > 0 && d.decider_id !== null && inOrder[i - 1].decider_id === d.decider_id && !inOrder[i - 1].dismissed}
                 readOnly={readOnly}
               />
             ))}
@@ -228,12 +234,17 @@ export function ReviewCard({
 
           {mentions.length > 0 && (
             <div className="border-t-2 border-dashed border-line pt-3 pb-3.5 text-sm text-muted">
-              <p className="mb-1.5 font-bold text-ink">Named here, with nothing to record</p>
+              <p className="mb-1.5 font-bold text-ink">Named here, with nothing of their own to record</p>
               {mentions.map((m) => (
                 <p key={m.id} className="my-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                   <Token standing="unknown" className="size-3" />
                   <b className="text-ink">{tracker.deciderById.get(m.decider_id)?.name ?? m.decider_id}</b>
                   <span>“{m.words}”</span>
+                  {!readOnly && first && !drafts.some((d) => d.decider_id === m.decider_id) && (
+                    <button type="button" className="link cursor-pointer text-[13px] font-semibold" onClick={() => setDrafts((all) => [...all, presumedEntry(all[0], m.decider_id, m.words)])}>
+                      Record what it says of them, as presumed
+                    </button>
+                  )}
                 </p>
               ))}
             </div>
@@ -279,11 +290,4 @@ export function ReviewCard({
       </article>
     </div>
   )
-}
-
-// What a waiting proposal comes to in the list beside the open card.
-export function upNextLine(source: Source | undefined, proposal: Proposal, items: ProposalItem[], isAcross: boolean): string {
-  if (isAcross) return 'Contradicts our recorded position'
-  const title = source ? sourceLabel(source) : 'A source that no longer exists'
-  return proposal.origin === 'news_search' && items.every((i) => i.reading === null) ? `Not read: ${title}` : title
 }

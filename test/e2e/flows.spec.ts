@@ -208,6 +208,7 @@ async function queueModelRead(request: APIRequestContext, item: { decider_id: st
     { channel: 'proposal_contexts', ops: [{ type: 'insert', value: { id: ids.item, proposal_id: ids.proposal, proposal_item_id: ids.item, before: 'The council takes up the amendment on December 2.', after: 'The fiscal note is due before the vote.' } }] },
   ])
   expect(write.ok()).toBe(true)
+  return ids
 }
 
 // Opens a waiting proposal: it is the open card already, or in the list beside it, on whichever page.
@@ -292,7 +293,7 @@ test('a reading across from a position editors set makes a decision card, and li
   await expect(page.locator('section.card').getByText('No', { exact: true }).first()).toBeVisible()
 })
 
-test('an entry can be published as a report of an act already on the record, read on the measure in place of the question it came on', async ({ page, request }) => {
+test('an entry can be published as a report of an act already on the record, read on the measure with the question it came on left out', async ({ page, request }) => {
   const sourceTitle = `Oyelaran again ${Date.now()}`
   const words = 'Oyelaran voted against sending the fare study on'
   await queueModelRead(request, { decider_id: 'demo-marguerite-oyelaran', quote: words, passage: `In June ${words}.`, reading: 'oppose', weight: 'concrete', kind: 'does' }, sourceTitle)
@@ -309,8 +310,9 @@ test('an entry can be published as a report of an act already on the record, rea
   await expect(entry.getByLabel('Date it happened')).toHaveValue('2026-06-09')
 
   await entry.getByRole('button', { name: 'Related proposals' }).click()
-  await entry.getByRole('button', { name: 'It is about Ordinance 26-114 only, not Fare-free ferry' }).click()
-  await expect(entry.getByText(/Then listed as .* on Ordinance 26-114/)).toBeVisible()
+  await entry.getByRole('radiogroup', { name: 'Ordinance 26-114: which way it points' }).getByRole('radio', { name: 'Against' }).click()
+  await entry.getByRole('button', { name: 'Leave Fare-free ferry out' }).click()
+  await expect(entry.getByText('Not read on Fare-free ferry')).toBeVisible()
 
   await page.getByRole('button', { name: /Publish 1 person/ }).click()
   await expect(page.getByRole('status')).toContainText('Published 1 person')
@@ -376,7 +378,7 @@ test('the list beside the open card pages through every waiting proposal', async
   const last = list.last()
   const lastTitle = (await last.textContent())!
   await last.getByRole('button').click()
-  await expect(page.getByRole('article').getByRole('heading').first()).toContainText(lastTitle.slice(lastTitle.indexOf('Paged')))
+  await expect(page.getByRole('article').getByRole('heading').first()).toContainText(lastTitle.match(/Paged \d+ no\. \d+/)![0])
 })
 
 test('work on a card is kept while another card is open, and a question added from a card can be read on at once', async ({ page, request }) => {
@@ -420,6 +422,30 @@ test('work on a card is kept while another card is open, and a question added fr
   await expect(page.getByRole('status')).toContainText('Published 1 person')
   await expect.poll(() => query(`SELECT rd.position FROM readings rd JOIN questions q ON q.id = rd.question_id WHERE q.short_title = '${shortName}'`)).toEqual([{ position: 'support' }])
   expect(query(`SELECT r.kind FROM question_relations r JOIN questions q ON q.id = r.related_id WHERE q.short_title = '${shortName}' AND r.question_id = 'free-ferry'`)).toEqual([{ kind: 'smaller_step' }])
+})
+
+test('someone the article only describes can be recorded as presumed, and their page says there is no quote of their own', async ({ page, request }) => {
+  const sourceTitle = `Sato on Kowalczyk ${Date.now()}`
+  const quote = 'I am still for the free ferry.'
+  const ids = await queueModelRead(request, { decider_id: 'demo-bartholomew-sato', quote, passage: `Sato said: ${quote}`, reading: 'support', weight: 'clear', kind: 'says' }, sourceTitle)
+  const words = `Kowalczyk no longer backs the plan ${ids.item}`
+  expect((await partyWrite(request, [{ channel: 'proposal_mentions', ops: [{ type: 'insert', value: { id: `mention-${ids.item}`, proposal_id: ids.proposal, decider_id: 'demo-desmond-kowalczyk', words } }] }])).ok()).toBe(true)
+
+  await openCard(page, sourceTitle)
+  await page.getByRole('button', { name: 'Record what it says of them, as presumed' }).click()
+  const entry = page.getByRole('region', { name: 'Desmond Kowalczyk' })
+  await expect(entry.getByLabel('The words, from the source')).toHaveValue(words)
+  await expect(entry.getByRole('radiogroup', { name: 'How much it counts' }).getByRole('radio', { name: 'Presumed' })).toBeChecked()
+  await expect(page.locator('#approve')).toHaveText(/Publish needs both answers/)
+  await entry.getByRole('radiogroup', { name: /^Which way it points on/ }).getByRole('radio', { name: 'Against' }).click()
+  await page.getByRole('button', { name: /Publish 2 people/ }).click()
+  await expect(page.getByRole('status')).toContainText('Published 2 people')
+
+  // His own earlier statement still decides where he is listed; the account of him is on the record, marked.
+  await page.goto('/q/free-ferry/desmond-kowalczyk')
+  await expect(page.getByText(words, { exact: false }).first()).toBeVisible()
+  await expect(page.getByText('Presumed, no quote of their own yet')).toBeVisible()
+  expect(query(`SELECT rd.weight FROM readings rd JOIN acts a ON a.id = rd.act_id WHERE a.body = '${words}'`)).toEqual([{ weight: 'presumed' }])
 })
 
 test('a lead whose article was not read says so, starts empty, and cannot be published until the words, both answers and a date are in', async ({ page, request }) => {

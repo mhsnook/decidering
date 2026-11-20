@@ -104,6 +104,18 @@ describe('calculatePosition', () => {
   })
 })
 
+describe('calculatePosition with what others say of someone', () => {
+  it('gives a lean when a presumed reading is all there is', () => {
+    expect(calculatePosition([read('presumed', 'oppose', '2026-01-01')])).toBe('lean_oppose')
+    expect(calculatePosition([read('presumed', 'support', '2026-01-01')])).toBe('lean_support')
+  })
+
+  it('does not count a presumed reading once there is anything of their own, however slight or old', () => {
+    expect(calculatePosition([read('presumed', 'oppose', '2026-06-01'), read('passing', 'support', '2020-01-01')])).toBe('lean_support')
+    expect(calculatePosition([read('presumed', 'oppose', '2026-06-01'), read('clear', 'support', '2020-01-01')])).toBe('support')
+  })
+})
+
 describe('isAcross', () => {
   it('is true for a reading on the other side of a position, lean or not', () => {
     expect(isAcross('support', 'oppose')).toBe(true)

@@ -88,7 +88,7 @@ function act(a: {
   insert('reports', { id: a.id, source_id: sourceId(a.source.url), act_id: a.id, excerpt: null, passage: null, created_at })
   insert('readings', { id: a.id, act_id: a.id, question_id: a.question_id, position: a.position, weight, via_question_id: null, created_at })
   const q = questions.get(a.question_id)!
-  if (q.implies_on_parent && q.parent_id && a.position === 'support' && weight !== 'passing') {
+  if (q.implies_on_parent && q.parent_id && a.position === 'support' && (weight === 'clear' || weight === 'concrete')) {
     insert('readings', { id: `${a.id}:parent`, act_id: a.id, question_id: q.parent_id, position: q.implies_on_parent, weight, via_question_id: a.question_id, created_at })
   }
 }

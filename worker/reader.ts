@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { ACT_KINDS, DIRECTIONS, WEIGHTS, type ProposalDraft } from '../shared/schema.ts'
+import { ACT_KINDS, DIRECTIONS, OWN_WEIGHTS, type ProposalDraft } from '../shared/schema.ts'
 
 // The model that reads articles. Check the Workers AI catalogue for a planned
 // deprecation date before changing it: an id past that date answers 410.
@@ -103,7 +103,7 @@ export const modelOutputSchema = z.object({
         .nullable()
         .transform((d) => (d && isoDate.safeParse(d).success ? d : null)),
       position: z.enum(DIRECTIONS),
-      weight: z.enum(WEIGHTS),
+      weight: z.enum(OWN_WEIGHTS),
       reason: z.string(),
     }),
   ),

@@ -22,12 +22,14 @@ export const DIRECTION_LABEL: Record<Direction, string> = {
 }
 
 export const WEIGHT_LABEL: Record<Weight, string> = {
+  presumed: 'Presumed',
   passing: 'Passing',
   clear: 'Clear',
   concrete: 'Concrete',
 }
 
 export const WEIGHT_HINT: Record<Weight, string> = {
+  presumed: 'Presumed: someone else’s account of where they stand, with no words or act of their own. Lists them as a lean until we have a quote.',
   passing: 'Passing: a remark in passing, or about something next to the question. Shows as a signal.',
   clear: 'Clear: says where they stand on this question in plain terms.',
   concrete: 'Concrete: a vote, a signature, a pledge or another use of office. Puts them on the record.',

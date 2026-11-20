@@ -4,7 +4,7 @@ import type { Decider, Position, Proposal, Question, SetPosition, Source, Weight
 import type { Story, StoryItem, WaitingStory } from '../lib/feed.ts'
 import { KIND_LABEL, SPECTRUM, STANDING_COLOR, formatDate, hostOf, sourceLabel, standingLabel } from '../lib/position.ts'
 import { Token } from './bits.tsx'
-import { ActWords, ArchivedCopy, SignalTag } from './RecordItem.tsx'
+import { ActWords, ArchivedCopy, WeightTag } from './RecordItem.tsx'
 
 // Replies shown before a reader opens the rest of a story.
 const FOLDED = 3
@@ -64,9 +64,9 @@ function ReadingLine({ decider, position, question, via, weight, lead }: { decid
         {question.short_title}
       </PersonLink>
       {via && <span className="text-muted">through {via.short_title}</span>}
-      {weight === 'passing' && (
+      {(weight === 'passing' || weight === 'presumed') && (
         <span className="text-xs text-muted">
-          <SignalTag />
+          <WeightTag weight={weight} />
         </span>
       )}
     </li>

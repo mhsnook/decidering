@@ -23,10 +23,15 @@ export const directionSchema = z.enum(DIRECTIONS)
 export type Direction = z.infer<typeof directionSchema>
 
 // How much an act counts on the question it is read on.
+//   presumed  someone else's account of where they stand, with nothing of their own
 //   passing   a remark in passing, or about something next to the question: a signal
 //   clear     says where they stand on this question in plain terms
 //   concrete  a vote, a signature, a pledge or another use of office
-export const WEIGHTS = ['passing', 'clear', 'concrete'] as const
+export const WEIGHTS = ['presumed', 'passing', 'clear', 'concrete'] as const
+// What a reading of something the person themselves did or said can be.
+export const OWN_WEIGHTS = ['passing', 'clear', 'concrete'] as const
+// A reading firm enough to say something on a parent question too.
+export const carriesUp = (weight: (typeof WEIGHTS)[number]) => weight === 'clear' || weight === 'concrete'
 export const weightSchema = z.enum(WEIGHTS)
 export type Weight = z.infer<typeof weightSchema>
 
