@@ -125,7 +125,7 @@ For each act give:
 - person_id and question_id, taken only from the lists you are given; a person can only be read on the questions listed for them
 - quote: words copied exactly from the article, character for character, with no ellipsis and no words added. For a statement, the person's own words. For a commitment or a use of office, the article's sentence that reports it
 - occurred_on: the date the act happened as YYYY-MM-DD, or null if the article does not make it clear. This is not the article's date unless the article says the act happened that day
-- position: which way the act points on that question. support; lean_support if it supports only part of it or only on a condition; mixed; oppose. On a question that asks whether someone did a specific thing, support means they did it
+- position: which way the act points on that question. support; lean_support if it probably supports it but the words leave that uncertain or unclear; mixed; oppose. Support for only part of a proposal is not lean_support: read it on the narrower question if one is listed. On a question that asks whether someone did a specific thing, support means they did it
 - weight: how much the act counts on that question. passing for a remark in passing, or an act about something next to the question; clear for words that say where the person stands on this question in plain terms; concrete for a vote, a signature, a pledge or another use of office on this question itself
 - reason: one or two sentences for the editor saying why this act counts
 

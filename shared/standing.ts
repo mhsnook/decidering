@@ -69,10 +69,10 @@ const newestOf = (reads: Read[]) => {
 // Where a record leaves someone on a position question, or null with nothing
 // that counts. The rules, in order:
 //   1. A commitment taken back does not count.
-//   2. Concrete acts all stand, however old: a vote is not undone by a later
-//      vote. Where they disagree the result is mixed.
-//   3. A clear statement made after the last concrete act, on another side,
-//      moves the result one step toward the middle.
+//   2. The most recent concrete act decides: a later vote supersedes an
+//      earlier one, and an earlier commitment.
+//   3. A clear statement made after that act, on another side, moves the
+//      result one step toward the middle.
 //   4. With no concrete act, the most recent clear statement is where they stand.
 //   5. Passing remarks count only when there is nothing else, and then only as a lean.
 export function calculatePosition(reads: Read[]): Position | null {
@@ -80,8 +80,9 @@ export function calculatePosition(reads: Read[]): Position | null {
   const concrete = counted.filter((r) => r.weight === 'concrete')
   const clear = counted.filter((r) => r.weight === 'clear')
   if (concrete.length) {
-    const base = together(concrete.map((r) => r.position))
-    const lastConcrete = newestOf(concrete)[0].occurred_on
+    const latest = newestOf(concrete)
+    const base = together(latest.map((r) => r.position))
+    const lastConcrete = latest[0].occurred_on
     const since = newestOf(clear.filter((r) => r.occurred_on > lastConcrete))
     return since.length && since.some((r) => sideOf(r.position) !== sideOf(base)) ? TOWARD_MIDDLE[base] : base
   }

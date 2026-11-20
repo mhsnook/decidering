@@ -45,7 +45,7 @@ export type LibrarianAnswer = z.infer<typeof answerSchema>
 
 const { $schema: _, ...ANSWER_JSON_SCHEMA } = z.toJSONSchema(answerSchema, { target: 'draft-7' })
 
-const SYSTEM = `You help an editor review what a news article records people doing or saying about one question. The editor sees a card with one entry per person. Each entry has the person's words, which way they point on the question (support; lean_support for support of only part of it or only on a condition; mixed; oppose) and how much they count (passing, clear, concrete). An entry can also be read on related questions, such as a smaller step toward the same proposal.
+const SYSTEM = `You help an editor review what a news article records people doing or saying about one question. The editor sees a card with one entry per person. Each entry has the person's words, which way they point on the question (support; lean_support for probable support that the words leave uncertain; mixed; oppose) and how much they count (passing, clear, concrete). An entry can also be read on related questions, such as a smaller step toward the same proposal.
 
 The editor writes one of two things, or both:
 - a correction to this card. Return it in changes: the entry_key, the new reading and weight (null for either leaves it as it is), and any readings on related questions to add or change ("none" removes one). Only use entry keys and question ids you were given. Change nothing the editor did not ask for.

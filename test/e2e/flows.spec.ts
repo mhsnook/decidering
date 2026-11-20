@@ -233,7 +233,7 @@ test('an entry read by a model shows its words marked in the passage, opens the 
   await expect(entry.getByLabel(/Note on Bartholomew Sato/)).toHaveValue('')
 
   await entry.getByRole('button', { name: 'Related proposals' }).click()
-  await entry.getByRole('radiogroup', { name: 'Free for city card holders: which way it points' }).getByRole('radio', { name: 'Partial' }).click()
+  await entry.getByRole('radiogroup', { name: 'Free for city card holders: which way it points' }).getByRole('radio', { name: 'Probable' }).click()
   await expect(entry.getByText('first reading there')).toBeVisible()
 
   await entry.getByRole('button', { name: 'Dismiss' }).click()
@@ -264,14 +264,14 @@ test('a reading across from a position editors set makes a decision card, and li
   const decision = page.getByRole('radiogroup', { name: 'Our position' })
   await expect(decision.getByRole('radio', { name: /Keep our position: Yes/ })).toBeChecked()
   await expect(page.getByRole('button', { name: /Publish, keep Yes/ })).toBeVisible()
-  await decision.getByRole('radio', { name: /Lift our position: Mixed/ }).click()
-  await page.getByRole('button', { name: /Publish, show Mixed/ }).click()
+  await decision.getByRole('radio', { name: /Lift our position: No/ }).click()
+  await page.getByRole('button', { name: /Publish, show No/ }).click()
   await expect(page.getByRole('status')).toContainText('Published 1 person')
 
   await page.goto('/q/free-ferry/nadezhda-okafor')
   await expect(page.getByText('Okafor voted to set the berth fee to zero', { exact: true })).toBeVisible()
   await expect(page.getByText(/Set by editors on/)).toHaveCount(0)
-  await expect(page.locator('section.card').getByText('Mixed', { exact: true }).first()).toBeVisible()
+  await expect(page.locator('section.card').getByText('No', { exact: true }).first()).toBeVisible()
 })
 
 test('a lead whose article was not read says so, starts empty, and cannot be published until the words and both answers are in', async ({ page, request }) => {

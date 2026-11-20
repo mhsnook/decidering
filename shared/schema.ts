@@ -14,8 +14,10 @@ export const actKindSchema = z.enum(ACT_KINDS)
 export type ActKind = z.infer<typeof actKindSchema>
 
 // Which way one act points on a question. It is four of the five positions:
-// an act supports, supports in part or on conditions (lean_support), is mixed,
-// or is against. "Probably no" is only ever where a person is listed.
+// an act supports, probably supports (lean_support: the words leave it
+// uncertain or unclear), is mixed, or is against. Support for only part of a
+// proposal is not one of these: it is support on a smaller step. "Probably no"
+// is only ever where a person is listed.
 export const DIRECTIONS = ['support', 'lean_support', 'mixed', 'oppose'] as const
 export const directionSchema = z.enum(DIRECTIONS)
 export type Direction = z.infer<typeof directionSchema>

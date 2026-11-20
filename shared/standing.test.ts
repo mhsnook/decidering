@@ -48,14 +48,14 @@ describe('calculatePosition', () => {
     expect(calculatePosition([read('concrete', 'lean_support', '2015-03-01')])).toBe('lean_support')
   })
 
-  it('keeps every concrete act standing, so an earlier one is not undone by a later one', () => {
-    expect(calculatePosition([read('concrete', 'support', '2020-01-01'), read('concrete', 'support', '2026-01-01')])).toBe('support')
-    expect(calculatePosition([read('concrete', 'support', '2020-01-01'), read('concrete', 'oppose', '2026-01-01')])).toBe('mixed')
-    expect(calculatePosition([read('concrete', 'oppose', '2020-01-01'), read('concrete', 'support', '2026-01-01')])).toBe('mixed')
+  it('lets the most recent concrete act decide, so a later one supersedes an earlier one', () => {
+    expect(calculatePosition([read('concrete', 'support', '2020-01-01'), read('concrete', 'oppose', '2026-01-01')])).toBe('oppose')
+    expect(calculatePosition([read('concrete', 'oppose', '2020-01-01'), read('concrete', 'support', '2026-01-01')])).toBe('support')
+    expect(calculatePosition([read('concrete', 'support', '2020-01-01'), read('concrete', 'lean_support', '2026-01-01')])).toBe('lean_support')
   })
 
-  it('gives a lean when concrete acts share a side and not a position', () => {
-    expect(calculatePosition([read('concrete', 'support', '2020-01-01'), read('concrete', 'lean_support', '2026-01-01')])).toBe('lean_support')
+  it('is mixed for concrete acts on both sides on the same day', () => {
+    expect(calculatePosition([read('concrete', 'support', '2026-01-01'), read('concrete', 'oppose', '2026-01-01')])).toBe('mixed')
   })
 
   it('moves one step toward the middle for a clear statement on another side after the last concrete act', () => {

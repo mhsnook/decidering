@@ -13,11 +13,10 @@ export const POSITION_LABEL: Record<Position, string> = {
   oppose: 'No',
 }
 
-// What one act shows, in the review form. A person is listed as "Probably
-// yes"; an act that supports part of a proposal is "Partial".
+// What one act shows, in the review form and the reader's form.
 export const DIRECTION_LABEL: Record<Direction, string> = {
   support: 'Support',
-  lean_support: 'Partial',
+  lean_support: 'Probable',
   mixed: 'Mixed',
   oppose: 'Against',
 }
