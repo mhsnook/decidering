@@ -284,6 +284,6 @@ export function ReviewCard({
 // What a waiting proposal comes to in the list beside the open card.
 export function upNextLine(source: Source | undefined, proposal: Proposal, items: ProposalItem[], isAcross: boolean): string {
   if (isAcross) return 'Contradicts our recorded position'
-  if (proposal.origin === 'news_search' && items.every((i) => i.reading === null)) return 'Not read: open the source'
-  return source ? sourceLabel(source) : 'A source that no longer exists'
+  const title = source ? sourceLabel(source) : 'A source that no longer exists'
+  return proposal.origin === 'news_search' && items.every((i) => i.reading === null) ? `Not read: ${title}` : title
 }

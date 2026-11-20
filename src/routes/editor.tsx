@@ -42,7 +42,7 @@ function SignIn() {
   )
 }
 
-// How many waiting proposals to list beside the open one.
+// How many proposals one page of the list beside the open card holds.
 const UP_NEXT = 12
 // How long the open card takes to leave before the next one arrives.
 const LEAVE_MS = 470
@@ -61,6 +61,7 @@ function Queue() {
   const allMentions = useLiveQuery((q) => q.from({ row: db.proposal_mentions }))
   const [tab, setTab] = useState<'pending' | 'reviewed'>('pending')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [listPage, setListPage] = useState(0)
   const [leaving, setLeaving] = useState<{ id: string; how: Finish['how'] } | null>(null)
   const [toast, setToast] = useState<{ text: string; shown: boolean }>({ text: '', shown: false })
   const [error, setError] = useState<string | null>(null)
@@ -86,6 +87,9 @@ function Queue() {
   const selected = list.find((p) => p.id === selectedId) ?? list[0]
   const others = list.filter((p) => p.id !== selected?.id)
   const selectedSource = selected && tracker.sourceById.get(selected.source_id)
+  // The list shrinks as cards are finished, so the page asked for may be past its end.
+  const shownPage = Math.min(listPage, Math.max(0, Math.ceil(others.length / UP_NEXT) - 1))
+  const listFrom = shownPage * UP_NEXT
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -145,11 +149,11 @@ function Queue() {
           <div className="h-full bg-support transition-[width] duration-[400ms]" style={{ width: `${total ? (reviewed.length / total) * 100 : 0}%` }} />
         </div>
         <p className="tabular-nums">
-          <button type="button" aria-pressed={tab === 'reviewed'} className={tabClass('reviewed')} onClick={() => setTab('reviewed')}>
+          <button type="button" aria-pressed={tab === 'reviewed'} className={tabClass('reviewed')} onClick={() => (setTab('reviewed'), setListPage(0))}>
             {reviewed.length} reviewed
           </button>
           {' · '}
-          <button type="button" aria-pressed={tab === 'pending'} className={tabClass('pending')} onClick={() => setTab('pending')}>
+          <button type="button" aria-pressed={tab === 'pending'} className={tabClass('pending')} onClick={() => (setTab('pending'), setListPage(0))}>
             {pending.length} to go
           </button>
         </p>
@@ -193,7 +197,7 @@ function Queue() {
             <>
               <h2 className="text-base font-black sm:text-lg">{tab === 'pending' ? 'Up next' : 'Reviewed'}</h2>
               <ul className="flex flex-col gap-2 sm:gap-2.5">
-                {others.slice(0, UP_NEXT).map((p) => {
+                {others.slice(listFrom, listFrom + UP_NEXT).map((p) => {
                   const items = itemsOf(p.id)
                   const names = [...new Set(items.map((i) => tracker.deciderById.get(i.decider_id)?.name ?? i.decider_id))]
                   const accepted = items.filter((i) => i.status === 'accepted').length
@@ -221,7 +225,19 @@ function Queue() {
                   )
                 })}
               </ul>
-              {others.length > UP_NEXT && <p className="text-sm font-semibold text-muted">and {others.length - UP_NEXT} more</p>}
+              {others.length > UP_NEXT && (
+                <nav aria-label={tab === 'pending' ? 'Pages of what is up next' : 'Pages of what was reviewed'} className="flex items-center justify-between gap-2 text-sm font-semibold">
+                  <button type="button" className="btn btn-sm min-h-9 px-3" disabled={shownPage === 0} onClick={() => setListPage(shownPage - 1)}>
+                    Previous
+                  </button>
+                  <span className="text-muted tabular-nums">
+                    {listFrom + 1}–{Math.min(listFrom + UP_NEXT, others.length)} of {others.length}
+                  </span>
+                  <button type="button" className="btn btn-sm min-h-9 px-3" disabled={listFrom + UP_NEXT >= others.length} onClick={() => setListPage(shownPage + 1)}>
+                    Next
+                  </button>
+                </nav>
+              )}
             </>
           )}
           <p className="tag mt-1.5 hidden text-[13px] leading-[1.8] font-medium text-faint lg:block">

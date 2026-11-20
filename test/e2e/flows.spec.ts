@@ -210,14 +210,19 @@ async function queueModelRead(request: APIRequestContext, item: { decider_id: st
   expect(write.ok()).toBe(true)
 }
 
+// Opens a waiting proposal: it is the open card already, or in the list beside it, on whichever page.
 async function openCard(page: Page, sourceTitle: string) {
   await page.goto('/editor')
   await page.getByLabel('Editor token').fill(editorToken())
   await page.getByRole('button', { name: 'Sign in' }).click()
-  const upNext = page.getByRole('button').filter({ hasText: sourceTitle })
-  await expect(page.getByRole('heading', { name: sourceTitle }).or(upNext).first()).toBeVisible()
-  if (await upNext.count()) await upNext.click()
-  await expect(page.getByRole('heading', { name: sourceTitle })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Review queue' })).toBeVisible()
+  const heading = page.getByRole('heading', { name: sourceTitle })
+  const inList = page.getByRole('complementary').getByRole('button').filter({ hasText: sourceTitle })
+  const next = page.getByRole('navigation', { name: 'Pages of what is up next' }).getByRole('button', { name: 'Next' })
+  await expect(page.getByRole('article').first()).toBeVisible()
+  while (!(await heading.count()) && !(await inList.count()) && (await next.count()) && (await next.isEnabled())) await next.click()
+  if (await inList.count()) await inList.click()
+  await expect(heading).toBeVisible()
 }
 
 test('an entry read by a model shows its words marked in the passage, opens the wider passage over that entry, and publishes a reading on a smaller step too', async ({ page, request }) => {
@@ -337,6 +342,39 @@ test('a card whose publish fails comes back as the editor left it', async ({ pag
   await page.getByRole('button', { name: /Publish 1 person/ }).click()
   await expect(page.getByRole('status')).toContainText('Published 1 person')
   await expect.poll(() => query(`SELECT rd.position FROM reports r JOIN sources s ON s.id = r.source_id JOIN readings rd ON rd.act_id = r.act_id WHERE s.title = '${sourceTitle}'`)).toEqual([{ position: 'mixed' }])
+})
+
+test('the list beside the open card pages through every waiting proposal', async ({ page, request }) => {
+  const stamp = Date.now()
+  const title = (n: number) => `Paged ${stamp} no. ${String(n).padStart(2, '0')}`
+  // More than two pages' worth, whatever earlier tests left waiting.
+  for (let n = 1; n <= 26; n++) {
+    await queueModelRead(request, { decider_id: 'demo-bartholomew-sato', quote: `Words for paging ${stamp} ${n}.`, passage: `Words for paging ${stamp} ${n}.`, reading: 'support', weight: 'passing', kind: 'says' }, title(n))
+  }
+  await page.goto('/editor')
+  await page.getByLabel('Editor token').fill(editorToken())
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  const pages = page.getByRole('navigation', { name: 'Pages of what is up next' })
+  const waiting = query<{ n: number }>(`SELECT COUNT(*) AS n FROM proposals WHERE status = 'pending'`)[0].n
+  await expect(pages).toContainText(`1–12 of ${waiting - 1}`)
+  await expect(pages.getByRole('button', { name: 'Previous' })).toBeDisabled()
+
+  // Every waiting proposal is the open card or on exactly one page of the list.
+  const seen = new Set<string>()
+  const list = page.getByRole('complementary').getByRole('listitem')
+  for (;;) {
+    for (const text of await list.allTextContents()) seen.add(text)
+    if (await pages.getByRole('button', { name: 'Next' }).isDisabled()) break
+    await pages.getByRole('button', { name: 'Next' }).click()
+  }
+  expect(seen.size).toBe(waiting - 1)
+  await expect(pages).toContainText(`of ${waiting - 1}`)
+
+  // A card on a later page opens from there.
+  const last = list.last()
+  const lastTitle = (await last.textContent())!
+  await last.getByRole('button').click()
+  await expect(page.getByRole('article').getByRole('heading').first()).toContainText(lastTitle.slice(lastTitle.indexOf('Paged')))
 })
 
 test('a lead whose article was not read says so, starts empty, and cannot be published until the words, both answers and a date are in', async ({ page, request }) => {
