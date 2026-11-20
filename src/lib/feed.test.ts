@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildStories, buildWaiting, feedPage, mergeFeed, questionFamily } from './feed.ts'
+import { buildStories, buildWaiting, feedPage, mergeFeed, pageHolding, questionFamily } from './feed.ts'
 import { act, data, decider, item, proposal, question, reading, report, role, seat, setPosition, source, track } from './fixtures.ts'
 
 const at = (day: string, time = '12:00') => `${day}T${time}:00.000Z`
@@ -133,6 +133,13 @@ describe('paging', () => {
     const last = feedPage(feed, second.older, 2)
     expect(ids(last.page)).toEqual(['record'])
     expect(last.older).toBeUndefined()
+  })
+
+  it('finds the page that holds one story, with the same way on to older ones, and nothing for a story not in the feed', () => {
+    const second = feedPage(feed, feedPage(feed, undefined, 2).older, 2)
+    expect(pageHolding(feed, second.page[1].story.key, 2)).toEqual(second)
+    expect(pageHolding(feed, feed[0].story.key, 2)?.isFirst).toBe(true)
+    expect(pageHolding(feed, 'proposal:not-in-the-feed', 2)).toBeNull()
   })
 
   it('goes back to the newest when the cursor is not one', () => {

@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { PositionDecision } from './review-plan.ts'
-import { addedEntry, decisionOf, draftEntries, fallbackDate, missingFrom, outlook, relatedChoices, verdictOf, withWeight, type EntryDraft } from './review-form.ts'
+import { addedEntry, decisionOf, dateOffer, draftEntries, missingFrom, movedTo, outlook, relatedChoices, reportingAct, verdictOf, withWeight, type EntryDraft } from './review-form.ts'
 import { act, decider, item, link, proposal, question, reading, relation, role, seat, setPosition, source, track } from './fixtures.ts'
 
-const FALLBACK = '2026-11-12'
 
 // An entry ready to publish: one reader's item with both answers and a date.
 const ready = (over: Partial<EntryDraft> = {}): EntryDraft => ({
-  ...draftEntries([item('i1', 'p1', 'ann', 'policy', { reading: 'support', weight: 'clear', occurred_on: '2026-11-10' })], FALLBACK)[0],
+  ...draftEntries([item('i1', 'p1', 'ann', 'policy', { reading: 'support', weight: 'clear', occurred_on: '2026-11-10' })])[0],
   ...over,
 })
 
@@ -18,7 +17,7 @@ describe('draftEntries', () => {
       item('bob', 'p1', 'bob', 'policy', { sort: 1, reading: 'oppose', weight: 'clear' }),
       item('on-policy', 'p1', 'ann', 'policy', { act_id: 'shared', sort: 0, reading: 'support', weight: 'concrete', kind: 'does', passage: 'The paragraph.' }),
     ]
-    const drafts = draftEntries(items, FALLBACK)
+    const drafts = draftEntries(items)
     expect(drafts.map((d) => [d.decider_id, d.act_id, d.items.map((i) => i.id)])).toEqual([
       ['ann', 'shared', ['on-policy', 'on-markup']],
       ['bob', 'act-of-bob', ['bob']],
@@ -28,27 +27,29 @@ describe('draftEntries', () => {
   })
 
   it('keeps two people apart when their items name the same act', () => {
-    const drafts = draftEntries([item('i1', 'p1', 'ann', 'policy', { act_id: 'same' }), item('i2', 'p1', 'bob', 'policy', { act_id: 'same', sort: 1 })], FALLBACK)
+    const drafts = draftEntries([item('i1', 'p1', 'ann', 'policy', { act_id: 'same' }), item('i2', 'p1', 'bob', 'policy', { act_id: 'same', sort: 1 })])
     expect(drafts.map((d) => d.decider_id)).toEqual(['ann', 'bob'])
     expect(new Set(drafts.map((d) => d.key)).size).toBe(2)
   })
 
   it('starts a search lead with no words and no answers, since its excerpt is nobody’s words', () => {
-    const [lead] = draftEntries([item('lead', 'p1', 'ann', 'policy', { quote: 'A search excerpt naming Ann.' })], FALLBACK)
+    const [lead] = draftEntries([item('lead', 'p1', 'ann', 'policy', { quote: 'A search excerpt naming Ann.' })])
     expect(lead).toMatchObject({ quote: '', reading: null, weight: null })
   })
 
   it('keeps the words of an item that claims a reading, and of one read from an article', () => {
-    const [claimed] = draftEntries([item('i1', 'p1', 'ann', 'policy', { reading: 'support', weight: 'clear', quote: 'I am for it.' })], FALLBACK)
+    const [claimed] = draftEntries([item('i1', 'p1', 'ann', 'policy', { reading: 'support', weight: 'clear', quote: 'I am for it.' })])
     expect(claimed.quote).toBe('I am for it.')
-    const [read] = draftEntries([item('i1', 'p1', 'ann', 'policy', { quote: 'I am for it.', passage: 'She said: I am for it.' })], FALLBACK)
+    const [read] = draftEntries([item('i1', 'p1', 'ann', 'policy', { quote: 'I am for it.', passage: 'She said: I am for it.' })])
     expect(read.quote).toBe('I am for it.')
   })
 
-  it('assumes the fallback date for an item with none, and says it did', () => {
-    const [dated, undated] = draftEntries([item('i1', 'p1', 'ann', 'policy', { occurred_on: '2026-11-01' }), item('i2', 'p1', 'bob', 'policy', { sort: 1 })], FALLBACK)
-    expect([dated.occurred_on, dated.dateAssumed]).toEqual(['2026-11-01', false])
-    expect([undated.occurred_on, undated.dateAssumed]).toEqual([FALLBACK, true])
+  it('leaves the date empty for an item with none, so it cannot be published until someone gives one', () => {
+    const [dated, undated] = draftEntries([item('i1', 'p1', 'ann', 'policy', { occurred_on: '2026-11-01', reading: 'support', weight: 'clear' }), item('i2', 'p1', 'bob', 'policy', { sort: 1, reading: 'support', weight: 'clear' })])
+    expect(dated.occurred_on).toBe('2026-11-01')
+    expect(undated.occurred_on).toBe('')
+    expect(missingFrom(undated)).toBe('the date')
+    expect(() => verdictOf([undated], '')).toThrow('the date')
   })
 
   it('counts an entry as dismissed only when every one of its items was rejected, and leaves a rejected reading out', () => {
@@ -60,7 +61,6 @@ describe('draftEntries', () => {
         item('b1', 'p1', 'bob', 'policy', { act_id: 'b', sort: 2, reading: 'oppose' }),
         item('b2', 'p1', 'bob', 'markup', { act_id: 'b', sort: 3, ...rejected }),
       ],
-      FALLBACK,
     )
     expect([all.dismissed, all.related]).toEqual([true, {}])
     expect([some.dismissed, some.related]).toEqual([false, {}])
@@ -266,7 +266,7 @@ describe('relatedChoices', () => {
 describe('verdictOf', () => {
   const onPolicy = item('on-policy', 'p1', 'ann', 'policy', { act_id: 'shared', reading: 'support', weight: 'clear', occurred_on: '2026-11-10', passage: 'The paragraph.' })
   const onMarkup = item('on-markup', 'p1', 'ann', 'markup', { act_id: 'shared', sort: 1, reading: 'lean_support', weight: 'clear' })
-  const [two] = draftEntries([onPolicy, onMarkup], FALLBACK)
+  const [two] = draftEntries([onPolicy, onMarkup])
 
   it('gives a published entry as the plan takes it, with a reading for each question answered', () => {
     const draft = { ...two, quote: '  I am for it.  ', note: ' Checked. ', related: { markup: 'lean_support' as const, bill: 'support' as const, hearing: null } }
@@ -314,7 +314,7 @@ describe('verdictOf', () => {
 
   it('gives a dismissed entry as dismissed, whatever it is missing', () => {
     const lead = item('lead', 'p1', 'bob', 'policy')
-    const [draft] = draftEntries([lead], FALLBACK)
+    const [draft] = draftEntries([lead])
     expect(verdictOf([{ ...draft, dismissed: true, note: 'Not about this.' }], '').entries).toEqual([{ decider_id: 'bob', items: [lead], note: 'Not about this.', publish: false }])
   })
 
@@ -324,7 +324,7 @@ describe('verdictOf', () => {
   })
 
   it('dismisses every entry when asked to, complete or not', () => {
-    const lead = draftEntries([item('lead', 'p1', 'bob', 'policy', { sort: 1 })], FALLBACK)[0]
+    const lead = draftEntries([item('lead', 'p1', 'bob', 'policy', { sort: 1 })])[0]
     const { entries } = verdictOf([ready(), lead], 'Spam.', undefined, true)
     expect(entries.map((e) => [e.decider_id, e.publish])).toEqual([
       ['ann', false],
@@ -378,15 +378,48 @@ describe('decisionOf', () => {
   })
 })
 
-describe('fallbackDate', () => {
+describe('dateOffer', () => {
   const put = proposal('p1', 'article', { created_at: '2026-11-17T23:30:00.000Z' })
 
-  it('is the day the source was published when that is known', () => {
-    expect(fallbackDate(put, source('article', { published_on: '2026-11-03' }))).toBe('2026-11-03')
+  it('offers the day the source was published when that is known', () => {
+    expect(dateOffer(put, source('article', { published_on: '2026-11-03' }))).toEqual({ date: '2026-11-03', from: 'source' })
   })
 
-  it('is the day the proposal was put forward otherwise', () => {
-    expect(fallbackDate(put, source('article'))).toBe('2026-11-17')
-    expect(fallbackDate(put, undefined)).toBe('2026-11-17')
+  it('offers the day the proposal was put forward otherwise, and says which it is', () => {
+    expect(dateOffer(put, source('article'))).toEqual({ date: '2026-11-17', from: 'proposal' })
+    expect(dateOffer(put, undefined)).toEqual({ date: '2026-11-17', from: 'proposal' })
+  })
+})
+
+describe('reportingAct', () => {
+  const draft = draftEntries([item('i1', 'p1', 'ann', 'policy', { act_id: 'proposed', kind: 'says', occurred_on: '2026-11-10', reading: 'oppose', weight: 'clear' })])[0]
+  const onFile = act('on-file', 'ann', { kind: 'does', occurred_on: '2026-06-09' })
+
+  it('takes the id, kind and date of an act on file', () => {
+    expect(reportingAct(draft, onFile)).toMatchObject({ act_id: 'on-file', kind: 'does', occurred_on: '2026-06-09', newActId: 'proposed' })
+  })
+
+  it('goes back to the id the new act would take, and publishes under whichever is chosen', () => {
+    const chosen = reportingAct(draft, onFile)
+    expect(verdictOf([chosen], '').entries[0]).toMatchObject({ publish: true, act_id: 'on-file' })
+    expect(reportingAct(chosen, null).act_id).toBe('proposed')
+  })
+})
+
+describe('movedTo', () => {
+  const onPolicy = item('i1', 'p1', 'ann', 'policy', { act_id: 'a', reading: 'support', weight: 'clear', occurred_on: '2026-11-10' })
+  const onMarkup = item('i2', 'p1', 'ann', 'markup', { act_id: 'a', sort: 1, reading: 'oppose', weight: 'clear', occurred_on: '2026-11-10' })
+
+  it('reads the entry on the other question only, with the reading it was given there', () => {
+    const moved = movedTo(draftEntries([onPolicy, onMarkup])[0], 'markup')
+    expect(moved).toMatchObject({ question_id: 'markup', reading: 'oppose', related: {} })
+    const [entry] = verdictOf([moved], '').entries
+    expect(entry.publish && entry.readings).toEqual([{ question_id: 'markup', reading: 'oppose', item: onMarkup }])
+    // The item on the question it left is still the entry's, so the plan dismisses it.
+    expect(entry.items).toEqual([onPolicy, onMarkup])
+  })
+
+  it('carries the entry’s reading to a question it had none on', () => {
+    expect(movedTo(draftEntries([onPolicy])[0], 'markup')).toMatchObject({ question_id: 'markup', reading: 'support', related: {} })
   })
 })

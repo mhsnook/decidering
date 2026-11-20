@@ -94,14 +94,21 @@ export const modelOutputSchema = z.object({
       reason: z.string(),
     }),
   ),
-  named_only: z.array(z.object({ person_id: z.string(), quote: z.string() })),
+  // Left out, it is nobody: an answer with acts is not thrown away for it.
+  named_only: z.array(z.object({ person_id: z.string(), quote: z.string() })).default([]),
 })
 // An act as the model gave it, with where its words sit in the article.
 export type ModelAct = z.infer<typeof modelOutputSchema>['acts'][number] & { passage: string; context: { before: string; after: string } }
 export type Mention = { person_id: string; words: string }
 
 // The same shape for the model, as JSON Schema.
-const { $schema: _, ...OUTPUT_JSON_SCHEMA } = z.toJSONSchema(modelOutputSchema.extend({ acts: z.array(modelOutputSchema.shape.acts.element.extend({ occurred_on: z.string().nullable() })) }), { target: 'draft-7' })
+const { $schema: _, ...OUTPUT_JSON_SCHEMA } = z.toJSONSchema(
+  z.object({
+    acts: z.array(modelOutputSchema.shape.acts.element.extend({ occurred_on: z.string().nullable() })),
+    named_only: modelOutputSchema.shape.named_only.unwrap(),
+  }),
+  { target: 'draft-7' },
+)
 
 const SYSTEM = `You read one news article and list what it records named people doing or saying about one question.
 

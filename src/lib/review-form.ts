@@ -1,4 +1,4 @@
-import type { ActKind, Direction, Position, Proposal, ProposalItem, Question, Source, Weight } from '../../shared/schema.ts'
+import type { Act, ActKind, Direction, Position, Proposal, ProposalItem, Question, Source, Weight } from '../../shared/schema.ts'
 import { isAcross } from '../../shared/standing.ts'
 import type { Listing, RecordEntry, RelatedQuestion, Tracker } from './build-tracker.ts'
 import type { EntryVerdict, PositionDecision, Verdict } from './review-plan.ts'
@@ -9,7 +9,10 @@ export type EntryDraft = {
   key: string
   // null on an entry the editor added, until they choose who it is about.
   decider_id: string | null
+  // An act on file, or `newActId`.
   act_id: string
+  // The id the act takes if it is not one already on file.
+  newActId: string
   // The proposal's rows for this act. Empty on an entry the editor added.
   items: ProposalItem[]
   // The question the entry is read on first. Readings on others are in `related`.
@@ -17,8 +20,6 @@ export type EntryDraft = {
   kind: ActKind
   // Empty until a date is known.
   occurred_on: string
-  // The date is the source's or the proposal's, not one the act was reported with.
-  dateAssumed: boolean
   quote: string
   passage: string | null
   // The item whose surrounding text the passage dialog shows.
@@ -41,7 +42,7 @@ const newDecision = (): EntryDraft['decision'] => ({ action: 'keep', position: n
 
 // The proposal's items as entries: items that share an act and a person are
 // one entry, read on the first item's question and on the others' beside it.
-export function draftEntries(items: ProposalItem[], fallbackDate: string): EntryDraft[] {
+export function draftEntries(items: ProposalItem[]): EntryDraft[] {
   const drafts: EntryDraft[] = []
   // An item that was dismissed goes after the others, so an act is read first on a question it was published on.
   for (const item of [...items].sort((a, b) => Number(a.status === 'rejected') - Number(b.status === 'rejected') || a.sort - b.sort)) {
@@ -57,11 +58,11 @@ export function draftEntries(items: ProposalItem[], fallbackDate: string): Entry
       key,
       decider_id: item.decider_id,
       act_id: item.act_id,
+      newActId: item.act_id,
       items: [item],
       question_id: item.question_id,
       kind: item.kind,
-      occurred_on: item.occurred_on ?? fallbackDate,
-      dateAssumed: item.occurred_on === null,
+      occurred_on: item.occurred_on ?? '',
       // A search excerpt is not anyone's words. It is shown on the card, and the editor types the words.
       quote: item.reading === null && item.passage === null ? '' : item.quote,
       passage: item.passage,
@@ -83,11 +84,13 @@ export function draftEntries(items: ProposalItem[], fallbackDate: string): Entry
 // "Add another person" starts from the first entry's answers and its passage,
 // with no words marked.
 export function addedEntry(first: EntryDraft, copiedFrom: string, newId: () => string = () => crypto.randomUUID()): EntryDraft {
+  const actId = newId()
   return {
     ...first,
     key: newId(),
     decider_id: null,
-    act_id: newId(),
+    act_id: actId,
+    newActId: actId,
     items: [],
     quote: '',
     related: { ...first.related },
@@ -97,6 +100,18 @@ export function addedEntry(first: EntryDraft, copiedFrom: string, newId: () => s
     setPosition: null,
     decision: newDecision(),
   }
+}
+
+// The entry as a report of an act already on file, which keeps its own kind
+// and date, or of a new act when `act` is null.
+export const reportingAct = (entry: EntryDraft, act: Act | null): EntryDraft =>
+  act ? { ...entry, act_id: act.id, kind: act.kind, occurred_on: act.occurred_on } : { ...entry, act_id: entry.newActId }
+
+// The entry read on another question in place of the one it came on. A reading
+// already given there is kept; otherwise the entry's reading moves with it.
+export function movedTo(entry: EntryDraft, questionId: string): EntryDraft {
+  const { [questionId]: there, ...related } = entry.related
+  return { ...entry, question_id: questionId, reading: there ?? entry.reading, related }
 }
 
 // A concrete reading is a commitment or a use of office, so words become an act.
@@ -224,6 +239,8 @@ export function decisionOf(entry: EntryDraft, fallback: Position): PositionDecis
   return { question_id: entry.question_id, action: 'keep', reason: text || null }
 }
 
-// The day to assume an act happened when nothing says: the source's own date,
+// A date to offer for an act that came with none: the source's own, or the day
+// the proposal was put forward. It is only ever offered, never filled in.
+export const dateOffer = (proposal: Pick<Proposal, 'created_at'>, source: Pick<Source, 'published_on'> | undefined): { date: string; from: 'source' | 'proposal' } =>
+  source?.published_on ? { date: source.published_on, from: 'source' } : { date: proposal.created_at.slice(0, 10), from: 'proposal' }
 // or the day it was put forward.
-export const fallbackDate = (proposal: Pick<Proposal, 'created_at'>, source: Pick<Source, 'published_on'> | undefined) => source?.published_on ?? proposal.created_at.slice(0, 10)

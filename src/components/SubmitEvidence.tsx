@@ -9,7 +9,7 @@ type State = { status: 'idle' | 'sending' } | { status: 'sent'; duplicate: boole
 
 export function SubmitEvidence({ question, decider, onDone }: { question: Question; decider: Decider; onDone: () => void }) {
   const [state, setState] = useState<State>({ status: 'idle' })
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<'no' | 'yes' | 'refused'>('no')
   const { tracker } = useTracker()
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
@@ -47,7 +47,7 @@ export function SubmitEvidence({ question, decider, onDone }: { question: Questi
 
   if (state.status === 'sent') {
     const set = tracker.listingFor(question, decider.id).set
-    const link = state.proposalId ? `${window.location.origin}/latest#proposal-${state.proposalId}` : null
+    const link = state.proposalId ? `${window.location.origin}/latest?proposal=${state.proposalId}` : null
     return (
       <div className="flex flex-col gap-3.5 rounded-2xl border-2 border-dashed border-ink bg-paper p-4 text-sm">
         <div>
@@ -63,15 +63,19 @@ export function SubmitEvidence({ question, decider, onDone }: { question: Questi
                 type="button"
                 className="btn btn-sm"
                 onClick={() => {
-                  void navigator.clipboard.writeText(link).then(() => {
-                    setCopied(true)
-                    setTimeout(() => setCopied(false), 2000)
-                  })
+                  // No clipboard on a page not served securely, and a browser may refuse it.
+                  Promise.resolve()
+                    .then(() => navigator.clipboard.writeText(link))
+                    .then(
+                      () => setCopied('yes'),
+                      () => setCopied('refused'),
+                    )
                 }}
               >
-                {copied ? 'Link copied' : 'Copy link'}
+                {copied === 'yes' ? 'Link copied' : 'Copy link'}
               </button>
-              <span className="font-mono text-[13px] break-all text-muted">{link.replace(/^https?:\/\//, '')}</span>
+              <span className="font-mono text-[13px] break-all text-muted select-all">{link.replace(/^https?:\/\//, '')}</span>
+              {copied === 'refused' && <span className="w-full text-[13px] font-semibold">The browser did not allow the copy. Select the address above to copy it.</span>}
             </div>
           </div>
         )}

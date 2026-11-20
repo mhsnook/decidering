@@ -46,6 +46,7 @@ export function ReviewCard({
   mentions,
   drafts,
   setDrafts,
+  dateOffer,
   reviewNote,
   setReviewNote,
   behind,
@@ -62,6 +63,7 @@ export function ReviewCard({
   mentions: ProposalMention[]
   drafts: EntryDraft[]
   setDrafts: (update: (drafts: EntryDraft[]) => EntryDraft[]) => void
+  dateOffer: { date: string; from: 'source' | 'proposal' }
   reviewNote: string
   setReviewNote: (note: string) => void
   // How many proposals wait behind this one.
@@ -218,6 +220,7 @@ export function ReviewCard({
                 context={contexts.find((c) => c.proposal_item_id === d.contextItemId)}
                 notes={itemNotes(d)}
                 roster={roster}
+                dateOffer={dateOffer}
                 readOnly={readOnly}
               />
             ))}

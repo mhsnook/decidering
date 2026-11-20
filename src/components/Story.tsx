@@ -165,17 +165,16 @@ export function AcrossNotice({ decider, question, set, yours = false }: { decide
 }
 
 // Unchecked, so it stays one line until a reader opens it, and then asks them to check it.
-export function WaitingStoryCard({ story }: { story: WaitingStory }) {
-  const linkedTo = typeof window !== 'undefined' && window.location.hash === `#proposal-${story.proposal.id}`
-  const [open, setOpen] = useState(linkedTo)
+// `linked` is for the proposal a link asked for: it starts open and is scrolled to.
+export function WaitingStoryCard({ story, linked = false }: { story: WaitingStory; linked?: boolean }) {
+  const [open, setOpen] = useState(linked)
   const card = useRef<HTMLElement>(null)
-  // The page scrolls to its hash before the feed has synced, so a link to this proposal is followed here.
   useEffect(() => {
-    if (linkedTo) card.current?.scrollIntoView({ block: 'start' })
-  }, [linkedTo])
+    if (linked) card.current?.scrollIntoView({ block: 'start' })
+  }, [linked])
   const claims = story.items.flatMap(({ decider, claims }) => claims.map((claim) => ({ decider, claim })))
   return (
-    <article ref={card} id={`proposal-${story.proposal.id}`} className="scroll-mt-4 rounded-lg border-2 border-dashed border-line bg-paper/70 text-sm" aria-label={`Not checked yet: ${story.source ? sourceLabel(story.source) : 'a proposal'}`} data-waiting>
+    <article ref={card} className="scroll-mt-4 rounded-lg border-2 border-dashed border-line bg-paper/70 text-sm" aria-label={`Not checked yet: ${story.source ? sourceLabel(story.source) : 'a proposal'}`} data-waiting>
       <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="block w-full cursor-pointer space-y-0.5 px-3 py-2 text-left text-xs">
         <span className="flex items-baseline gap-x-2">
           <span className="tag shrink-0 text-[11px]">Not checked yet</span>

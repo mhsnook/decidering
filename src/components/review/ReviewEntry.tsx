@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ACT_KINDS, DIRECTIONS, POSITIONS, WEIGHTS, type Direction, type Position, type Proposal, type ProposalContext, type Question, type Source } from '../../../shared/schema.ts'
 import { useTracker } from '../../lib/tracker.tsx'
-import { missingFrom, outlook, relatedChoices, withWeight, type EntryDraft, type RelatedChoice } from '../../lib/review-form.ts'
+import { missingFrom, movedTo, outlook, relatedChoices, reportingAct, withWeight, type EntryDraft, type RelatedChoice } from '../../lib/review-form.ts'
 import { DIRECTION_LABEL, KIND_CHOICE, KIND_LABEL, KIND_NOUN, STANDING_BG, WEIGHT_HINT, WEIGHT_LABEL, formatDate, hostOf, sourceLabel, standingLabel, type Standing } from '../../lib/position.ts'
 import { Token } from '../bits.tsx'
 import { Marked, RecordItem, splitPassage } from '../RecordItem.tsx'
@@ -92,6 +92,7 @@ export function ReviewEntry({
   context,
   notes,
   roster,
+  dateOffer,
   readOnly,
 }: {
   entry: EntryDraft
@@ -104,6 +105,8 @@ export function ReviewEntry({
   notes: string[]
   // Who an added entry can be about.
   roster: { id: string; name: string }[]
+  // A date to offer when the entry came with none.
+  dateOffer: { date: string; from: 'source' | 'proposal' }
   readOnly: boolean
 }) {
   const { tracker } = useTracker()
@@ -133,6 +136,8 @@ export function ReviewEntry({
   const across = view.across
   const noun = KIND_NOUN[entry.kind]
   const record = decider ? tracker.recordFor(question, decider.id) : []
+  const onFile = tracker.actById.has(entry.act_id)
+  const actsOnFile = decider ? [...(tracker.actsByDecider.get(decider.id) ?? [])].sort((a, b) => b.occurred_on.localeCompare(a.occurred_on)) : []
 
   const choices = relatedChoices(tracker, entry)
   const offered = new Set(choices.map((c) => c.question.id))
@@ -168,7 +173,14 @@ export function ReviewEntry({
   const relatedRow = (choice: RelatedChoice, looks: 'solid' | 'dashed') => {
     const value = entry.related[choice.question.id] ?? null
     const picking = looks === 'solid' || value !== null || choice.question.id in entry.related
-    const buttons = <DirectionButtons small withNone value={value} onPick={(d) => setRelated(choice.question.id, d)} label={`${choice.question.short_title}: which way it points`} />
+    const buttons = (
+      <>
+        <DirectionButtons small withNone value={value} onPick={(d) => setRelated(choice.question.id, d)} label={`${choice.question.short_title}: which way it points`} />
+        <button type="button" onClick={() => onChange(movedTo(entry, choice.question.id))} className={`${LINK} self-start text-[13px]`}>
+          Read it on this question instead of {question.short_title}
+        </button>
+      </>
+    )
     return looks === 'solid' ? (
       <div key={choice.question.id} className="flex flex-col gap-3 rounded-xl border-2 border-ink bg-surface p-[15px] shadow-hard-sm">
         <div className="flex items-start justify-between gap-2">
@@ -202,7 +214,7 @@ export function ReviewEntry({
           </span>
         </div>
         <Reveal open={picking}>
-          <div className="pt-[13px] pb-1">{buttons}</div>
+          <div className="flex flex-col gap-3 pt-[13px] pb-1">{buttons}</div>
         </Reveal>
       </div>
     )
@@ -319,9 +331,14 @@ export function ReviewEntry({
             <p className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[13px] text-muted">
               <span>
                 {KIND_LABEL[entry.kind]} · {entry.occurred_on ? formatDate(entry.occurred_on) : <b className="text-oppose">no date yet</b>}
-                {entry.dateAssumed && entry.occurred_on && ' (the date we have for the source)'}
+                {onFile && ' · an act already on the record'}
               </span>
-              {!readOnly && !tracker.actById.has(entry.act_id) && (
+              {!readOnly && !entry.occurred_on && (
+                <button type="button" onClick={() => onChange({ occurred_on: dateOffer.date })} className={`${LINK} text-[13px]`}>
+                  Use {formatDate(dateOffer.date)}, {dateOffer.from === 'source' ? 'the source’s date' : 'the day this was put forward'}
+                </button>
+              )}
+              {!readOnly && (
                 <button type="button" aria-expanded={!!open.facts} onClick={() => toggle('facts')} className={`${LINK} text-[13px]`}>
                   {open.facts ? 'Done' : 'Change'}
                 </button>
@@ -334,11 +351,31 @@ export function ReviewEntry({
             </p>
             <Reveal open={!!open.facts}>
               <div className="grid gap-2.5 pt-2.5 pb-1 sm:grid-cols-2">
+                {actsOnFile.length > 0 && (
+                  <div className="sm:col-span-2">
+                    <label className="label" htmlFor={`${entry.key}:act`}>
+                      The act
+                    </label>
+                    <select
+                      id={`${entry.key}:act`}
+                      value={entry.act_id}
+                      onChange={(e) => onChange(reportingAct(entry, tracker.actById.get(e.target.value) ?? null))}
+                      className="field"
+                    >
+                      {!tracker.actById.has(entry.newActId) && <option value={entry.newActId}>A new act</option>}
+                      {actsOnFile.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          On the record: {formatDate(a.occurred_on)} · {KIND_LABEL[a.kind]} · {a.body.slice(0, 60)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label className="label" htmlFor={`${entry.key}:kind`}>
                     Kind
                   </label>
-                  <select id={`${entry.key}:kind`} value={entry.kind} onChange={(e) => onChange({ kind: e.target.value as EntryDraft['kind'] })} className="field">
+                  <select id={`${entry.key}:kind`} value={entry.kind} disabled={onFile} onChange={(e) => onChange({ kind: e.target.value as EntryDraft['kind'] })} className="field">
                     {ACT_KINDS.map((k) => (
                       <option key={k} value={k}>
                         {KIND_CHOICE[k]}
@@ -350,7 +387,7 @@ export function ReviewEntry({
                   <label className="label" htmlFor={`${entry.key}:date`}>
                     Date it happened
                   </label>
-                  <input id={`${entry.key}:date`} type="date" value={entry.occurred_on} onChange={(e) => onChange({ occurred_on: e.target.value, dateAssumed: false })} className="field" />
+                  <input id={`${entry.key}:date`} type="date" value={entry.occurred_on} disabled={onFile} onChange={(e) => onChange({ occurred_on: e.target.value })} className="field" />
                 </div>
               </div>
             </Reveal>

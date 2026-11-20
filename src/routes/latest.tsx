@@ -3,12 +3,13 @@ import { useMemo, type ReactNode } from 'react'
 import { useLiveQuery } from '@tanstack/react-db'
 import type { Question } from '../../shared/schema.ts'
 import { db } from '../lib/db.ts'
-import { atomHref, buildStories, buildWaiting, feedPage, mergeFeed, type FeedFilter, type FeedStory, type Story } from '../lib/feed.ts'
+import { atomHref, buildStories, buildWaiting, feedPage, mergeFeed, pageHolding, type FeedFilter, type FeedStory, type Story } from '../lib/feed.ts'
 import { useTracker, type Tracker } from '../lib/tracker.tsx'
 import { NotFound, Syncing } from '../components/bits.tsx'
 import { StoryCard, WaitingStoryCard } from '../components/Story.tsx'
 
-type FeedSearch = { question?: string; recordOnly?: true; before?: string }
+// `proposal` is a link to one waiting proposal: the feed opens on the page that holds it.
+type FeedSearch = { question?: string; recordOnly?: true; before?: string; proposal?: string }
 
 export const Route = createFileRoute('/latest')({
   component: Latest,
@@ -16,6 +17,7 @@ export const Route = createFileRoute('/latest')({
     question: typeof s.question === 'string' && s.question ? s.question : undefined,
     recordOnly: s.recordOnly === true || undefined,
     before: typeof s.before === 'string' && s.before ? s.before : undefined,
+    proposal: typeof s.proposal === 'string' && s.proposal ? s.proposal : undefined,
   }),
 })
 
@@ -41,7 +43,7 @@ function Latest() {
     )
   }
 
-  const set = (patch: Partial<typeof search>) => navigate({ search: (prev) => ({ ...prev, before: undefined, ...patch }), replace: true })
+  const set = (patch: Partial<typeof search>) => navigate({ search: (prev) => ({ ...prev, before: undefined, proposal: undefined, ...patch }), replace: true })
   const atom = atomHref({ question: question?.slug, body: body?.slug })
 
   return (
@@ -94,32 +96,42 @@ function Latest() {
         <h2 id="latest-feed" className="sr-only">
           Stories
         </h2>
-        {search.recordOnly ? <Feed feed={mergeFeed(stories, [])} before={search.before} /> : <WithWaiting stories={stories} filter={filter} before={search.before} />}
+        {search.recordOnly && !search.proposal ? (
+          <Feed feed={mergeFeed(stories, [])} before={search.before} />
+        ) : (
+          <WithWaiting stories={stories} filter={filter} before={search.before} linked={search.before ? undefined : search.proposal} />
+        )}
       </section>
     </div>
   )
 }
 
-function Feed({ feed, before }: { feed: FeedStory[]; before: string | undefined }) {
-  const { page, older, isFirst } = feedPage(feed, before)
+// `linked` is the proposal a link asked for. `linkedNote` says what became of it when it is not waiting.
+function Feed({ feed, before, linked, linkedNote }: { feed: FeedStory[]; before: string | undefined; linked?: string; linkedNote?: string }) {
+  const { page, older, isFirst } = (linked && pageHolding(feed, `proposal:${linked}`)) || feedPage(feed, before)
   return (
     <>
+      {linkedNote && (
+        <p role="status" className="mb-5 rounded-lg border-2 border-dashed border-line bg-paper px-4 py-3 text-sm font-semibold">
+          {linkedNote}
+        </p>
+      )}
       {page.length === 0 ? (
         <p className="rounded-lg border border-dashed border-line p-6 text-center text-muted">Nothing here yet.</p>
       ) : (
         <div className="space-y-5">
-          {page.map((f) => (f.kind === 'published' ? <StoryCard key={f.story.key} story={f.story} /> : <WaitingStoryCard key={f.story.key} story={f.story} />))}
+          {page.map((f) => (f.kind === 'published' ? <StoryCard key={f.story.key} story={f.story} /> : <WaitingStoryCard key={f.story.key} story={f.story} linked={f.story.proposal.id === linked} />))}
         </div>
       )}
       {(older || !isFirst) && (
         <nav className="mt-6 flex flex-wrap gap-3" aria-label="Pages">
           {!isFirst && (
-            <Link to="." search={(prev) => ({ ...prev, before: undefined })} className="btn btn-sm">
+            <Link to="." search={(prev) => ({ ...prev, before: undefined, proposal: undefined })} className="btn btn-sm">
               Back to the newest
             </Link>
           )}
           {older && (
-            <Link to="." search={(prev) => ({ ...prev, before: older })} className="btn btn-sm">
+            <Link to="." search={(prev) => ({ ...prev, before: older, proposal: undefined })} className="btn btn-sm">
               Older stories
             </Link>
           )}
@@ -131,13 +143,20 @@ function Feed({ feed, before }: { feed: FeedStory[]; before: string | undefined 
 
 // These queries are what subscribe to proposals, so a reader showing only the
 // record never mounts this and loads none.
-function WithWaiting({ stories, filter, before }: { stories: Story[]; filter: FeedFilter; before: string | undefined }) {
+function WithWaiting({ stories, filter, before, linked }: { stories: Story[]; filter: FeedFilter; before: string | undefined; linked?: string }) {
   const { tracker } = useTracker()
   const proposals = useLiveQuery((q) => q.from({ row: db.proposals }))
   const items = useLiveQuery((q) => q.from({ row: db.proposal_items }))
   const ready = proposals.isReady && items.isReady
   const waiting = useMemo(() => (ready ? buildWaiting(tracker, proposals.data, items.data, filter) : []), [ready, tracker, proposals.data, items.data, filter.questionId, filter.bodyId])
-  return <Feed feed={mergeFeed(stories, waiting)} before={before} />
+  const isWaiting = waiting.some((w) => w.proposal.id === linked)
+  const linkedNote =
+    !linked || !ready || isWaiting
+      ? undefined
+      : proposals.data.some((p) => p.id === linked && p.status === 'reviewed')
+        ? 'An editor has reviewed the report that link was for. What was published from it is on the record below.'
+        : 'No report is waiting at that link.'
+  return <Feed feed={mergeFeed(stories, waiting)} before={before} linked={isWaiting ? linked : undefined} linkedNote={linkedNote} />
 }
 
 function QuestionOptions({ tracker }: { tracker: Tracker }) {

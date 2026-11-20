@@ -82,8 +82,17 @@ describe('modelOutputSchema', () => {
     expect(modelOutputSchema.safeParse(answer([act({ position: 'lean_oppose' })])).success).toBe(false)
   })
 
-  it('refuses an answer without the list of people only named', () => {
-    expect(modelOutputSchema.safeParse({ acts: [act()] }).success).toBe(false)
+})
+
+describe('an answer that leaves out the people only named', () => {
+  it('is read as naming nobody, with its acts kept', () => {
+    const parsed = modelOutputSchema.parse({ acts: [] })
+    expect(parsed.named_only).toEqual([])
+  })
+
+  it('is still asked for in the shape the model is given', () => {
+    const { response_format } = modelPrompt({ question: { id: 'hot', title: 'Hot question?', short_title: 'Hot', description: null, kind: 'position' }, subQuestions: [], people: [] }, { url: 'https://news.example/a', title: null, date: null, text: 'Text.' }, '2026-11-19')
+    expect((response_format.json_schema.schema as { required: string[] }).required).toEqual(['acts', 'named_only'])
   })
 })
 
@@ -166,8 +175,9 @@ describe('readArticle', () => {
     ])
   })
 
-  it('does not read an answer that leaves out the list of people only named', async () => {
-    expect(await read({ acts: [act()] })).toMatchObject({ ok: false, callFailed: false })
+  it('keeps the acts of an answer that leaves out the list of people only named', async () => {
+    const reading = await read({ acts: [act()] })
+    expect(reading.ok && [reading.acts.length, reading.mentions]).toEqual([1, []])
   })
 })
 

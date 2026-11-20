@@ -228,7 +228,6 @@ describe('reading articles', () => {
     ['the model call fails', page('Words.'), () => new Error('3040: capacity'), 'The model call failed (Error: 3040: capacity).', 'model_failed'],
     ['the model answers with something that is not JSON', page('Words.'), () => 'Sure! Here are the acts:', "The model's answer did not fit the expected shape", 'model_failed'],
     ['the model answers in the wrong shape', page('Words.'), () => ({ statements: [] }), "The model's answer did not fit the expected shape", 'model_failed'],
-    ['the model leaves out the people only named', page('Words.'), () => ({ acts: [], named_only: undefined }), "The model's answer did not fit the expected shape", 'model_failed'],
   ])('falls back to the search excerpt, with why the article was not read, when %s', async (name, body, answer, reason, unread) => {
     const url = `https://news.example/read-fallback-${name.replaceAll(' ', '-')}`
     const s = stubbed({ hits: [hit(url)], pages: { [url]: body }, answer })

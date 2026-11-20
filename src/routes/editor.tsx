@@ -7,7 +7,7 @@ import { db } from '../lib/db.ts'
 import { editorFetch, isEditor, signIn, signOut } from '../lib/editor.ts'
 import { commit } from '../lib/review.ts'
 import { planReview, type Write } from '../lib/review-plan.ts'
-import { decisionOf, draftEntries, fallbackDate, outlook, verdictOf, type EntryDraft } from '../lib/review-form.ts'
+import { dateOffer, decisionOf, draftEntries, outlook, verdictOf, type EntryDraft } from '../lib/review-form.ts'
 import { useTracker } from '../lib/tracker.tsx'
 import { sourceLabel } from '../lib/position.ts'
 import { Syncing, Token } from '../components/bits.tsx'
@@ -48,7 +48,9 @@ const UP_NEXT = 12
 const LEAVE_MS = 470
 const TOAST_MS = 4200
 
-type Finish = { writes: Write[]; how: 'publishing' | 'dismissing'; message: string }
+// What the editor had on a card, kept so it can be put back if publishing it fails.
+type Work = { drafts: EntryDraft[]; reviewNote: string }
+type Finish = { writes: Write[]; how: 'publishing' | 'dismissing'; message: string; work: Work }
 
 function Queue() {
   const { tracker, isReady } = useTracker()
@@ -62,6 +64,7 @@ function Queue() {
   const [leaving, setLeaving] = useState<{ id: string; how: Finish['how'] } | null>(null)
   const [toast, setToast] = useState<{ text: string; shown: boolean }>({ text: '', shown: false })
   const [error, setError] = useState<string | null>(null)
+  const [restored, setRestored] = useState<{ id: string; work: Work; attempt: number } | null>(null)
   const timers = useRef<ReturnType<typeof setTimeout>[]>([])
   useEffect(() => () => timers.current.forEach(clearTimeout), [])
 
@@ -103,15 +106,18 @@ function Queue() {
   if (!isReady || !proposals.isReady || !allItems.isReady || !allNotes.isReady || !allContexts.isReady || !allMentions.isReady) return <Syncing />
 
   // The card leaves first. The writes go in once it is gone, which brings the next card up from the stack.
-  function finish(proposalId: string, { writes, how, message }: Finish) {
+  function finish(proposalId: string, { writes, how, message, work }: Finish) {
     if (leaving) return
     setError(null)
     setLeaving({ id: proposalId, how })
     const later = (fn: () => void, ms: number) => timers.current.push(setTimeout(fn, ms))
     later(() => {
+      // A failed write is rolled back, which returns the proposal to the queue. It comes back as the editor left it.
       commit(writes).catch((err: unknown) => {
         setToast((t) => ({ ...t, shown: false }))
         setError(err instanceof Error ? err.message : String(err))
+        setRestored((r) => ({ id: proposalId, work, attempt: (r?.attempt ?? 0) + 1 }))
+        setSelectedId(proposalId)
       })
       setLeaving(null)
       setSelectedId(null)
@@ -171,7 +177,8 @@ function Queue() {
         </div>
       ) : (
         <Desk
-          key={selected.id}
+          key={restored?.id === selected.id ? `${selected.id}:${restored.attempt}` : selected.id}
+          restored={restored?.id === selected.id ? restored.work : undefined}
           proposal={selected}
           source={selectedSource}
           items={itemsOf(selected.id)}
@@ -238,6 +245,7 @@ function Desk({
   mentions,
   behind,
   leaving,
+  restored,
   onFinish,
   children,
 }: {
@@ -249,15 +257,18 @@ function Desk({
   mentions: ProposalMention[]
   behind: number
   leaving: Finish['how'] | null
+  restored: Work | undefined
   onFinish: (done: Finish) => void
   children: ReactNode
 }) {
   const { tracker } = useTracker()
   const readOnly = proposal.status !== 'pending'
-  const [drafts, setDrafts] = useState(() =>
-    draftEntries(items, fallbackDate(proposal, source)).map((d) => ({ ...d, note: notes.find((n) => n.kind === 'review' && d.items.some((i) => i.id === n.proposal_item_id))?.body ?? '' })),
+  const [drafts, setDrafts] = useState(
+    () =>
+      restored?.drafts ??
+      draftEntries(items).map((d) => ({ ...d, note: notes.find((n) => n.kind === 'review' && d.items.some((i) => i.id === n.proposal_item_id))?.body ?? '' })),
   )
-  const [reviewNote, setReviewNote] = useState(notes.find((n) => n.kind === 'review' && !n.proposal_item_id)?.body ?? '')
+  const [reviewNote, setReviewNote] = useState(restored?.reviewNote ?? notes.find((n) => n.kind === 'review' && !n.proposal_item_id)?.body ?? '')
   const [error, setError] = useState<string | null>(null)
   function finish(dismissAll: boolean) {
     const decide = (d: EntryDraft) => {
@@ -272,6 +283,7 @@ function Desk({
       setError(null)
       onFinish({
         writes,
+        work: { drafts, reviewNote },
         how: published ? 'publishing' : 'dismissing',
         message: `${published ? `Published ${published} ${published === 1 ? 'person' : 'people'} from ${title}.` : `Dismissed ${title}.`}${behind ? ' Here is the next card.' : ''}`,
       })
@@ -290,6 +302,7 @@ function Desk({
         mentions={mentions}
         drafts={drafts}
         setDrafts={setDrafts}
+        dateOffer={dateOffer(proposal, source)}
         reviewNote={reviewNote}
         setReviewNote={setReviewNote}
         behind={behind}

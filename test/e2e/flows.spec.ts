@@ -140,9 +140,17 @@ test('evidence a reader sends reaches the editor under its question and, once ap
   await dialog.getByRole('button', { name: 'Send for review' }).click()
   await expect(dialog.getByText('Thank you. Your report is waiting for an editor.')).toBeVisible()
   await expect(dialog.getByRole('button', { name: 'Copy link' })).toBeVisible()
+  const address = (await dialog.getByText(/\/latest\?proposal=/).textContent())!
   await dialog.getByRole('button', { name: 'Done' }).click()
   // Nothing reaches the record before review.
   await expect(page.getByText(quote)).toHaveCount(0)
+
+  // The address the reader was given opens Latest on that report, already opened.
+  const friend = await context.newPage()
+  await friend.goto(address.slice(address.indexOf('/latest')))
+  const waiting = friend.getByRole('article', { name: `Not checked yet: ${sourceTitle}` })
+  await expect(waiting.getByText('Can you review this?')).toBeVisible()
+  await expect(waiting.getByText(quote)).toBeVisible()
 
   const editor = await context.newPage()
   await editor.goto('/editor')
@@ -169,6 +177,10 @@ test('evidence a reader sends reaches the editor under its question and, once ap
   await editor.getByRole('button', { name: /Publish 1 person/ }).click()
   await expect(editor.getByRole('status')).toContainText(`Published 1 person from “${sourceTitle}”.`)
   await expect(editor.getByRole('heading', { name: sourceTitle })).toHaveCount(0)
+
+  // Once it is reviewed, the address says so instead of pointing at nothing.
+  await friend.reload()
+  await expect(friend.getByRole('status').filter({ hasText: 'An editor has reviewed the report that link was for.' })).toBeVisible()
 
   // The reader's page updates without a reload.
   await expect(page.getByText(quote)).toBeVisible()
@@ -274,7 +286,60 @@ test('a reading across from a position editors set makes a decision card, and li
   await expect(page.locator('section.card').getByText('No', { exact: true }).first()).toBeVisible()
 })
 
-test('a lead whose article was not read says so, starts empty, and cannot be published until the words and both answers are in', async ({ page, request }) => {
+test('an entry can be published as a report of an act already on the record, read on the measure in place of the question it came on', async ({ page, request }) => {
+  const sourceTitle = `Oyelaran again ${Date.now()}`
+  const words = 'Oyelaran voted against sending the fare study on'
+  await queueModelRead(request, { decider_id: 'demo-marguerite-oyelaran', quote: words, passage: `In June ${words}.`, reading: 'oppose', weight: 'concrete', kind: 'does' }, sourceTitle)
+  const acts = () => query<{ n: number }>(`SELECT COUNT(*) AS n FROM acts WHERE decider_id = 'demo-marguerite-oyelaran'`)[0].n
+  const before = acts()
+
+  await openCard(page, sourceTitle)
+  const entry = page.getByRole('region', { name: 'Marguerite Oyelaran' })
+  await entry.getByRole('button', { name: 'Change' }).click()
+  const onRecord = entry.getByLabel('The act').locator('option', { hasText: 'Voted no on advancing the fare study' })
+  await entry.getByLabel('The act').selectOption((await onRecord.getAttribute('value'))!)
+  await expect(entry.getByText('an act already on the record')).toBeVisible()
+  await expect(entry.getByLabel('Date it happened')).toBeDisabled()
+  await expect(entry.getByLabel('Date it happened')).toHaveValue('2026-06-09')
+
+  await entry.getByRole('button', { name: 'Related proposals' }).click()
+  await entry.getByRole('button', { name: 'Read it on this question instead of Fare-free ferry' }).first().click()
+  await expect(entry.getByText(/Then listed as .* on Ordinance 26-114/)).toBeVisible()
+
+  await page.getByRole('button', { name: /Publish 1 person/ }).click()
+  await expect(page.getByRole('status')).toContainText('Published 1 person')
+  await expect.poll(acts).toBe(before)
+  expect(query(`SELECT rd.question_id FROM reports r JOIN sources s ON s.id = r.source_id JOIN readings rd ON rd.act_id = r.act_id WHERE s.title = '${sourceTitle}' ORDER BY rd.question_id`).map((r) => r.question_id)).toEqual(['free-ferry', 'free-ferry-ord-26-114'])
+})
+
+test('a card whose publish fails comes back as the editor left it', async ({ page, request }) => {
+  const sourceTitle = `Sato once more ${Date.now()}`
+  const quote = 'I have not changed my mind about the ferry.'
+  await queueModelRead(request, { decider_id: 'demo-bartholomew-sato', quote, passage: `Sato said: ${quote}`, reading: 'support', weight: 'clear', kind: 'says' }, sourceTitle)
+  await openCard(page, sourceTitle)
+  const entry = page.getByRole('region', { name: 'Bartholomew Sato' })
+  await entry.getByRole('radiogroup', { name: 'Which way it points', exact: true }).getByRole('radio', { name: 'Mixed' }).click()
+  await entry.getByRole('button', { name: 'Add a note' }).click()
+  await entry.getByLabel(/Note on Bartholomew Sato/).fill('Checked against the recording.')
+
+  // The editor's writes go by POST to the party endpoint.
+  await page.route('**/parties/tracker/**', (route) => (route.request().method() === 'POST' ? route.abort() : route.continue()))
+  await page.getByRole('button', { name: /Publish 1 person/ }).click()
+  await expect(page.getByText(/^Not saved:/)).toBeVisible()
+  await expect(page.getByRole('heading', { name: sourceTitle })).toBeVisible()
+  await expect(entry.getByRole('radiogroup', { name: 'Which way it points', exact: true }).getByRole('radio', { name: 'Mixed' })).toBeChecked()
+  await entry.getByRole('button', { name: /the note/ }).click()
+  await expect(entry.getByLabel(/Note on Bartholomew Sato/)).toHaveValue('Checked against the recording.')
+  expect(query(`SELECT status FROM proposals p JOIN sources s ON s.id = p.source_id WHERE s.title = '${sourceTitle}'`)).toEqual([{ status: 'pending' }])
+
+  // With the connection back, the same card publishes what the editor had set.
+  await page.unroute('**/parties/tracker/**')
+  await page.getByRole('button', { name: /Publish 1 person/ }).click()
+  await expect(page.getByRole('status')).toContainText('Published 1 person')
+  await expect.poll(() => query(`SELECT rd.position FROM reports r JOIN sources s ON s.id = r.source_id JOIN readings rd ON rd.act_id = r.act_id WHERE s.title = '${sourceTitle}'`)).toEqual([{ position: 'mixed' }])
+})
+
+test('a lead whose article was not read says so, starts empty, and cannot be published until the words, both answers and a date are in', async ({ page, request }) => {
   const stamp = Date.now()
   const now = TODAY.toISOString()
   const sourceTitle = `Bayport hearing ${stamp}`
@@ -304,6 +369,9 @@ test('a lead whose article was not read says so, starts empty, and cannot be pub
   await expect(publish).toHaveText(/Publish needs both answers/)
   await direction.getByRole('radio', { name: 'Against' }).click()
   await weight.getByRole('radio', { name: 'Clear' }).click()
+  // The lead came with no date, and none is assumed.
+  await expect(publish).toHaveText(/Publish needs the date/)
+  await entry.getByRole('button', { name: /^Use .*, the day this was put forward$/ }).click()
   await expect(publish).toBeEnabled()
   await expect(publish).toHaveText(/Publish 1 person/)
 })

@@ -170,6 +170,15 @@ export function feedPage(feed: FeedStory[], before: string | undefined, size = S
   return { page, older: from + size < feed.length ? cursorOf(page[page.length - 1]) : undefined, isFirst: from === 0 }
 }
 
+// The page that holds one story, in the same shape as `feedPage`, or null if the feed does not have it.
+export function pageHolding(feed: FeedStory[], key: string, size = STORY_PAGE): ReturnType<typeof feedPage> | null {
+  const at = feed.findIndex((f) => f.story.key === key)
+  if (at === -1) return null
+  const from = Math.floor(at / size) * size
+  const page = feed.slice(from, from + size)
+  return { page, older: from + size < feed.length ? cursorOf(page[page.length - 1]) : undefined, isFirst: from === 0 }
+}
+
 // The Atom feed of the same selection. It carries published stories only.
 export function atomHref(filter: { question?: string; body?: string }) {
   const params = new URLSearchParams()
