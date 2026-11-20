@@ -4,6 +4,7 @@ import { TrackerProvider, today } from '../lib/tracker.tsx'
 import { formatDate } from '../lib/position.ts'
 import { isEditor } from '../lib/editor.ts'
 import { Logo } from '../components/bits.tsx'
+import { SignIn } from '../components/SignIn.tsx'
 
 // `as` is the day every body is viewed on, and `body` the one a question put
 // to several is viewed through. Both are kept across links, so a reader stays
@@ -50,6 +51,7 @@ function Header() {
         </Link>
         <nav className="hidden items-center gap-1 text-[15px] font-semibold md:flex">
           <NavLinks className="rounded-full px-3.5 py-2 hover:text-accent [&.active]:bg-ink [&.active]:text-paper" />
+          <SignIn className="rounded-full px-3.5 py-2 hover:text-accent" />
         </nav>
         <button type="button" className="btn px-3 text-sm font-bold shadow-none md:hidden" aria-expanded={menuOpen} aria-controls="menu" onClick={() => setMenuOpen(!menuOpen)}>
           {menuOpen ? 'Close' : 'Menu'}
@@ -58,6 +60,9 @@ function Header() {
       {menuOpen && (
         <nav id="menu" className="flex flex-col pb-3 text-lg font-bold md:hidden">
           <NavLinks className="flex min-h-11 items-center border-t-2 border-dashed border-line [&.active]:text-accent" onNavigate={() => setMenuOpen(false)} />
+          <div className="flex min-h-11 items-center border-t-2 border-dashed border-line">
+            <SignIn className="font-bold" />
+          </div>
         </nav>
       )}
     </header>

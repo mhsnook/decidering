@@ -407,6 +407,9 @@ export type Person = z.infer<typeof personSchema>
 
 export const displayNameSchema = z.string().trim().min(1).max(60)
 
+// How long a sign-in code sent by email works.
+export const SIGN_IN_CODE_MINUTES = 5
+
 export const commentSchema = z.object({
   id: z.string(),
   thread_id: z.string(),

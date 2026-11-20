@@ -3,6 +3,7 @@ import { useLocation } from '@tanstack/react-router'
 import { eq, useLiveQuery } from '@tanstack/react-db'
 import { pairId, type Decider, type Question } from '../../shared/schema.ts'
 import { db } from '../lib/db.ts'
+import { setDisplayName, usePeople, useSignedIn } from '../lib/auth.ts'
 import { isEditor } from '../lib/editor.ts'
 import { saveUsername, savedUsername } from '../lib/username.ts'
 import { Modal } from './Modal.tsx'
@@ -26,8 +27,13 @@ export function Discussion({ question, decider }: { question: Question; decider:
         .orderBy(({ c }) => c.created_at, 'asc'),
     [threadId],
   )
+  const { muted } = usePeople()
+  // Editors still see a muted person's comments, marked, so they can unmute them.
+  const comments = isEditor() ? data : data.filter((c) => c.person_id === null || !muted.has(c.person_id))
+  const { signedIn, person } = useSignedIn()
   const formRef = useRef<HTMLFormElement>(null)
-  const [username, setUsername] = useState(savedUsername)
+  const [savedName, setSavedName] = useState(savedUsername)
+  const username = signedIn ? (person?.display_name ?? '') : savedName
   // 'post' means a comment is waiting on the name: save it, then send.
   const [asking, setAsking] = useState<'post' | 'rename' | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -65,14 +71,24 @@ export function Discussion({ question, decider }: { question: Question; decider:
     else setAsking('post')
   }
 
-  function onUsername(e: FormEvent<HTMLFormElement>) {
+  // A signed-in person's first comment names them, so only a rename is sent on its own.
+  async function onUsername(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const name = (new FormData(e.currentTarget).get('username') as string).trim()
     if (!name) return
-    saveUsername(name)
-    setUsername(name)
+    if (!signedIn) {
+      saveUsername(name)
+      setSavedName(name)
+    } else if (asking === 'rename') {
+      const failed = await setDisplayName(name)
+      if (failed) return setError(failed)
+    }
     if (asking === 'post') post(name)
     setAsking(null)
+  }
+
+  function setMuted(personId: string, on: boolean) {
+    db.people.update(personId, (p) => void (p.muted_at = on ? new Date().toISOString() : null))
   }
 
   return (
@@ -82,17 +98,25 @@ export function Discussion({ question, decider }: { question: Question; decider:
         Talk about {decider.name} and this question. To add something to the record itself, use “Add to the record” so an editor can check it.
       </p>
 
-      {isReady && data.length === 0 && <p className="mb-4 rounded-lg border border-dashed border-line p-4 text-center text-sm text-muted">No comments yet.</p>}
+      {isReady && comments.length === 0 && <p className="mb-4 rounded-lg border border-dashed border-line p-4 text-center text-sm text-muted">No comments yet.</p>}
       <ol className="mb-5 space-y-3">
-        {data.map((c) => (
+        {comments.map((c) => (
           <li key={c.id} className="rounded-xl border-2 border-ink bg-surface p-3">
-            <p className="mb-1 flex items-baseline gap-2 text-xs text-muted">
+            <p className="mb-1 flex flex-wrap items-baseline gap-2 text-xs text-muted">
               <span className="text-sm font-semibold text-ink">{c.author_name}</span>
               <time dateTime={c.created_at}>{timeFmt.format(new Date(c.created_at))}</time>
+              {c.person_id && muted.has(c.person_id) && <span className="tag">Muted · hidden from readers</span>}
               {isEditor() && (
-                <button type="button" className="ml-auto underline underline-offset-2 hover:text-oppose" onClick={() => db.comments.delete(c.id)}>
-                  Remove
-                </button>
+                <span className="ml-auto flex gap-3">
+                  {c.person_id && (
+                    <button type="button" className="underline underline-offset-2 hover:text-ink" onClick={() => setMuted(c.person_id!, !muted.has(c.person_id!))}>
+                      {muted.has(c.person_id) ? `Unmute ${c.author_name}` : `Mute ${c.author_name}`}
+                    </button>
+                  )}
+                  <button type="button" className="underline underline-offset-2 hover:text-oppose" onClick={() => db.comments.delete(c.id)}>
+                    Remove
+                  </button>
+                </span>
               )}
             </p>
             <p className="text-sm whitespace-pre-wrap">{c.body}</p>
@@ -132,9 +156,13 @@ export function Discussion({ question, decider }: { question: Question; decider:
         open={asking !== null}
         onClose={() => setAsking(null)}
         title={asking === 'rename' ? 'Change your username' : 'Set a username to post'}
-        description="It shows next to your comments. This browser remembers it, and you can change it any time."
+        description={
+          signedIn
+            ? 'It shows next to your comments, in place of your email address. You can change it any time.'
+            : 'It shows next to your comments. This browser remembers it, and you can change it any time.'
+        }
       >
-        <form onSubmit={onUsername} className="space-y-4">
+        <form onSubmit={(e) => void onUsername(e)} className="space-y-4">
           <div>
             <label className="label" htmlFor="username">
               Username

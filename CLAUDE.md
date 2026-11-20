@@ -26,6 +26,7 @@ The README describes what the app is and how to run it. This file is how changes
 - When a library or a Cloudflare feature covers a job, use it fully. One snag is not a reason to drop it and write its job by hand. If you do drop one, say so and why.
 - Anything written as the project (README, UI copy, PR text, test names, prompts) is plain and factual, with no emphasis for effect.
 - Unreviewed proposals are public. Text only editors should see goes in a table that is only sent to editors, never in a column of a synced public table.
+- Email addresses live only in Better Auth's `auth_` tables, which no collection serves. The public sees a person through `people`. Signing in gives no access in the sync room, whose `auth` hook verifies the editor token only.
 - A schema change is a new file in `migrations/`. Previews share one database, so a migration on one branch reaches every Preview.
 
 ## The news search and the article reader

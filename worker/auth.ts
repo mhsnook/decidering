@@ -2,10 +2,8 @@ import { betterAuth } from 'better-auth'
 import { emailOTP } from 'better-auth/plugins/email-otp'
 import { waitUntil } from 'cloudflare:workers'
 import { getServerByName } from 'partyserver'
-import type { Person } from '../shared/schema.ts'
+import { SIGN_IN_CODE_MINUTES, type Person } from '../shared/schema.ts'
 import type { Tracker } from './tracker.ts'
-
-export const CODE_MINUTES = 5
 
 // Better Auth's own tables. They hold each person's email address and their
 // sessions, and none of them is synced to the browser.
@@ -32,7 +30,7 @@ export function authOptions(env: Env) {
     advanced: { ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] } },
     plugins: [
       emailOTP({
-        expiresIn: CODE_MINUTES * 60,
+        expiresIn: SIGN_IN_CODE_MINUTES * 60,
         // Not awaited, so how long the send takes says nothing about whether the address has an account.
         async sendVerificationOTP({ email, otp, type }) {
           if (type !== 'sign-in') return
@@ -68,7 +66,7 @@ async function sendCode(env: Env, email: string, code: string) {
       from: { email: env.EMAIL_FROM, name: 'Sporelight' },
       to: email,
       subject: `Your Sporelight sign-in code is ${code}`,
-      text: `Your Sporelight sign-in code is ${code}. It works once, for ${CODE_MINUTES} minutes.\n\nIf you did not ask to sign in, you can ignore this email.`,
+      text: `Your Sporelight sign-in code is ${code}. It works once, for ${SIGN_IN_CODE_MINUTES} minutes.\n\nIf you did not ask to sign in, you can ignore this email.`,
     })
   } catch (e) {
     console.error('sign-in code not sent', e)
