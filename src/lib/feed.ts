@@ -1,5 +1,4 @@
 import type { Act, Decider, Proposal, ProposalItem, Question, Reading, SetPosition, Source } from '../../shared/schema.ts'
-import { isAcross } from '../../shared/standing.ts'
 import { groupBy, type Tracker } from './build-tracker.ts'
 import type { Standing } from './position.ts'
 
@@ -135,8 +134,7 @@ export function buildWaiting(tracker: Tracker, proposals: Proposal[], items: Pro
       stories.set(proposal.id, story)
     }
     story.isDemo ||= isDemoQuestion(tracker, question)
-    const listing = tracker.listingFor(question, decider.id)
-    const claim = { item, question, reading: item.reading, before: listing.standing, across: listing.set && isAcross(listing.set.position, item.reading) ? listing.set : undefined }
+    const claim = { item, question, reading: item.reading, before: tracker.standingFor(question, decider.id), across: tracker.acrossFor(question, decider.id, item.reading) }
     const existing = story.items.find((i) => i.key === item.act_id)
     if (existing) existing.claims.push(claim)
     else story.items.push({ key: item.act_id, decider, claims: [claim] })
@@ -165,7 +163,10 @@ const isAfter = (f: FeedStory, cursor: string) => {
 // `older` is the cursor for the next page.
 export function feedPage(feed: FeedStory[], before: string | undefined, size = STORY_PAGE): { page: FeedStory[]; older: string | undefined; isFirst: boolean } {
   const start = before && before.includes('|') ? feed.findIndex((f) => isAfter(f, before)) : 0
-  const from = start === -1 ? feed.length : start
+  return pageFrom(feed, start === -1 ? feed.length : start, size)
+}
+
+function pageFrom(feed: FeedStory[], from: number, size: number) {
   const page = feed.slice(from, from + size)
   return { page, older: from + size < feed.length ? cursorOf(page[page.length - 1]) : undefined, isFirst: from === 0 }
 }
@@ -173,10 +174,7 @@ export function feedPage(feed: FeedStory[], before: string | undefined, size = S
 // The page that holds one story, in the same shape as `feedPage`, or null if the feed does not have it.
 export function pageHolding(feed: FeedStory[], key: string, size = STORY_PAGE): ReturnType<typeof feedPage> | null {
   const at = feed.findIndex((f) => f.story.key === key)
-  if (at === -1) return null
-  const from = Math.floor(at / size) * size
-  const page = feed.slice(from, from + size)
-  return { page, older: from + size < feed.length ? cursorOf(page[page.length - 1]) : undefined, isFirst: from === 0 }
+  return at === -1 ? null : pageFrom(feed, Math.floor(at / size) * size, size)
 }
 
 // The Atom feed of the same selection. It carries published stories only.

@@ -22,7 +22,7 @@ describe('draftEntries', () => {
       ['ann', 'shared', ['on-policy', 'on-markup']],
       ['bob', 'act-of-bob', ['bob']],
     ])
-    expect(drafts[0]).toMatchObject({ question_id: 'policy', kind: 'does', reading: 'support', weight: 'concrete', passage: 'The paragraph.', contextItemId: 'on-policy', related: { markup: 'lean_support' }, dismissed: false })
+    expect(drafts[0]).toMatchObject({ question_id: 'policy', kind: 'does', reading: 'support', weight: 'concrete', passage: 'The paragraph.', wider: null, related: { markup: 'lean_support' }, dismissed: false })
     expect(drafts[1].related).toEqual({})
   })
 
@@ -360,7 +360,7 @@ describe('verdictOf', () => {
 })
 
 describe('decisionOf', () => {
-  const across = (decision: EntryDraft['decision']) => decisionOf(ready({ question_id: 'markup', decision }), 'oppose')
+  const across = (decision: EntryDraft['decision']) => decisionOf(ready({ question_id: 'markup', reading: 'oppose', decision }))
 
   it('sets the position chosen, or the one the entry points to when none was chosen', () => {
     expect(across({ action: 'set', position: 'lean_oppose', reason: ' Said so twice. ' })).toEqual({ question_id: 'markup', action: 'set', position: 'lean_oppose', reason: 'Said so twice.' })
@@ -387,7 +387,6 @@ describe('dateOffer', () => {
 
   it('offers the day the proposal was put forward otherwise, and says which it is', () => {
     expect(dateOffer(put, source('article'))).toEqual({ date: '2026-11-17', from: 'proposal' })
-    expect(dateOffer(put, undefined)).toEqual({ date: '2026-11-17', from: 'proposal' })
   })
 })
 
@@ -455,5 +454,24 @@ describe('relatedQuestionRows', () => {
 
   it('gives it an address no other question has', () => {
     expect(add(['medicare-at-55', 'medicare-at-55-2']).question.slug).toBe('medicare-at-55-3')
+  })
+})
+
+describe('the text around a passage', () => {
+  const read = item('i1', 'p1', 'ann', 'policy', { reading: 'support', weight: 'clear', quote: 'I am for it.', passage: 'She said: I am for it.' })
+  const context = { id: 'i1', proposal_id: 'p1', proposal_item_id: 'i1', before: 'First paragraph.\n\nSecond paragraph.', after: 'Last paragraph.' }
+
+  it('is kept on the entry in the article’s order, with the passage where it sat', () => {
+    expect(draftEntries([read], [context])[0].wider).toEqual(['First paragraph.', 'Second paragraph.', 'She said: I am for it.', 'Last paragraph.'])
+  })
+
+  it('goes with an added entry, so other words in it can be marked for another person', () => {
+    const [first] = draftEntries([read], [context])
+    expect(addedEntry(first, 'Ann').wider).toEqual(first.wider)
+  })
+
+  it('is nothing for an item that came with no passage or no context', () => {
+    expect(draftEntries([read])[0].wider).toBeNull()
+    expect(draftEntries([{ ...read, passage: null }], [context])[0].wider).toBeNull()
   })
 })

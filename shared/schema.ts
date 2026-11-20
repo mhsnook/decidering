@@ -369,6 +369,18 @@ export type ProposalDraft = {
   mentions?: { decider_id: string; words: string }[]
 }
 
+// A lead the news search queued without reading its article: it names people and claims nothing.
+export const isUnreadLead = (proposal: Pick<Proposal, 'origin'>) => proposal.origin === 'news_search'
+
+// A name as the last part of an address.
+export const slugOf = (name: string) =>
+  name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+
 // What an act of a kind counts as until someone says otherwise.
 export const usualWeight = (kind: ActKind): Weight => (kind === 'says' ? 'clear' : 'concrete')
 

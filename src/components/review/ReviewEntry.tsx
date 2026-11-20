@@ -1,8 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
-import { ACT_KINDS, DIRECTIONS, POSITIONS, WEIGHTS, type Direction, type Position, type Proposal, type ProposalContext, type Question, type Source } from '../../../shared/schema.ts'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { ACT_KINDS, isUnreadLead, DIRECTIONS, POSITIONS, WEIGHTS, type Direction, type Position, type Proposal, type Question, type Source } from '../../../shared/schema.ts'
 import { useTracker } from '../../lib/tracker.tsx'
 import { addRelatedQuestion } from '../../lib/review.ts'
-import { missingFrom, outlook, relatedChoices, relatedQuestionRows, reportingAct, withWeight, type EntryDraft, type RelatedChoice } from '../../lib/review-form.ts'
+import { dateOffer, decisionStandings, missingFrom, outlook, relatedChoices, relatedQuestionRows, reportingAct, withWeight, type EntryDraft, type Outlook, type RelatedChoice } from '../../lib/review-form.ts'
 import { DIRECTION_LABEL, KIND_CHOICE, KIND_LABEL, KIND_NOUN, STANDING_BG, WEIGHT_HINT, WEIGHT_LABEL, formatDate, hostOf, sourceLabel, standingLabel, type Standing } from '../../lib/position.ts'
 import { Token } from '../bits.tsx'
 import { Marked, RecordItem, splitPassage } from '../RecordItem.tsx'
@@ -32,7 +32,9 @@ const RELATED_BADGE: Record<RelatedChoice['kind'], string> = {
   related: 'Related issue',
 }
 
-const LINK = 'cursor-pointer text-sm font-semibold text-muted underline underline-offset-[3px] hover:text-ink'
+const LINK_BASE = 'cursor-pointer font-semibold text-muted underline underline-offset-[3px] hover:text-ink'
+const LINK = `${LINK_BASE} text-sm`
+const LINK_SMALL = `${LINK_BASE} text-[13px]`
 const TAG = 'tag text-faint'
 
 function DirectionButtons({
@@ -73,6 +75,14 @@ function DirectionButtons({
   )
 }
 
+// What changes for the person on a question if the entry is published as it stands.
+function thenNote(entry: EntryDraft, view: Outlook, question: Question, whenFirst: string): string {
+  if (!view.then) return entry.decider_id ? 'both answers first' : 'the person first'
+  if (view.now.set) return 'set by editors, so it stays'
+  if (view.now.standing === 'unknown') return whenFirst
+  return view.then.standing === view.now.standing ? 'unchanged' : `was ${standingLabel(view.now.standing, question)}`
+}
+
 function ResultLine({ lead, standing, question, note }: { lead: string; standing: Standing | null; question: Question; note: string }) {
   return (
     <p className="flex items-center gap-2 text-[15px]">
@@ -90,10 +100,8 @@ export function ReviewEntry({
   onDismiss,
   proposal,
   source,
-  context,
   notes,
   roster,
-  dateOffer,
   continued,
   readOnly,
 }: {
@@ -102,13 +110,10 @@ export function ReviewEntry({
   onDismiss: (dismissed: boolean) => void
   proposal: Proposal
   source: Source
-  context: ProposalContext | undefined
   // What whoever put the entry forward wrote for editors, such as the model's reason.
   notes: string[]
   // Who an added entry can be about.
   roster: { id: string; name: string }[]
-  // A date to offer when the entry came with none.
-  dateOffer: { date: string; from: 'source' | 'proposal' }
   // The entry above is another act by the same person.
   continued: boolean
   readOnly: boolean
@@ -131,6 +136,9 @@ export function ReviewEntry({
     return () => window.removeEventListener('keydown', onKey)
   }, [open.passage])
 
+  const choices = useMemo(() => relatedChoices(tracker, entry), [tracker, entry.question_id, entry.decider_id])
+  const actsOnFile = useMemo(() => [...(tracker.actsByDecider.get(entry.decider_id ?? '') ?? [])].sort((a, b) => b.occurred_on.localeCompare(a.occurred_on)), [tracker, entry.decider_id])
+
   const question = tracker.questionById.get(entry.question_id)
   if (!question) return <p className="py-4 text-muted">This entry points at a question that no longer exists.</p>
   const decider = entry.decider_id ? tracker.deciderById.get(entry.decider_id) : undefined
@@ -146,10 +154,8 @@ export function ReviewEntry({
   const noun = KIND_NOUN[entry.kind]
   const record = decider ? tracker.recordFor(question, decider.id) : []
   const onFile = tracker.actById.has(entry.act_id)
-  const actsOnFile = decider ? [...(tracker.actsByDecider.get(decider.id) ?? [])].sort((a, b) => b.occurred_on.localeCompare(a.occurred_on)) : []
-
-  const root = (question.parent_id && tracker.questionById.get(question.parent_id)) || question
-  const choices = relatedChoices(tracker, entry)
+  const offer = dateOffer(proposal, source)
+  const root = tracker.rootOf(question)
   const offered = new Set(choices.map((c) => c.question.id))
   // A reading the proposal came with, on a question that is not offered any more.
   const strays = Object.keys(entry.related).flatMap((id) => {
@@ -162,10 +168,10 @@ export function ReviewEntry({
   const decisionDates = [question, ...choices.map((c) => c.question)].filter((q) => q.decides_on).map((q) => `${q.short_title} decision ${formatDate(q.decides_on!)}`)
 
   const split = splitPassage(entry.passage, entry.quote)
-  const paragraphs = context && entry.passage !== null ? [...context.before.split('\n'), entry.items.find((i) => i.id === entry.contextItemId)?.passage ?? entry.passage, ...context.after.split('\n')].filter((p) => p.trim()) : []
+  const paragraphs = entry.passage !== null ? (entry.wider ?? []) : []
   const hasWider = paragraphs.length > 0
   const typesWords = entry.passage === null
-  const needsWords = typesWords && (!entry.quote.trim() || open.words || isAdded || proposal.origin === 'news_search')
+  const needsWords = typesWords && (!entry.quote.trim() || open.words || isAdded || isUnreadLead(proposal))
 
   // Marks the words the editor selected in the dialog. They have to sit inside
   // one paragraph, which becomes the passage.
@@ -223,17 +229,13 @@ export function ReviewEntry({
     )
   }
 
-  const decisionChoices: { action: EntryDraft['decision']['action']; title: string; body: string; token: Standing }[] = across
-    ? (() => {
-        const lifted = view.then?.calculated ?? 'unknown'
-        const fresh: Position = entry.decision.position ?? entry.reading ?? 'mixed'
-        return [
-          { action: 'keep', title: `Keep our position: ${standingLabel(across.position, question)}`, body: `The ${noun} goes on the record. The page still shows ${standingLabel(across.position, question)}, with our reason beside it.`, token: across.position },
-          { action: 'lift', title: `Lift our position: ${standingLabel(lifted, question)}`, body: `The page shows the calculated result with this ${noun}.`, token: lifted },
-          { action: 'set', title: `Set a new position: ${standingLabel(fresh, question)}`, body: `Starts from what this ${noun} shows. Pick another below if needed, and say why.`, token: fresh },
-        ]
-      })()
-    : []
+  const standings = decisionStandings(entry, view)
+  const says = (standing: Standing) => standingLabel(standing, question)
+  const decisionChoices: { action: EntryDraft['decision']['action']; title: string; body: string }[] = [
+    { action: 'keep', title: `Keep our position: ${says(standings.keep)}`, body: `The ${noun} goes on the record. The page still shows ${says(standings.keep)}, with our reason beside it.` },
+    { action: 'lift', title: `Lift our position: ${says(standings.lift)}`, body: `The page shows the calculated result with this ${noun}.` },
+    { action: 'set', title: `Set a new position: ${says(standings.set)}`, body: `Starts from what this ${noun} shows. Pick another below if needed, and say why.` },
+  ]
 
   return (
     <section
@@ -263,7 +265,7 @@ export function ReviewEntry({
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1">
                 <h3 className={continued ? 'text-base leading-[1.2] font-extrabold' : 'text-[22px] leading-[1.1] font-black'}>
-                  {continued ? `Also from ${name}: another ${KIND_NOUN[entry.kind]}` : decider ? decider.name : 'Choose a person'}
+                  {continued ? `Also from ${name}: another ${noun}` : decider ? decider.name : 'Choose a person'}
                 </h3>
                 {isAdded && decider && (
                   <button type="button" aria-label="Change the person" onClick={() => toggle('person')} className="size-9 shrink-0 cursor-pointer rounded-lg border-2 border-transparent text-lg leading-none hover:border-ink">
@@ -313,7 +315,7 @@ export function ReviewEntry({
               </div>
               {entry.passage !== null && !entry.quote && <p className="mt-2 text-[13px] text-faint">No words marked yet. Open the passage, select what they said or did, and mark it.</p>}
               {isAdded && !readOnly && (
-                <button type="button" onClick={() => onChange({ passage: null, quote: '' })} className={`${LINK} mt-1.5 text-[13px]`}>
+                <button type="button" onClick={() => onChange({ passage: null, quote: '' })} className={`${LINK_SMALL} mt-1.5`}>
                   Their words are not in this passage: type them instead
                 </button>
               )}
@@ -334,7 +336,7 @@ export function ReviewEntry({
                   placeholder="Copy what they said or did from the article"
                   className="field"
                 />
-                {proposal.origin === 'news_search' && <p className="text-[13px] text-faint">Nothing to pick from: the article was not read.</p>}
+                {isUnreadLead(proposal) && <p className="text-[13px] text-faint">Nothing to pick from: the article was not read.</p>}
               </div>
             </Reveal>
           )}
@@ -346,17 +348,17 @@ export function ReviewEntry({
                 {onFile && ' · an act already on the record'}
               </span>
               {!readOnly && !entry.occurred_on && (
-                <button type="button" onClick={() => onChange({ occurred_on: dateOffer.date })} className={`${LINK} text-[13px]`}>
-                  Use {formatDate(dateOffer.date)}, {dateOffer.from === 'source' ? 'the source’s date' : 'the day this was put forward'}
+                <button type="button" onClick={() => onChange({ occurred_on: offer.date })} className={LINK_SMALL}>
+                  Use {formatDate(offer.date)}, {offer.from === 'source' ? 'the source’s date' : 'the day this was put forward'}
                 </button>
               )}
               {!readOnly && (
-                <button type="button" aria-expanded={!!open.facts} onClick={() => toggle('facts')} className={`${LINK} text-[13px]`}>
+                <button type="button" aria-expanded={!!open.facts} onClick={() => toggle('facts')} className={LINK_SMALL}>
                   {open.facts ? 'Done' : 'Change'}
                 </button>
               )}
               {typesWords && !needsWords && !readOnly && (
-                <button type="button" onClick={() => toggle('words')} className={`${LINK} text-[13px]`}>
+                <button type="button" onClick={() => toggle('words')} className={LINK_SMALL}>
                   Change the words
                 </button>
               )}
@@ -366,7 +368,7 @@ export function ReviewEntry({
                 {actsOnFile.length > 0 && (
                   <div className="sm:col-span-2">
                     <label className="label" htmlFor={`${entry.key}:act`}>
-                      Which {KIND_NOUN[entry.kind]} is this?
+                      Which {noun} is this?
                     </label>
                     <select
                       id={`${entry.key}:act`}
@@ -374,7 +376,7 @@ export function ReviewEntry({
                       onChange={(e) => onChange(reportingAct(entry, tracker.actById.get(e.target.value) ?? null))}
                       className="field"
                     >
-                      {!tracker.actById.has(entry.newActId) && <option value={entry.newActId}>A new {KIND_NOUN[entry.kind]}, not on the record yet</option>}
+                      {!tracker.actById.has(entry.newActId) && <option value={entry.newActId}>A new {noun}, not on the record yet</option>}
                       {actsOnFile.map((a) => (
                         <option key={a.id} value={a.id}>
                           On the record: {formatDate(a.occurred_on)} · {KIND_LABEL[a.kind]} · {a.body.slice(0, 60)}
@@ -418,7 +420,7 @@ export function ReviewEntry({
                   <p className="mt-2.5 text-[13px] text-muted">
                     {entry.mainSkipped ? `Left out: this says nothing on ${question.short_title} itself. Pick an answer above to bring it back.` : `Only about ${chosen.map((c) => c.question.short_title).join(' and ')}? `}
                     {!entry.mainSkipped && (
-                      <button type="button" onClick={() => onChange({ mainSkipped: true })} className={`${LINK} text-[13px]`}>
+                      <button type="button" onClick={() => onChange({ mainSkipped: true })} className={LINK_SMALL}>
                         Leave {question.short_title} out
                       </button>
                     )}
@@ -493,22 +495,7 @@ export function ReviewEntry({
                   Not read on {question.short_title}
                 </p>
               ) : (
-              <ResultLine
-                lead="Then listed as"
-                standing={then}
-                question={question}
-                note={
-                  !then
-                    ? (missingFrom({ ...entry, quote: 'x', occurred_on: 'x' }) ?? 'both answers') + ' first'
-                    : view.now.set
-                      ? 'set by editors, so it stays'
-                      : then === view.now.standing
-                        ? 'unchanged'
-                        : view.now.standing === 'unknown'
-                          ? 'their first entry'
-                          : `was ${standingLabel(view.now.standing, question)}`
-                }
-              />
+                <ResultLine lead="Then listed as" standing={then} question={question} note={thenNote(entry, view, question, 'their first entry')} />
               )}
               {chosen.map((c) => {
                 const other = outlook(tracker, entry, c.question, entry.related[c.question.id]!)
@@ -519,7 +506,7 @@ export function ReviewEntry({
                     lead="and"
                     standing={to}
                     question={c.question}
-                    note={!to ? 'how much it counts first' : other.now.standing === 'unknown' ? 'first reading there' : to === other.now.standing ? 'unchanged' : `was ${standingLabel(other.now.standing, c.question)}`}
+                    note={thenNote(entry, other, c.question, 'first reading there')}
                   />
                 )
               })}
@@ -572,7 +559,7 @@ export function ReviewEntry({
                       className={`flex w-full cursor-pointer items-start gap-3 rounded-[14px] border-2 border-ink px-4 py-3.5 text-left transition-[transform,background-color,box-shadow] duration-150 ${on ? '-translate-y-[3px] bg-mint shadow-hard-md' : 'bg-surface'}`}
                     >
                       <span className={`mt-0.5 size-5 shrink-0 rounded-full border-2 border-ink bg-surface transition-shadow duration-200 ${on ? 'shadow-[inset_0_0_0_3px_#fff,inset_0_0_0_10px_var(--color-ink)]' : ''}`} />
-                      <Token standing={o.token} className="mt-px size-[22px] transition-colors duration-200" />
+                      <Token standing={standings[o.action]} className="mt-px size-[22px] transition-colors duration-200" />
                       <span>
                         <b className="block text-[17px]">{o.title}</b>
                         <span className="mt-0.5 block text-[15px] leading-[1.4] text-muted">{o.body}</span>
@@ -587,7 +574,7 @@ export function ReviewEntry({
                 </label>
                 <select
                   id={`${entry.key}:new-position`}
-                  value={entry.decision.position ?? entry.reading ?? 'mixed'}
+                  value={standings.set}
                   onChange={(e) => onChange({ decision: { ...entry.decision, position: e.target.value as Position } })}
                   className="field mb-1"
                 >

@@ -145,24 +145,15 @@ A question whose relation_to_main_question is smaller_step is a narrower version
 In named_only, list each person from the list whom the article names but records no act for, with the words that name them copied exactly from the article (for example "was absent").`
 
 export function modelPrompt(context: ReadingContext, article: { url: string; title: string | null; date: string | null; text: string }, today: string) {
-  const questions = [
-    ...[context.question, ...context.subQuestions].map((q) => ({
-      question_id: q.id,
-      title: q.title,
-      description: q.description,
-      asks_whether_they_did_it: q.kind === 'formal_act',
-      is_sub_question_of: q.id === context.question.id ? null : context.question.id,
-      relation_to_main_question: null as string | null,
-    })),
-    ...context.relatedQuestions.map((q) => ({
-      question_id: q.id,
-      title: q.title,
-      description: q.description,
-      asks_whether_they_did_it: q.kind === 'formal_act',
-      is_sub_question_of: null,
-      relation_to_main_question: q.relation,
-    })),
-  ]
+  const subQuestionIds = new Set(context.subQuestions.map((q) => q.id))
+  const questions = [context.question, ...context.subQuestions, ...context.relatedQuestions].map((q) => ({
+    question_id: q.id,
+    title: q.title,
+    description: q.description,
+    asks_whether_they_did_it: q.kind === 'formal_act',
+    is_sub_question_of: subQuestionIds.has(q.id) ? context.question.id : null,
+    relation_to_main_question: 'relation' in q ? q.relation : null,
+  }))
   const user = [
     `Today is ${today}.`,
     `Questions:\n${JSON.stringify(questions, null, 1)}`,
@@ -216,23 +207,22 @@ function unwrap(needle: string): string {
   return out
 }
 
-// Where a quote's words sit in the article, or null if they are not in it.
-// `least` is the fewest characters that count as a quote.
-function locateInArticle(quote: string, articleText: string, least = 10): { start: number; end: number } | null {
+// Where a quote's words sit in the article, and the article's own words
+// there, or null if they are not in it. `folded` is the article folded once,
+// since an article is searched for every quote. `least` is the fewest
+// characters that count as a quote.
+function locateInArticle(quote: string, articleText: string, { folded, from }: ReturnType<typeof fold>, least = 10): { start: number; end: number; words: string } | null {
   const needle = unwrap(normalise(quote))
   if (needle.length < least) return null
-  const { folded, from } = fold(articleText)
   const at = folded.indexOf(needle)
   if (at === -1) return null
   const last = from[at + needle.length - 1]
-  return { start: from[at], end: last + (articleText.codePointAt(last)! > 0xffff ? 2 : 1) }
+  const end = last + (articleText.codePointAt(last)! > 0xffff ? 2 : 1)
+  return { start: from[at], end, words: articleText.slice(from[at], end).trim() }
 }
 
 // The article's own words for a quote, or null if they are not in it.
-export function findInArticle(quote: string, articleText: string): string | null {
-  const at = locateInArticle(quote, articleText)
-  return at && articleText.slice(at.start, at.end).trim()
-}
+export const findInArticle = (quote: string, articleText: string): string | null => locateInArticle(quote, articleText, fold(articleText))?.words ?? null
 
 // The most of a passage that is published with a quote, and of the text kept
 // either side of it for the editor.
@@ -331,9 +321,10 @@ export async function readArticle(
   // later articles: a second act on the same pair is a repeat, or a second
   // reading the editor can add from the review form.
   const taken = new Set<string>()
+  const folded = fold(article.text)
   for (const act of parsed.data.acts) {
     const pair = `${act.person_id} ${act.question_id}`
-    const found = locateInArticle(act.quote, article.text)
+    const found = locateInArticle(act.quote, article.text, folded)
     const why = !allowed.has(act.person_id)
       ? 'names someone the article was not read for'
       : !allowed.get(act.person_id)!.has(act.question_id)
@@ -345,26 +336,30 @@ export async function readArticle(
             : acts.length >= MAX_ACTS_PER_ARTICLE
               ? `is past the limit of ${MAX_ACTS_PER_ARTICLE} acts for one article`
               : null
-    if (!why) taken.add(pair)
-    if (why) dropped.push({ act: { person_id: act.person_id, question_id: act.question_id, quote: act.quote }, why })
-    else
-      acts.push({
-        ...act,
-        quote: article.text.slice(found!.start, found!.end).trim().slice(0, 2000),
-        // A date ahead of today is the date of something promised, not of the act.
-        occurred_on: act.occurred_on && act.occurred_on <= today ? act.occurred_on : null,
-        reason: act.reason.trim().slice(0, 1000),
-        ...(({ passage, before, after }) => ({ passage, context: { before, after } }))(passageAround(article.text, found!.start, found!.end)),
-      })
+    if (why || !found) {
+      dropped.push({ act: { person_id: act.person_id, question_id: act.question_id, quote: act.quote }, why: why! })
+      continue
+    }
+    taken.add(pair)
+    const { passage, before, after } = passageAround(article.text, found.start, found.end)
+    acts.push({
+      ...act,
+      quote: found.words.slice(0, 2000),
+      // A date ahead of today is the date of something promised, not of the act.
+      occurred_on: act.occurred_on && act.occurred_on <= today ? act.occurred_on : null,
+      reason: act.reason.trim().slice(0, 1000),
+      passage,
+      context: { before, after },
+    })
   }
   // Someone with an act is not also listed as only named. The words have to be
   // in the article, like a quote.
   const acted = new Set(acts.map((a) => a.person_id))
   const mentions: Mention[] = []
   for (const m of parsed.data.named_only) {
-    const at = locateInArticle(m.quote, article.text, 3)
+    const at = locateInArticle(m.quote, article.text, folded, 3)
     if (!at || !allowed.has(m.person_id) || acted.has(m.person_id) || mentions.some((x) => x.person_id === m.person_id)) continue
-    mentions.push({ person_id: m.person_id, words: article.text.slice(at.start, at.end).trim().slice(0, 300) })
+    mentions.push({ person_id: m.person_id, words: at.words.slice(0, 300) })
   }
   return { ok: true, acts, dropped, mentions }
 }

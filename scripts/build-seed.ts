@@ -5,6 +5,7 @@
 // from the snapshot).
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { carriesUp, slugOf, usualWeight } from '../shared/schema.ts'
 
 const read = (name: string) => JSON.parse(readFileSync(new URL(`../seed/data/${name}`, import.meta.url), 'utf8'))
 const congress = read('us-congress.json')
@@ -74,7 +75,7 @@ function act(a: {
     sourcesWritten.add(key)
     source(a.source, created_at)
   }
-  const weight = a.weight ?? (a.kind === 'says' ? 'clear' : 'concrete')
+  const weight = a.weight ?? usualWeight(a.kind)
   insert('acts', {
     id: a.id,
     decider_id: a.decider_id,
@@ -88,19 +89,14 @@ function act(a: {
   insert('reports', { id: a.id, source_id: sourceId(a.source.url), act_id: a.id, excerpt: null, passage: null, created_at })
   insert('readings', { id: a.id, act_id: a.id, question_id: a.question_id, position: a.position, weight, via_question_id: null, created_at })
   const q = questions.get(a.question_id)!
-  if (q.implies_on_parent && q.parent_id && a.position === 'support' && (weight === 'clear' || weight === 'concrete')) {
+  if (q.implies_on_parent && q.parent_id && a.position === 'support' && carriesUp(weight)) {
     insert('readings', { id: `${a.id}:parent`, act_id: a.id, question_id: q.parent_id, position: q.implies_on_parent, weight, via_question_id: a.question_id, created_at })
   }
 }
 
 const slugs = new Set<string>()
 function slugify(name: string): string {
-  const base = name
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
+  const base = slugOf(name)
   let slug = base
   for (let n = 2; slugs.has(slug); n++) slug = `${base}-${n}`
   slugs.add(slug)

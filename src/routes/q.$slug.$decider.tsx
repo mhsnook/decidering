@@ -34,7 +34,7 @@ function DeciderOnQuestion() {
 
   const measures = tracker.measuresIn(question, body.id).filter((m) => !m.chamber || m.chamber === seat.chamber)
   const isAsk = tracker.isAsk(question)
-  const root = (question.parent_id && tracker.questionById.get(question.parent_id)) || question
+  const root = tracker.rootOf(question)
   const asks = tracker.asksFor(root, decider.id, body.id)
   const held = tracker.tenuresHeldBy(decider.id, body.id)
   const unsure = (c: Certainty) => (c === 'certain' ? '' : c === 'likely' ? ' (likely)' : ' (possible)')

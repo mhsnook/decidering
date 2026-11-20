@@ -1,7 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { SOURCE_KINDS, type Decider, type Proposal, type ProposalContext, type ProposalItem, type ProposalMention, type ProposalNote, type Source } from '../../../shared/schema.ts'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { SOURCE_KINDS, isUnreadLead, type Proposal, type ProposalMention, type ProposalNote, type Source } from '../../../shared/schema.ts'
 import { useTracker } from '../../lib/tracker.tsx'
-import { addedEntry, missingFrom, outlook, presumedEntry, type EntryDraft } from '../../lib/review-form.ts'
+import { addedEntry, decisionStandings, missingFrom, outlook, presumedEntry, type EntryDraft } from '../../lib/review-form.ts'
 import { KIND_NOUN, UNREAD_TEXT, formatDate, hostOf, sourceLabel, standingLabel } from '../../lib/position.ts'
 import { Token } from '../bits.tsx'
 import { ArchivedCopy } from '../RecordItem.tsx'
@@ -25,7 +25,7 @@ const SOURCE_KIND_LABEL: Record<(typeof SOURCE_KINDS)[number], string> = {
 
 // How the card on top of the stack is moving: resting, leaving after a
 // publish, leaving after a dismissal, or about to rise from the stack.
-export type CardPhase = 'in' | 'publishing' | 'dismissing' | 'arriving'
+type CardPhase = 'in' | 'publishing' | 'dismissing' | 'arriving'
 
 const PHASE: Record<CardPhase, string> = {
   in: 'opacity-100 transition-[transform,opacity] duration-500 ease-[cubic-bezier(.2,.7,.2,1)]',
@@ -34,7 +34,7 @@ const PHASE: Record<CardPhase, string> = {
   arriving: 'translate-x-2.5 translate-y-3.5 opacity-0',
 }
 
-const people = (n: number) => `${n} ${n === 1 ? 'person' : 'people'}`
+export const people = (n: number) => `${n} ${n === 1 ? 'person' : 'people'}`
 const TAG = 'tag text-faint'
 const SHEET = 'absolute inset-0 rounded-[22px] border-2 border-ink bg-surface'
 
@@ -42,11 +42,9 @@ export function ReviewCard({
   proposal,
   source,
   notes,
-  contexts,
   mentions,
   drafts,
   setDrafts,
-  dateOffer,
   reviewNote,
   setReviewNote,
   behind,
@@ -59,11 +57,9 @@ export function ReviewCard({
   proposal: Proposal
   source: Source
   notes: ProposalNote[]
-  contexts: ProposalContext[]
   mentions: ProposalMention[]
   drafts: EntryDraft[]
   setDrafts: (update: (drafts: EntryDraft[]) => EntryDraft[]) => void
-  dateOffer: { date: string; from: 'source' | 'proposal' }
   reviewNote: string
   setReviewNote: (note: string) => void
   // How many proposals wait behind this one.
@@ -85,21 +81,12 @@ export function ReviewCard({
   const patch = (key: string, changes: Partial<EntryDraft>) => setDrafts((all) => all.map((d) => (d.key === key ? { ...d, ...changes } : d)))
   const first = drafts[0]
   const firstQuestion = first && tracker.questionById.get(first.question_id)
-  const root = firstQuestion && ((firstQuestion.parent_id && tracker.questionById.get(firstQuestion.parent_id)) || firstQuestion)
+  const root = firstQuestion && tracker.rootOf(firstQuestion)
   const sameRoot = drafts.every((d) => {
     const q = tracker.questionById.get(d.question_id)
-    return q && (q.parent_id ?? q.id) === root?.id
+    return q && tracker.rootOf(q).id === root?.id
   })
-  // Everyone with a claim on a seat in a body the question is put to.
-  const rosterById = new Map<string, Decider>()
-  if (root) {
-    for (const body of tracker.bodiesOf(root)) {
-      for (const row of tracker.board(root, body.id)) {
-        for (const c of [row.incumbent, ...row.alternates, ...row.upcoming]) if (c) rosterById.set(c.decider.id, c.decider)
-      }
-    }
-  }
-  const roster = [...rosterById.values()].sort((a, b) => a.sort_name.localeCompare(b.sort_name))
+  const roster = useMemo(() => (root ? tracker.rosterOf(root) : []), [tracker, root?.id])
 
   const open = drafts.filter((d) => !d.dismissed)
   // A person's entries sit together, where their first one is.
@@ -107,16 +94,16 @@ export function ReviewCard({
   const inOrder = drafts.map((d, i) => ({ d, at: firstAt(d) === -1 ? i : firstAt(d), i })).sort((a, b) => a.at - b.at || a.i - b.i).map(({ d }) => d)
   const dismissed = drafts.length - open.length
   const missing = open.map(missingFrom).find((m) => m !== null) ?? null
-  // Entries that sit across from a position editors set. One makes this a bigger decision than a routine review.
-  const acrossEntries = open.flatMap((d) => {
-    const q = tracker.questionById.get(d.question_id)
-    const view = q && outlook(tracker, d, q, d.reading)
-    return q && view?.across ? [{ draft: d, question: q, view }] : []
-  })
-  const across = acrossEntries[0]
+  // The first entry that sits across from a position editors set. One makes this a bigger decision than a routine review.
+  const across = open
+    .map((d) => {
+      const question = tracker.questionById.get(d.question_id)
+      return question && { draft: d, question, view: outlook(tracker, d, question, d.reading) }
+    })
+    .find((e) => e?.view.across)
   const acrossName = across && (tracker.deciderById.get(across.draft.decider_id ?? '')?.name ?? 'this person')
-  const isReported = tracker.reports.some((r) => r.source_id === source.id)
-  const isLead = proposal.origin === 'news_search'
+  const isReported = useMemo(() => tracker.reports.some((r) => r.source_id === source.id), [tracker, source.id])
+  const isLead = isUnreadLead(proposal)
   const excerpt = isLead ? drafts[0]?.items[0]?.quote : undefined
   const proposalNotes = notes.filter((n) => n.kind === 'submitter' && !n.proposal_item_id)
   const itemNotes = (d: EntryDraft) => notes.filter((n) => n.kind === 'submitter' && n.proposal_item_id && d.items.some((i) => i.id === n.proposal_item_id)).map((n) => n.body)
@@ -127,8 +114,8 @@ export function ReviewCard({
   if (missing) publishLabel = `Publish needs ${missing}`
   else if (across && open.length === 1) {
     const { draft, question, view } = across
-    const to = draft.decision.action === 'keep' ? view.across!.position : draft.decision.action === 'lift' ? (view.then?.calculated ?? 'unknown') : (draft.decision.position ?? draft.reading!)
-    publishLabel = `Publish, ${draft.decision.action === 'keep' ? 'keep' : draft.decision.action === 'lift' ? 'show' : 'set'} ${standingLabel(to, question)}`
+    const action = draft.decision.action
+    publishLabel = `Publish, ${{ keep: 'keep', lift: 'show', set: 'set' }[action]} ${standingLabel(decisionStandings(draft, view)[action], question)}`
   }
 
   return (
@@ -210,7 +197,7 @@ export function ReviewCard({
           )}
 
           <p className={`${TAG} flex justify-between gap-2 pt-3.5 pb-3`}>
-            <span>{isLead ? `${people(count(drafts))} named in the excerpt` : `${people(count(drafts))} in this source`}</span>
+            <span>{people(count(drafts))} {isLead ? 'named in the excerpt' : 'in this source'}</span>
             {sameRoot && root && <span>{root.short_title}</span>}
           </p>
           <fieldset disabled={readOnly} className="min-w-0">
@@ -222,10 +209,8 @@ export function ReviewCard({
                 onDismiss={(dismissed) => (d.items.length || !dismissed ? patch(d.key, { dismissed }) : setDrafts((all) => all.filter((x) => x.key !== d.key)))}
                 proposal={proposal}
                 source={source}
-                context={contexts.find((c) => c.proposal_item_id === d.contextItemId)}
                 notes={itemNotes(d)}
                 roster={roster}
-                dateOffer={dateOffer}
                 continued={i > 0 && d.decider_id !== null && inOrder[i - 1].decider_id === d.decider_id && !inOrder[i - 1].dismissed}
                 readOnly={readOnly}
               />

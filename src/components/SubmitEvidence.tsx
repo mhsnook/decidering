@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from 'react'
 import { ACT_KINDS, DIRECTIONS, type Decider, type Direction, type Question } from '../../shared/schema.ts'
-import { isAcross } from '../../shared/standing.ts'
 import { DIRECTION_LABEL, KIND_CHOICE } from '../lib/position.ts'
 import { useTracker } from '../lib/tracker.tsx'
 import { AcrossNotice } from './Story.tsx'
@@ -46,7 +45,7 @@ export function SubmitEvidence({ question, decider, onDone }: { question: Questi
   }
 
   if (state.status === 'sent') {
-    const set = tracker.listingFor(question, decider.id).set
+    const across = tracker.acrossFor(question, decider.id, state.reading)
     const link = state.proposalId ? `${window.location.origin}/latest?proposal=${state.proposalId}` : null
     return (
       <div className="flex flex-col gap-3.5 rounded-2xl border-2 border-dashed border-ink bg-paper p-4 text-sm">
@@ -54,7 +53,7 @@ export function SubmitEvidence({ question, decider, onDone }: { question: Questi
           <p className="tag text-muted">{state.duplicate ? 'Already in the queue' : 'Sent · not checked yet'}</p>
           <p className="mt-1 font-display text-[22px] leading-[1.15] font-black">{state.duplicate ? 'We already have that source in the queue.' : 'Thank you. Your report is waiting for an editor.'}</p>
         </div>
-        {!state.duplicate && set && isAcross(set.position, state.reading) && <AcrossNotice decider={decider} question={question} set={set} yours />}
+        {!state.duplicate && across && <AcrossNotice decider={decider} question={question} set={across} yours />}
         {link && (
           <div className="flex flex-col gap-2.5">
             <p className="text-[15px] leading-normal">Others can check it too. Send them the link: they can compare the words with the source and say what is wrong in the discussion on {decider.name}’s page.</p>

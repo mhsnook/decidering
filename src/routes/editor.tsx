@@ -1,18 +1,18 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useLiveQuery } from '@tanstack/react-db'
-import type { Proposal, ProposalContext, ProposalItem, ProposalMention, ProposalNote, Source } from '../../shared/schema.ts'
-import { isAcross as isAcrossFrom } from '../../shared/standing.ts'
+import { isUnreadLead, type Proposal, type ProposalContext, type ProposalItem, type ProposalMention, type ProposalNote, type Source } from '../../shared/schema.ts'
 import { db } from '../lib/db.ts'
 import { editorFetch, isEditor, signIn, signOut } from '../lib/editor.ts'
 import { commit } from '../lib/review.ts'
 import { planReview, type Write } from '../lib/review-plan.ts'
-import { dateOffer, decisionOf, draftEntries, outlook, verdictOf, type EntryDraft } from '../lib/review-form.ts'
+import { groupBy } from '../lib/build-tracker.ts'
+import { decisionOf, draftEntries, outlook, proposalIsAcross, verdictOf, type EntryDraft } from '../lib/review-form.ts'
 import { useTracker } from '../lib/tracker.tsx'
 import { sourceLabel } from '../lib/position.ts'
 import { Syncing, Token } from '../components/bits.tsx'
 import { Reveal } from '../components/review/Reveal.tsx'
-import { ReviewCard } from '../components/review/ReviewCard.tsx'
+import { ReviewCard, people } from '../components/review/ReviewCard.tsx'
 
 export const Route = createFileRoute('/editor')({ component: Editor })
 
@@ -70,23 +70,25 @@ function Queue() {
   const timers = useRef<ReturnType<typeof setTimeout>[]>([])
   useEffect(() => () => timers.current.forEach(clearTimeout), [])
 
-  const itemsOf = (proposalId: string) => allItems.data.filter((i) => i.proposal_id === proposalId).sort((a, b) => a.sort - b.sort)
-  // Whether anything a proposal claims sits across from a position editors set. Those are checked first.
-  const isAcross = (proposalId: string) =>
-    itemsOf(proposalId).some((i) => {
-      const question = tracker.questionById.get(i.question_id)
-      const set = question && tracker.listingFor(question, i.decider_id).set
-      return i.status === 'pending' && i.reading !== null && set !== undefined && isAcrossFrom(set.position, i.reading)
-    })
-  const pending = proposals.data
-    .filter((p) => p.status === 'pending')
-    .map((p) => ({ p, across: isAcross(p.id) }))
-    .sort((a, b) => Number(b.across) - Number(a.across) || a.p.created_at.localeCompare(b.p.created_at))
-    .map(({ p }) => p)
-  const reviewed = proposals.data.filter((p) => p.status !== 'pending').sort((a, b) => (b.reviewed_at ?? '').localeCompare(a.reviewed_at ?? ''))
+  const itemsByProposal = useMemo(() => {
+    const grouped = groupBy(allItems.data, (i) => i.proposal_id)
+    for (const items of grouped.values()) items.sort((a, b) => a.sort - b.sort)
+    return grouped
+  }, [allItems.data])
+  const itemsOf = (proposalId: string) => itemsByProposal.get(proposalId) ?? []
+  // Proposals with a claim across from a position editors set. Those are checked first.
+  const { pending, reviewed, acrossIds } = useMemo(() => {
+    const waiting = proposals.data.filter((p) => p.status === 'pending')
+    const acrossIds = new Set(waiting.filter((p) => proposalIsAcross(tracker, itemsByProposal.get(p.id) ?? [])).map((p) => p.id))
+    return {
+      acrossIds,
+      pending: waiting.sort((a, b) => Number(acrossIds.has(b.id)) - Number(acrossIds.has(a.id)) || a.created_at.localeCompare(b.created_at)),
+      reviewed: proposals.data.filter((p) => p.status !== 'pending').sort((a, b) => (b.reviewed_at ?? '').localeCompare(a.reviewed_at ?? '')),
+    }
+  }, [proposals.data, itemsByProposal, tracker])
   const list = tab === 'pending' ? pending : reviewed
   const selected = list.find((p) => p.id === selectedId) ?? list[0]
-  const others = list.filter((p) => p.id !== selected?.id)
+  const selectedAt = list.findIndex((p) => p.id === selected?.id)
   const selectedSource = selected && tracker.sourceById.get(selected.source_id)
   // The list shrinks as cards are finished, so the page asked for may be past its end.
   const shownPage = Math.min(listPage, Math.max(0, Math.ceil(list.length / UP_NEXT) - 1))
@@ -95,7 +97,7 @@ function Queue() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.metaKey || e.ctrlKey || e.altKey || (e.target as HTMLElement).closest('input, textarea, select')) return
-      const i = list.findIndex((p) => p.id === selected?.id)
+      const i = selectedAt
       if (e.key === 'j' && list[i + 1]) setSelectedId(list[i + 1].id)
       else if (e.key === 'k' && list[i - 1]) setSelectedId(list[i - 1].id)
       else if (e.key === 'o' && selectedSource?.url) window.open(selectedSource.url, '_blank', 'noreferrer')
@@ -109,7 +111,6 @@ function Queue() {
   })
 
   // The list turns to the page the open card is on, so J and K can be followed down it.
-  const selectedAt = list.findIndex((p) => p.id === selected?.id)
   useEffect(() => {
     if (selectedAt !== -1) setListPage(Math.floor(selectedAt / UP_NEXT))
   }, [selected?.id, tab])
@@ -198,7 +199,7 @@ function Queue() {
           notes={allNotes.data.filter((n) => n.proposal_id === selected.id)}
           contexts={allContexts.data.filter((c) => c.proposal_id === selected.id)}
           mentions={allMentions.data.filter((m) => m.proposal_id === selected.id)}
-          behind={others.length}
+          behind={list.length - 1}
           leaving={leaving?.id === selected.id ? leaving.how : null}
           onFinish={(done) => finish(selected.id, done)}
         >
@@ -210,9 +211,9 @@ function Queue() {
                   const items = itemsOf(p.id)
                   const names = [...new Set(items.map((i) => tracker.deciderById.get(i.decider_id)?.name ?? i.decider_id))]
                   const accepted = items.filter((i) => i.status === 'accepted').length
-                  const across = p.status === 'pending' && isAcross(p.id)
+                  const across = acrossIds.has(p.id)
                   const source = tracker.sourceById.get(p.source_id)
-                  const unread = p.origin === 'news_search' && items.every((i) => i.reading === null)
+                  const unread = isUnreadLead(p)
                   return (
                     <li key={p.id}>
                       <button
@@ -300,7 +301,7 @@ function Desk({
   const [drafts, setDrafts] = useState(
     () =>
       restored?.drafts ??
-      draftEntries(items).map((d) => ({ ...d, note: notes.find((n) => n.kind === 'review' && d.items.some((i) => i.id === n.proposal_item_id))?.body ?? '' })),
+      draftEntries(items, contexts).map((d) => ({ ...d, note: notes.find((n) => n.kind === 'review' && d.items.some((i) => i.id === n.proposal_item_id))?.body ?? '' })),
   )
   const [reviewNote, setReviewNote] = useState(restored?.reviewNote ?? notes.find((n) => n.kind === 'review' && !n.proposal_item_id)?.body ?? '')
   const [error, setError] = useState<string | null>(null)
@@ -322,12 +323,12 @@ function Desk({
   function finish(dismissAll: boolean) {
     const decide = (d: EntryDraft) => {
       const question = tracker.questionById.get(d.question_id)
-      return question && outlook(tracker, d, question, d.reading).across ? decisionOf(d, d.reading!) : null
+      return question && outlook(tracker, d, question, d.reading).across ? decisionOf(d) : null
     }
     try {
       const verdict = verdictOf(drafts, reviewNote, decide, dismissAll)
       const writes = planReview(tracker, proposal, source, verdict, new Date().toISOString())
-      const published = verdict.entries.filter((e) => e.publish).length
+      const published = new Set(verdict.entries.filter((e) => e.publish).map((e) => e.decider_id)).size
       const title = `“${sourceLabel(source)}”`
       setError(null)
       finished.current = true
@@ -335,7 +336,7 @@ function Desk({
         writes,
         work: { drafts, reviewNote },
         how: published ? 'publishing' : 'dismissing',
-        message: `${published ? `Published ${published} ${published === 1 ? 'person' : 'people'} from ${title}.` : `Dismissed ${title}.`}${behind ? ' Here is the next card.' : ''}`,
+        message: `${published ? `Published ${people(published)} from ${title}.` : `Dismissed ${title}.`}${behind ? ' Here is the next card.' : ''}`,
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -348,11 +349,9 @@ function Desk({
         proposal={proposal}
         source={source}
         notes={notes}
-        contexts={contexts}
         mentions={mentions}
         drafts={drafts}
         setDrafts={changeDrafts}
-        dateOffer={dateOffer(proposal, source)}
         reviewNote={reviewNote}
         setReviewNote={changeReviewNote}
         behind={behind}

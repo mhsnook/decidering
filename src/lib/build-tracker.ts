@@ -1,6 +1,6 @@
 import type { Act, Body, Decider, Office, OfficeHolder, Position, Question, QuestionBody, QuestionDecider, QuestionOffice, QuestionRelation, Reading, Report, Role, Seat, SetPosition, Source } from '../../shared/schema.ts'
 import { inEffect, isOpenOn, pairId, type Certainty } from '../../shared/schema.ts'
-import { calculatePosition, footingOf, type Footing } from '../../shared/standing.ts'
+import { calculatePosition, footingOf, isAcross, type Footing } from '../../shared/standing.ts'
 import type { Standing } from './position.ts'
 
 export function groupBy<T, K>(items: readonly T[], key: (item: T) => K): Map<K, T[]> {
@@ -157,11 +157,8 @@ export function buildTracker(c: TrackerData, asOf: string) {
   // Measures and asks alike: every question directly under this one.
   const subQuestionsOf = (questionId: string): Question[] => [...(measuresOf.get(questionId) ?? []), ...(asksOf.get(questionId) ?? [])]
 
-  const entriesByPair = new Map<string, RecordEntry[]>()
-  for (const reading of c.readings) {
-    const act = actById.get(reading.act_id)
-    if (!act) continue
-    const reports = reportsOf(act)
+  // One act as it bears on one question, by the rules for what lapses and what binds.
+  const entryOf = (act: Act, reading: Reading): RecordEntry => {
     const question = questionById.get(reading.question_id)
     const via = reading.via_question_id ? questionById.get(reading.via_question_id) : undefined
     // A closed question is read as it stood when it closed, so its page keeps
@@ -170,7 +167,14 @@ export function buildTracker(c: TrackerData, asOf: string) {
     const lapse =
       act.kind !== 'commits' ? null : act.withdrawn_on && act.withdrawn_on <= day ? ('withdrawn' as const) : via && !isOpenOn(via, day) ? ('closed' as const) : null
     const onRecord = reading.weight === 'concrete' && (act.kind === 'does' || (act.kind === 'commits' && lapse === null))
-    const entry: RecordEntry = { act, reading, via, reports, lapse, onRecord }
+    return { act, reading, via, reports: reportsOf(act), lapse, onRecord }
+  }
+
+  const entriesByPair = new Map<string, RecordEntry[]>()
+  for (const reading of c.readings) {
+    const act = actById.get(reading.act_id)
+    if (!act) continue
+    const entry = entryOf(act, reading)
     const key = pairId(reading.question_id, act.decider_id)
     const list = entriesByPair.get(key)
     if (list) list.push(entry)
@@ -208,6 +212,27 @@ export function buildTracker(c: TrackerData, asOf: string) {
     return { standing: set?.position ?? calculated, calculated, set }
   }
   const standingFor = (question: Question, deciderId: string): Standing => listingFor(question, deciderId).standing
+
+  // The position editors set for someone, when a reading sits across from it.
+  const acrossFor = (question: Question, deciderId: string, reading: Position): SetPosition | undefined => {
+    const set = listingFor(question, deciderId).set
+    return set && isAcross(set.position, reading) ? set : undefined
+  }
+
+  // The question a sub-question sits under, or the question itself.
+  const rootOf = (question: Question): Question => (question.parent_id && questionById.get(question.parent_id)) || question
+
+  // Everyone with a claim, past or to come, on a seat the question is put to.
+  function rosterOf(question: Question): Decider[] {
+    const bodies = new Set(bodyIdsOf(question))
+    const seated = new Map<string, Decider>()
+    for (const role of c.roles) {
+      const seat = seatById.get(role.seat_id)
+      const decider = deciderById.get(role.decider_id)
+      if (decider && seat && bodies.has(seat.body_id) && (!question.chamber || seat.chamber === question.chamber)) seated.set(decider.id, decider)
+    }
+    return [...seated.values()].sort((a, b) => a.sort_name.localeCompare(b.sort_name))
+  }
 
   // The questions an act on this one may also be read on: its smaller steps,
   // the fuller proposal it is a step of, and its neighbours.
@@ -345,6 +370,10 @@ export function buildTracker(c: TrackerData, asOf: string) {
     recordFor,
     standingFor,
     listingFor,
+    acrossFor,
+    entryOf,
+    rootOf,
+    rosterOf,
     relatedTo,
     isOpen,
     contender,

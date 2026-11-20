@@ -1,6 +1,6 @@
-import type { Act, ActKind, Direction, Position, Proposal, ProposalItem, Question, QuestionBody, QuestionRelation, Source, Weight } from '../../shared/schema.ts'
-import { isAcross } from '../../shared/standing.ts'
-import type { Listing, RecordEntry, RelatedQuestion, Tracker } from './build-tracker.ts'
+import { slugOf, type Act, type ActKind, type Direction, type Position, type Proposal, type ProposalContext, type ProposalItem, type Question, type QuestionBody, type QuestionRelation, type Source, type Weight } from '../../shared/schema.ts'
+import type { Listing, RelatedQuestion, Tracker } from './build-tracker.ts'
+import type { Standing } from './position.ts'
 import type { EntryVerdict, PositionDecision, Verdict } from './review-plan.ts'
 
 // One act by one person as the review form holds it while an editor works.
@@ -22,8 +22,9 @@ export type EntryDraft = {
   occurred_on: string
   quote: string
   passage: string | null
-  // The item whose surrounding text the passage dialog shows.
-  contextItemId: string | null
+  // The passage the entry came with and the paragraphs either side of it, in
+  // the article's order, when the article was read. Only editors are sent it.
+  wider: string[] | null
   reading: Direction | null
   // The act says nothing on the entry's own question, only on the related ones it is read on.
   mainSkipped: boolean
@@ -44,8 +45,9 @@ const newDecision = (): EntryDraft['decision'] => ({ action: 'keep', position: n
 
 // The proposal's items as entries: items that share an act and a person are
 // one entry, read on the first item's question and on the others' beside it.
-export function draftEntries(items: ProposalItem[]): EntryDraft[] {
+export function draftEntries(items: ProposalItem[], contexts: ProposalContext[] = []): EntryDraft[] {
   const drafts: EntryDraft[] = []
+  const contextOf = new Map(contexts.map((c) => [c.proposal_item_id, c]))
   // An item that was dismissed goes after the others, so an act is read first on a question it was published on.
   for (const item of [...items].sort((a, b) => Number(a.status === 'rejected') - Number(b.status === 'rejected') || a.sort - b.sort)) {
     const key = `${item.decider_id} ${item.act_id}`
@@ -68,7 +70,7 @@ export function draftEntries(items: ProposalItem[]): EntryDraft[] {
       // A search excerpt is not anyone's words. It is shown on the card, and the editor types the words.
       quote: item.reading === null && item.passage === null ? '' : item.quote,
       passage: item.passage,
-      contextItemId: item.id,
+      wider: wider(item, contextOf.get(item.id)),
       reading: item.reading,
       mainSkipped: false,
       weight: item.weight,
@@ -84,9 +86,12 @@ export function draftEntries(items: ProposalItem[]): EntryDraft[] {
   return drafts.sort((a, b) => firstSort(a) - firstSort(b))
 }
 
+const wider = (item: ProposalItem, context: ProposalContext | undefined) =>
+  context && item.passage !== null ? [...context.before.split('\n'), item.passage, ...context.after.split('\n')].filter((p) => p.trim()) : null
+
 // "Add another person" starts from the first entry's answers and its passage,
 // with no words marked.
-export function addedEntry(first: EntryDraft, copiedFrom: string, newId: () => string = () => crypto.randomUUID()): EntryDraft {
+export function addedEntry(first: EntryDraft, copiedFrom: string | null, newId: () => string = () => crypto.randomUUID()): EntryDraft {
   const actId = newId()
   return {
     ...first,
@@ -114,7 +119,7 @@ export const reportingAct = (entry: EntryDraft, act: Act | null): EntryDraft =>
 // An entry for someone the source only describes: what it says of them, to be
 // counted as presumed, with no answer filled in.
 export function presumedEntry(first: EntryDraft, deciderId: string, words: string, newId: () => string = () => crypto.randomUUID()): EntryDraft {
-  return { ...addedEntry(first, '', newId), decider_id: deciderId, kind: 'says', quote: words, passage: null, contextItemId: null, reading: null, weight: 'presumed', related: {}, copiedFrom: null }
+  return { ...addedEntry(first, null, newId), decider_id: deciderId, kind: 'says', quote: words, passage: null, wider: null, reading: null, weight: 'presumed', related: {} }
 }
 
 // A concrete reading is a commitment or a use of office, so words become an act.
@@ -130,27 +135,9 @@ export function missingFrom(entry: EntryDraft): string | null {
   return null
 }
 
-// The entry as it would sit on the person's record on one question.
-function asRecordEntry(tracker: Pick<Tracker, 'actById'>, entry: EntryDraft, question: Question, reading: Direction, weight: Weight): RecordEntry {
-  const act = tracker.actById.get(entry.act_id) ?? {
-    id: entry.act_id,
-    decider_id: entry.decider_id ?? '',
-    kind: entry.kind,
-    occurred_on: entry.occurred_on,
-    body: entry.quote,
-    primary_source_id: null,
-    withdrawn_on: null,
-    created_at: '',
-  }
-  return {
-    act,
-    reading: { id: '', act_id: act.id, question_id: question.id, position: reading, weight, via_question_id: null, created_at: '' },
-    via: undefined,
-    reports: [],
-    lapse: null,
-    onRecord: weight === 'concrete' && act.kind !== 'says',
-  }
-}
+// The act an entry reports: the one on file, or the one publishing it would make.
+const actOf = (tracker: Pick<Tracker, 'actById'>, entry: EntryDraft): Act =>
+  tracker.actById.get(entry.act_id) ?? { id: entry.act_id, decider_id: entry.decider_id ?? '', kind: entry.kind, occurred_on: entry.occurred_on, body: entry.quote, primary_source_id: null, withdrawn_on: null, created_at: '' }
 
 export type Outlook = {
   // Where the person is listed today, and where publishing the entry would leave them.
@@ -162,26 +149,27 @@ export type Outlook = {
 
 // Where publishing this entry's reading on a question would leave the person.
 // `then` is null until both answers are in.
-export function outlook(tracker: Pick<Tracker, 'actById' | 'listingFor' | 'recordFor'>, entry: EntryDraft, question: Question, given: Direction | null): Outlook {
+export function outlook(tracker: Pick<Tracker, 'actById' | 'listingFor' | 'recordFor' | 'entryOf' | 'acrossFor'>, entry: EntryDraft, question: Question, given: Direction | null): Outlook {
   const reading = entry.mainSkipped && question.id === entry.question_id ? null : given
   const deciderId = entry.decider_id ?? ''
   const now = tracker.listingFor(question, deciderId)
   if (!reading || !entry.weight || !entry.decider_id) return { now, then: null, across: undefined }
   // An act on file that is already read here is on the record as it stands.
   const alreadyRead = tracker.recordFor(question, deciderId).some((e) => e.act.id === entry.act_id)
-  const then = alreadyRead ? now : tracker.listingFor(question, deciderId, [asRecordEntry(tracker, entry, question, reading, entry.weight)])
-  return { now, then, across: now.set && isAcross(now.set.position, reading) ? now.set : undefined }
+  const read = { id: '', act_id: entry.act_id, question_id: question.id, position: reading, weight: entry.weight, via_question_id: null, created_at: '' }
+  const then = alreadyRead ? now : tracker.listingFor(question, deciderId, [tracker.entryOf(actOf(tracker, entry), read)])
+  return { now, then, across: tracker.acrossFor(question, deciderId, reading) }
 }
 
 export type RelatedChoice = RelatedQuestion | { question: Question; kind: 'main_question' | 'measure' | 'ask' }
 
 // The other questions an entry may be read on: the rest of its question's
 // family that is put to this person, then the questions linked to it.
-export function relatedChoices(tracker: Pick<Tracker, 'questionById' | 'roleIn' | 'seatById' | 'measuresOf' | 'asksFor' | 'relatedTo' | 'isOpen' | 'appliesTo'>, entry: EntryDraft): RelatedChoice[] {
+export function relatedChoices(tracker: Pick<Tracker, 'questionById' | 'rootOf' | 'roleIn' | 'seatById' | 'measuresOf' | 'asksFor' | 'relatedTo' | 'isOpen' | 'appliesTo'>, entry: EntryDraft): RelatedChoice[] {
   const question = tracker.questionById.get(entry.question_id)
   if (!question || !entry.decider_id) return []
   const deciderId = entry.decider_id
-  const root = (question.parent_id && tracker.questionById.get(question.parent_id)) || question
+  const root = tracker.rootOf(question)
   const role = tracker.roleIn(root, deciderId)
   const chamber = role && tracker.seatById.get(role.seat_id)?.chamber
   const family: RelatedChoice[] = [
@@ -236,27 +224,35 @@ export function verdictOf(drafts: EntryDraft[], reviewNote: string, decide: (ent
   return { review_note: reviewNote.trim() || null, entries }
 }
 
+// The position a new one starts from: what the entry itself shows.
+const newPosition = (entry: EntryDraft): Position => entry.decision.position ?? entry.reading ?? 'mixed'
+
+// Where each answer to "what should the page show" leaves the person.
+export const decisionStandings = (entry: EntryDraft, view: Outlook): Record<PositionDecision['action'], Standing> => ({
+  keep: view.across?.position ?? 'unknown',
+  lift: view.then?.calculated ?? 'unknown',
+  set: newPosition(entry),
+})
+
+// Whether anything a waiting proposal claims sits across from a position editors set, as its card would find.
+export const proposalIsAcross = (tracker: Pick<Tracker, 'questionById' | 'acrossFor'>, items: ProposalItem[]) =>
+  draftEntries(items).some((d) => {
+    const question = tracker.questionById.get(d.question_id)
+    return !d.dismissed && question !== undefined && d.reading !== null && d.decider_id !== null && tracker.acrossFor(question, d.decider_id, d.reading) !== undefined
+  })
+
 // The decision on a position editors set, for an entry that sits across from it.
-export function decisionOf(entry: EntryDraft, fallback: Position): PositionDecision {
+export function decisionOf(entry: EntryDraft): PositionDecision {
   const text = entry.decision.reason.trim()
-  if (entry.decision.action === 'set') return { question_id: entry.question_id, action: 'set', position: entry.decision.position ?? fallback, reason: text }
+  if (entry.decision.action === 'set') return { question_id: entry.question_id, action: 'set', position: newPosition(entry), reason: text }
   if (entry.decision.action === 'lift') return { question_id: entry.question_id, action: 'lift', note: text || null }
   return { question_id: entry.question_id, action: 'keep', reason: text || null }
 }
 
 // A date to offer for an act that came with none: the source's own, or the day
 // the proposal was put forward. It is only ever offered, never filled in.
-export const dateOffer = (proposal: Pick<Proposal, 'created_at'>, source: Pick<Source, 'published_on'> | undefined): { date: string; from: 'source' | 'proposal' } =>
-  source?.published_on ? { date: source.published_on, from: 'source' } : { date: proposal.created_at.slice(0, 10), from: 'proposal' }
-// or the day it was put forward.
-
-const slugOf = (name: string) =>
-  name
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
+export const dateOffer = (proposal: Pick<Proposal, 'created_at'>, source: Pick<Source, 'published_on'>): { date: string; from: 'source' | 'proposal' } =>
+  source.published_on ? { date: source.published_on, from: 'source' } : { date: proposal.created_at.slice(0, 10), from: 'proposal' }
 
 // The rows for a new position question linked to `to`: a smaller step toward
 // it, or a neighbouring question. It is put to the same bodies. `taken` is
