@@ -11,7 +11,10 @@ const congress = read('us-congress.json')
 const congressAsks = read('us-congress-asks.json')
 const congressElect = read('us-congress-elect.json')
 const era = read('us-states-era.json')
-const demo = read('demo.json')
+const halifax = read('halifax-ferry-fares.json')
+// Made-up people for the end-to-end tests. Written to a file of its own and
+// left out of seed.sql, so it reaches no database but the one those tests reset.
+const demo = JSON.parse(readFileSync(new URL('../test/e2e/fixture.json', import.meta.url), 'utf8'))
 
 const dataSets = new Map<string, string[]>()
 let lines: string[] = []
@@ -386,11 +389,89 @@ for (const state of era.states) {
   })
 }
 
-// ---- Demo body: fictional, exercises challengers and every footing ---------
+// ---- Halifax Regional Council: real roster, one real vote on ferry fares ----
 
-dataSet('demo')
+dataSet('halifax')
+const HFX = halifax.body.id
+insert('bodies', {
+  ...halifax.body,
+  slug: HFX,
+  description: `The mayor and the 16 district councillors of Halifax Regional Municipality. Roster and records as of ${halifax.as_of}.`,
+  is_demo: false,
+  sort: 2,
+})
+const halifaxIds = new Map<string, string>()
+const halifaxMember = (name: string) => {
+  if (!halifaxIds.has(name)) throw new Error(`the Halifax file names ${name}, who is not in its roster`)
+  return halifaxIds.get(name)!
+}
+for (const m of halifax.members) {
+  const slug = slugify(m.name)
+  const id = `hfx-${slug}`
+  halifaxIds.set(m.name, id)
+  const seatId = `${HFX}:${slugify(`${HFX} ${m.seat}`).slice(HFX.length + 1)}`
+  insert('deciders', { id, slug, name: m.name, sort_name: m.sort_name, external_id: null, url: null })
+  insert('seats', { id: seatId, body_id: HFX, chamber: null, region: null, label: m.seat, is_voting: true, next_election_on: null })
+  insert('roles', { id: `${seatId}:${id}`, seat_id: seatId, decider_id: id, contest: null, affiliation: null })
+}
+const HFX_Q = halifax.question.id
+question({ ...halifax.question, slug: HFX_Q, body_id: HFX, parent_id: null, kind: 'position', reference_url: null, chamber: null, is_hot: false, sort: 0 })
+{
+  const { vote } = halifax
+  const cast = [...vote.for, ...vote.against, ...vote.absent]
+  if (cast.length !== halifax.members.length || new Set(cast).size !== cast.length) throw new Error('the Halifax vote does not account for each member once')
+  const month = new Date(vote.on).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
+  const sides = [
+    { names: vote.for, position: 'support', word: 'for' },
+    { names: vote.against, position: 'oppose', word: 'against' },
+  ]
+  for (const side of sides) {
+    for (const name of side.names) {
+      const id = halifaxMember(name)
+      act({
+        id: `${HFX_Q}:vote:${id}`,
+        question_id: HFX_Q,
+        decider_id: id,
+        kind: 'does',
+        position: side.position,
+        occurred_on: vote.on,
+        body: `Voted ${side.word} the motion to waive weekday fares on the Alderney ferry for June 2026 (defeated ${vote.for.length} to ${vote.against.length}).`,
+        source: halifax.sources[vote.source],
+        // The mover's own account of the vote, not the council's minutes.
+        primary: false,
+      })
+      insert('stances', {
+        id: `${HFX_Q}:${id}`,
+        question_id: HFX_Q,
+        decider_id: id,
+        position: side.position,
+        summary: `Voted ${side.word} waiving weekday fares for June 2026, on ${month}.`,
+        updated_at: `${halifax.as_of}T00:00:00.000Z`,
+      })
+    }
+  }
+  vote.absent.forEach(halifaxMember)
+}
+halifax.statements.forEach((s: any, i: number) => {
+  act({
+    id: `${HFX_Q}:says:${i + 1}`,
+    question_id: HFX_Q,
+    decider_id: halifaxMember(s.name),
+    kind: 'says',
+    position: s.position,
+    occurred_on: s.on,
+    body: s.quote,
+    source: halifax.sources[s.source],
+    primary: false,
+  })
+})
+
+// ---- End-to-end fixture: fictional, exercises challengers and every footing --
+
+const E2E_FIXTURE = 'e2e-fixture'
+dataSet(E2E_FIXTURE)
 const D = demo.body.id
-insert('bodies', { ...demo.body, slug: D, is_demo: true, sort: 1 })
+insert('bodies', { ...demo.body, slug: D, is_demo: true, sort: 3 })
 const demoIds = new Map<string, string>()
 const person = (name: string) => {
   if (!demoIds.has(name)) {
@@ -416,7 +497,7 @@ function demoSeats(bodyId: string, seats: any[], next_election_on: string | null
 demoSeats(D, demo.seats, demo.next_election_on)
 demo.other_bodies.forEach((body: any, i: number) => {
   const { seats, ...row } = body
-  insert('bodies', { ...row, slug: body.id, is_demo: true, sort: 2 + i })
+  insert('bodies', { ...row, slug: body.id, is_demo: true, sort: 4 + i })
   demoSeats(body.id, seats, null)
 })
 for (const r of demo.roles_at_large) {
@@ -475,7 +556,7 @@ demo.acts.forEach(([q, name, medium, position, on, body, title, more = {}]: any[
 mkdirSync(new URL('../seed/out/', import.meta.url), { recursive: true })
 const write = (name: string, rows: string[]) => writeFileSync(new URL(`../seed/out/${name}.sql`, import.meta.url), rows.join('\n') + '\n')
 for (const [name, rows] of dataSets) write(name, rows)
-const all = [...dataSets.values()].flat()
+const all = [...dataSets].filter(([name]) => name !== E2E_FIXTURE).flatMap(([, rows]) => rows)
 write('seed', all)
 console.log(`${all.length} rows written to seed/out/seed.sql${skipped ? ` (${skipped} signers no longer in the roster were skipped)` : ''}`)
-for (const [name, rows] of dataSets) console.log(`  ${rows.length} of them also in seed/out/${name}.sql`)
+for (const [name, rows] of dataSets) console.log(name === E2E_FIXTURE ? `  ${rows.length} more, not among them, in seed/out/${name}.sql` : `  ${rows.length} of them also in seed/out/${name}.sql`)

@@ -243,6 +243,64 @@ describe('the seed', () => {
     expect(all(db, `PRAGMA foreign_key_check`)).toEqual([])
   })
 
+  it('holds no demo body', () => {
+    const db = database()
+    db.exec(seed)
+    expect(all(db, `SELECT id FROM bodies WHERE is_demo = 1`)).toEqual([])
+    expect(all(db, `SELECT url FROM sources WHERE url LIKE '%example.com%'`)).toEqual([])
+  })
+
+  it('accounts for each member of Halifax Regional Council once in its ferry fare vote', () => {
+    const db = database()
+    db.exec(seed)
+    const votes = all(db, `SELECT r.position, COUNT(*) AS n FROM readings r JOIN acts a ON a.id = r.act_id
+      WHERE r.question_id = 'halifax-ferry-fares' AND a.kind = 'does' GROUP BY r.position ORDER BY r.position`)
+    expect(votes).toEqual([{ position: 'oppose', n: 11 }, { position: 'support', n: 3 }])
+    expect(all(db, `SELECT COUNT(*) AS n FROM seats WHERE body_id = 'halifax-regional-council'`)[0].n).toBe(17)
+    expect(all(db, `SELECT COUNT(DISTINCT a.decider_id) AS n FROM acts a JOIN readings r ON r.act_id = a.id WHERE r.question_id = 'halifax-ferry-fares' AND a.kind = 'does'`)[0].n).toBe(14)
+    expect(all(db, `SELECT COUNT(*) AS n FROM acts a JOIN readings r ON r.act_id = a.id WHERE r.question_id = 'halifax-ferry-fares' AND a.primary_source_id IS NOT NULL`)[0].n).toBe(0)
+  })
+
+  describe('seed/remove-demo.sql', () => {
+    const removeDemo = readFileSync(new URL('seed/remove-demo.sql', root), 'utf8')
+    const tables = ['bodies', 'seats', 'roles', 'deciders', 'questions', 'stances', 'question_deciders', 'question_bodies', 'question_offices', 'offices', 'office_holders', 'sources', 'acts', 'reports', 'readings', 'proposals', 'proposal_items', 'proposal_notes', 'comments', 'article_reads', 'archive_attempts']
+    const counts = (db: DatabaseSync) => Object.fromEntries(tables.map((t) => [t, count(db, t)]))
+
+    it('takes out a demo council and what readers added to it, and leaves every other row', () => {
+      const db = database()
+      db.exec(seed)
+      // A real source a demo act also cites, and a real person's thread, both of which stay.
+      db.exec(`INSERT INTO comments (id, thread_id, author_name, body, created_at) VALUES ('c-real', 'm4a:' || (SELECT id FROM deciders WHERE id NOT LIKE 'demo-%' LIMIT 1), 'A', 'B', '2026-11-01')`)
+      const before = counts(db)
+      const sharedSource = all(db, `SELECT id FROM sources LIMIT 1`)[0].id
+      db.exec(readFileSync(new URL('seed/out/e2e-fixture.sql', root), 'utf8'))
+      db.exec(`
+        INSERT INTO sources (id, url, created_at) VALUES ('src-reader', 'https://example.com/harbor-ledger/sato', '2026-11-01');
+        INSERT INTO proposals (id, source_id, origin, created_at) VALUES ('p-demo', 'src-reader', 'reader', '2026-11-01');
+        INSERT INTO proposal_items (id, proposal_id, decider_id, question_id, act_id, quote) VALUES ('i-demo', 'p-demo', 'demo-bartholomew-sato', 'free-ferry', 'act-x', 'Words.');
+        INSERT INTO proposal_notes (id, proposal_id, proposal_item_id, kind, body, created_at) VALUES ('n-item', 'p-demo', 'i-demo', 'submitter', 'Note.', '2026-11-01'), ('n-whole', 'p-demo', NULL, 'submitter', 'Note.', '2026-11-01');
+        INSERT INTO comments (id, thread_id, author_name, body, created_at) VALUES ('c-demo', 'free-ferry:demo-bartholomew-sato', 'A', 'B', '2026-11-01');
+        INSERT INTO article_reads (url, question_id, read_at, outcome) VALUES ('https://example.com/a', 'free-ferry', '2026-11-01', 'no_acts');
+        INSERT INTO archive_attempts (source_id, tried_at, outcome) VALUES ((SELECT id FROM sources WHERE url = 'https://example.com/harbor-city/1'), '2026-11-01', 'gave_up');
+        INSERT INTO reports (id, source_id, act_id, created_at) VALUES ('rep-shared', '${sharedSource}', 'demo-e1', '2026-11-01');
+      `)
+      expect(count(db, 'bodies')).toBeGreaterThan(before.bodies)
+      db.exec(removeDemo)
+      expect(counts(db)).toEqual(before)
+      expect(all(db, `PRAGMA foreign_key_check`)).toEqual([])
+      expect(all(db, `SELECT name FROM sqlite_master WHERE name LIKE 'removed_%'`)).toEqual([])
+    })
+
+    it('changes nothing in a database with no demo body, and can run again', () => {
+      const db = database()
+      db.exec(seed)
+      const before = counts(db)
+      db.exec(removeDemo)
+      db.exec(removeDemo)
+      expect(counts(db)).toEqual(before)
+    })
+  })
+
   it('finds the source a database already holds for a URL instead of adding another', () => {
     const db = database()
     const url = /INSERT INTO sources \(id, url, title, kind, created_at\) VALUES \('[^']+', '([^']+)'/.exec(seed)![1]
