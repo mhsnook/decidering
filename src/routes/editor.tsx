@@ -7,13 +7,12 @@ import { db } from '../lib/db.ts'
 import { editorFetch, isEditor, signIn, signOut } from '../lib/editor.ts'
 import { commit } from '../lib/review.ts'
 import { planReview, type Write } from '../lib/review-plan.ts'
-import { decisionOf, draftEntries, fallbackDate, outlook, relatedChoices, verdictOf, withWeight, type EntryDraft } from '../lib/review-form.ts'
+import { decisionOf, draftEntries, fallbackDate, outlook, verdictOf, type EntryDraft } from '../lib/review-form.ts'
 import { useTracker } from '../lib/tracker.tsx'
 import { sourceLabel } from '../lib/position.ts'
 import { Syncing, Token } from '../components/bits.tsx'
 import { Reveal } from '../components/review/Reveal.tsx'
 import { ReviewCard, upNextLine } from '../components/review/ReviewCard.tsx'
-import { Librarian, type LibrarianCard, type LibrarianChange } from '../components/review/Librarian.tsx'
 
 export const Route = createFileRoute('/editor')({ component: Editor })
 
@@ -260,49 +259,6 @@ function Desk({
   )
   const [reviewNote, setReviewNote] = useState(notes.find((n) => n.kind === 'review' && !n.proposal_item_id)?.body ?? '')
   const [error, setError] = useState<string | null>(null)
-  const [changingKey, setChangingKey] = useState<string | null>(null)
-  const firstQuestion = drafts[0] && tracker.questionById.get(drafts[0].question_id)
-  const rootQuestion = firstQuestion && ((firstQuestion.parent_id && tracker.questionById.get(firstQuestion.parent_id)) || firstQuestion)
-
-  const librarianCard = (): LibrarianCard => ({
-    source_title: source.title,
-    entries: drafts
-      .filter((d) => !d.dismissed && d.decider_id)
-      .map((d) => ({
-        key: d.key,
-        name: tracker.deciderById.get(d.decider_id!)?.name ?? d.decider_id!,
-        words: d.quote.slice(0, 2000),
-        passage: d.passage?.slice(0, 2000) ?? null,
-        reading: d.reading,
-        weight: d.weight,
-        related: Object.entries(d.related).flatMap(([question_id, reading]) => (reading ? [{ question_id, reading }] : [])),
-      })),
-    related_questions: [...new Map(drafts.flatMap((d) => relatedChoices(tracker, d)).map((c) => [c.question.id, { question_id: c.question.id, title: c.question.title, kind: c.kind }])).values()].slice(0, 20),
-  })
-
-  // The entry is outlined for a moment before it changes, so the eye finds it.
-  function applyChanges(changes: LibrarianChange[]) {
-    setChangingKey(changes[0].entry_key)
-    setTimeout(() => {
-      setChangingKey(null)
-      setDrafts((all) =>
-        all.map((d) => {
-          const change = changes.find((c) => c.entry_key === d.key)
-          if (!change) return d
-          const related = { ...d.related }
-          const added: string[] = []
-          for (const r of change.related) {
-            related[r.question_id] = r.reading === 'none' ? null : r.reading
-            if (r.reading !== 'none') added.push(r.question_id)
-          }
-          const reading = change.reading ?? d.reading
-          const librarian = { ...(reading !== d.reading ? { wasReading: d.reading } : {}), added }
-          return { ...(change.weight ? withWeight(d, change.weight) : d), reading, related, librarian }
-        }),
-      )
-    }, 900)
-  }
-
   function finish(dismissAll: boolean) {
     const decide = (d: EntryDraft) => {
       const question = tracker.questionById.get(d.question_id)
@@ -339,15 +295,11 @@ function Desk({
         behind={behind}
         readOnly={readOnly}
         leaving={leaving}
-        changingKey={changingKey}
         error={error}
         onPublish={() => finish(false)}
         onDismissAll={() => finish(true)}
       />
-      <aside className="flex flex-col gap-2.5 lg:sticky lg:top-4 lg:min-h-[min(640px,calc(100dvh-2rem))]">
-        {children}
-        {!readOnly && rootQuestion && <Librarian question={rootQuestion} card={librarianCard} onChanges={applyChanges} />}
-      </aside>
+      <aside className="flex flex-col gap-2.5 lg:sticky lg:top-4">{children}</aside>
     </div>
   )
 }

@@ -12,7 +12,6 @@ import {
   type ProposalItem,
   type ProposalMention,
   type ProposalNote,
-  type QuestionGuidance,
   type Source,
 } from '../shared/schema.ts'
 import { isEditorToken } from './editor.ts'
@@ -129,13 +128,6 @@ export class Tracker extends PartyDbServer<Env> {
       if (message.includes('FOREIGN KEY')) return { ok: false, status: 400, error: 'Unknown question or decider.' }
       throw e
     }
-  }
-
-  // Keeps a rule an editor gave the librarian, through the sync log so every
-  // editor's panel lists it.
-  async remember(questionId: string, body: string): Promise<void> {
-    const row: QuestionGuidance = { id: crypto.randomUUID(), question_id: questionId, body, created_at: new Date().toISOString() }
-    await this.commit([{ channel: 'question_guidance', ops: [{ type: 'insert', value: row }] }])
   }
 
   // Goes through the sync log so open browsers show the archived copy. An

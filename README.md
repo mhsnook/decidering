@@ -36,7 +36,7 @@ The first data set is the United States Congress and Medicare for All. Nothing i
 - TanStack Router (file-based routes in `src/routes`), TanStack DB, Tailwind
 - Cloudflare [Web Search API](https://developers.cloudflare.com/web-search/) with Exa, and Workers AI, through AI Gateway, for the news search and reading the articles it finds
 
-Editors write through the same collections with optimistic transactions. Readers get read-only access. Unreviewed proposals are public. They are sliced collections, so a browser only loads them when a page queries them: the editor's queue, and `/latest` unless `?recordOnly=true` is set. The notes a submitter or reviewer writes for editors are kept in a separate table that is only sent to editor connections, as are the text either side of a quoted passage, the people an article only names, and what the librarian has been told. Readers post proposals and comments through the Worker, which validates them and limits each address to 6 posts a minute.
+Editors write through the same collections with optimistic transactions. Readers get read-only access. Unreviewed proposals are public. They are sliced collections, so a browser only loads them when a page queries them: the editor's queue, and `/latest` unless `?recordOnly=true` is set. The notes a submitter or reviewer writes for editors are kept in a separate table that is only sent to editor connections, as are the text either side of a quoted passage and the people an article only names. Readers post proposals and comments through the Worker, which validates them and limits each address to 6 posts a minute.
 
 ## Reviewing
 
@@ -50,12 +50,6 @@ Editors write through the same collections with optimistic transactions. Readers
 - **Keys.** `A` publishes, `R` dismisses the card, `J` and `K` move through the queue, `O` opens the source. A finished card leaves, the next one comes up and the page returns to the top. Proposals that would change a set position come first.
 
 Nothing an editor changes on a card is stored until it is published.
-
-### The librarian
-
-"Chat with the librarian" opens a chat beside the card. An editor can correct the card in words ("Vasquez is a yes on the card amendment and a no on the full ordinance") and the entries change, marked with what they were and an Undo. An editor can also say how to read the question in general. The librarian keeps each such rule in `question_guidance`, lists them in the chat where they can be removed, and the article reader is given them with every article it reads for that question. The chat itself is not stored.
-
-It is one call to the same model as the article reader, through the same gateway, at `POST /api/editor/librarian` with the editor token. A change is applied only to an entry on the card and a question that entry was offered.
 
 ## Develop
 
@@ -159,7 +153,7 @@ The daily run is skipped while the queue is unattended: when leads it queued ear
 For each result followed up, the Worker:
 
 1. Fetches the page (10 second timeout, 3 MB at most) and turns it into plain text with Workers AI [Markdown Conversion](https://developers.cloudflare.com/workers-ai/features/markdown-conversion/) (`env.AI.toMarkdown`, text output). HTML, PDF and plain text are read; the text is cut at 60,000 characters.
-2. Sends the text to `@cf/deepseek-ai/deepseek-v4.1-flash-1017` on Workers AI, with reasoning off and JSON output in a fixed schema. The model is told the question, its open sub-questions, and which of them are put to each person named, by the same rules the question pages use. It is also given what editors have told the librarian about reading the question. It returns each act it finds: who, on which question, the kind, the words, the date, which way it points, how much it counts, and a reason for the editor. It also lists the people it was asked about whom the article names without recording an act.
+2. Sends the text to `@cf/deepseek-ai/deepseek-v4.1-flash-1017` on Workers AI, with reasoning off and JSON output in a fixed schema. The model is told the question, its open sub-questions, and which of them are put to each person named, by the same rules the question pages use. It returns each act it finds: who, on which question, the kind, the words, the date, which way it points, how much it counts, and a reason for the editor. It also lists the people it was asked about whom the article names without recording an act.
 3. Keeps an act only if its words appear in the fetched text (ignoring case, whitespace, and the style of quote marks and dashes), its person is one the article was read for, and its question is one put to that person. It keeps one act per person and question, and at most eight from one article. For each it keeps the passage the words sit in (the paragraph, or the sentences around the words in a long one, up to 600 characters) and up to 700 characters of the paragraphs either side.
 4. Queues the article as one proposal from origin `model`, with one item per act, already filled in. The passage is stored on the item and is public. The text either side of it, the model's reason, the model's id and the people only named are stored where only editors receive them.
 

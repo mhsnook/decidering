@@ -452,16 +452,6 @@ export const commentsCollection = definePartyCollection({
   access: { read: 'public', delete: 'authed' },
 })
 
-// One thing editors told the librarian about reading a question.
-export const questionGuidanceSchema = z.object({
-  id: z.string(),
-  question_id: z.string(),
-  body: z.string(),
-  created_at: z.string(),
-})
-export type QuestionGuidance = z.infer<typeof questionGuidanceSchema>
-
-export const questionGuidanceCollection = definePartyCollection({ name: 'question_guidance', key: 'id', schema: questionGuidanceSchema, access: 'authed' })
 export const proposalContextsCollection = definePartyCollection({ name: 'proposal_contexts', key: 'id', schema: proposalContextSchema, access: 'authed' })
 export const proposalMentionsCollection = definePartyCollection({ name: 'proposal_mentions', key: 'id', schema: proposalMentionSchema, access: 'authed' })
 
@@ -472,7 +462,6 @@ export const allCollections = [
   proposalNotesCollection,
   proposalContextsCollection,
   proposalMentionsCollection,
-  questionGuidanceCollection,
   commentsCollection,
 ] as const
 

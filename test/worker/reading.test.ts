@@ -161,17 +161,6 @@ describe('reading articles', () => {
     expect(await rows(`SELECT 1 FROM proposal_items WHERE quote LIKE ?1 OR passage LIKE ?1`, '%The committee met%')).toEqual([])
   })
 
-  it('gives the model the rules editors kept for the question', async () => {
-    const url = 'https://news.example/read-guidance'
-    await env.DB.prepare(`INSERT INTO question_guidance (id, question_id, body, created_at) VALUES ('g-hot', 'hot', 'A vote on the rule is a passing signal.', '2026-11-01T00:00:00Z'), ('g-cold', 'cold', 'A rule for another question.', '2026-11-01T00:00:00Z')`).run()
-    const s = stubbed({ hits: [hit(url)], pages: { [url]: page('Words.') }, answer: () => ({ acts: [] }) })
-    await searchNews(s.env, await tracker(), NOW)
-    const prompt = (s.run.mock.calls[0][1] as { messages: { content: string }[] }).messages[1].content
-    expect(prompt).toContain('- A vote on the rule is a passing signal.')
-    expect(prompt).not.toContain('A rule for another question.')
-    await env.DB.prepare(`DELETE FROM question_guidance`).run()
-  })
-
   it('routes the search and the model through the app gateway', async () => {
     const url = 'https://news.example/read-gateway'
     const s = stubbed({ hits: [hit(url)], pages: { [url]: page('Nothing much.') }, answer: () => ({ acts: [] }) })

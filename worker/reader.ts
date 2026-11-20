@@ -1,16 +1,9 @@
 import { z } from 'zod'
-import { ACT_KINDS, DIRECTIONS, WEIGHTS, type ProposalDraft, type QuestionGuidance } from '../shared/schema.ts'
+import { ACT_KINDS, DIRECTIONS, WEIGHTS, type ProposalDraft } from '../shared/schema.ts'
 
 // The model that reads articles. Check the Workers AI catalogue for a planned
 // deprecation date before changing it: an id past that date answers 410.
 export const MODEL = '@cf/deepseek-ai/deepseek-v4.1-flash-1017'
-
-// Rules kept per question that go into a prompt. Older ones are left out past this.
-export const MAX_GUIDANCE_NOTES = 20
-
-// What editors have told the librarian about reading a question, oldest first.
-export const guidanceFor = async (db: D1Database, questionId: string): Promise<string[]> =>
-  (await db.prepare(`SELECT body FROM question_guidance WHERE question_id = ? ORDER BY created_at DESC LIMIT ?`).bind(questionId, MAX_GUIDANCE_NOTES).all<Pick<QuestionGuidance, 'body'>>()).results.map((r) => r.body).reverse()
 
 type Asked = { id: string; title: string; short_title: string; description: string | null; kind: 'position' | 'formal_act' }
 
@@ -23,13 +16,10 @@ export type ReadingContext = {
   question: Asked
   subQuestions: (Asked & { is_ask: boolean })[]
   people: { id: string; name: string; questions: string[] }[]
-  // What editors have told the librarian about reading this question.
-  guidance: string[]
 }
 
 export async function readingContext(db: D1Database, questionId: string, people: { id: string; name: string }[], day: string): Promise<ReadingContext | null> {
   const ids = JSON.stringify(people.map((p) => p.id))
-  const guidance = await guidanceFor(db, questionId)
   const [question, children, chambers, asked] = await db.batch([
     db.prepare(`SELECT id, title, short_title, description, kind FROM questions WHERE id = ?1`).bind(questionId),
     db
@@ -69,7 +59,6 @@ export async function readingContext(db: D1Database, questionId: string, people:
   const askedOf = new Set((asked.results as { question_id: string; decider_id: string }[]).map((r) => `${r.question_id} ${r.decider_id}`))
   return {
     question: { id: root.id, title: root.title, short_title: root.short_title, description: root.description, kind: root.kind },
-    guidance,
     subQuestions: subs.map(({ chamber: _, ...q }) => q),
     people: people.map((p) => ({
       id: p.id,
@@ -144,7 +133,6 @@ export function modelPrompt(context: ReadingContext, article: { url: string; tit
   const user = [
     `Today is ${today}.`,
     `Questions:\n${JSON.stringify(questions, null, 1)}`,
-    ...(context.guidance.length ? [`Editors' rules for reading this question:\n${context.guidance.map((g) => `- ${g}`).join('\n')}`] : []),
     `People, with the questions each can be read on:\n${JSON.stringify(context.people.map((p) => ({ person_id: p.id, name: p.name, question_ids: p.questions })), null, 1)}`,
     `Article: ${article.title ?? '(no title)'}\n${article.url}${article.date ? `\nDated ${article.date}` : ''}\n\n${article.text}`,
   ].join('\n\n')

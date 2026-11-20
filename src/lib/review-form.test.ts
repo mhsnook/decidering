@@ -67,7 +67,7 @@ describe('draftEntries', () => {
   })
 
   it('starts every entry with no note, no position to set and a set position kept', () => {
-    expect(ready()).toMatchObject({ note: '', copiedFrom: null, setPosition: null, decision: { action: 'keep', position: null, reason: '' }, librarian: null })
+    expect(ready()).toMatchObject({ note: '', copiedFrom: null, setPosition: null, decision: { action: 'keep', position: null, reason: '' } })
   })
 })
 

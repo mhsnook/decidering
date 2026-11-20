@@ -2,8 +2,6 @@ import { getServerByName, routePartykitRequest } from 'partyserver'
 import { ARCHIVE_CRON, archiveNow, archiveSources } from './archive.ts'
 import { commentInputSchema, proposalInputSchema } from '../shared/schema.ts'
 import { isEditorRequest } from './editor.ts'
-import { askLibrarian, librarianInputSchema } from './librarian.ts'
-import { guidanceFor } from './reader.ts'
 import { atomResponse } from './feed.ts'
 import { dryRunArticle, NEWS_CRON, queueIsAttended, searchNews } from './news.ts'
 import type { Tracker } from './tracker.ts'
@@ -74,17 +72,6 @@ export default {
       if (!target || typeof body?.question_id !== 'string') return Response.json({ error: 'Expected a url and a question_id.' }, { status: 400 })
       const result = await dryRunArticle(env, target, body.question_id)
       return Response.json(result, { status: 'error' in result ? 404 : 200 })
-    }
-    if (url.pathname === '/api/editor/librarian' && req.method === 'POST') {
-      if (!(await isEditorRequest(req, env))) return new Response('unauthorized', { status: 401 })
-      const parsed = librarianInputSchema.safeParse(await req.json().catch(() => null))
-      if (!parsed.success) return Response.json({ error: 'Expected a message, the chat so far and the open card.' }, { status: 400 })
-      const question = await env.DB.prepare(`SELECT title, description FROM questions WHERE id = ?`).bind(parsed.data.question_id).first<{ title: string; description: string | null }>()
-      if (!question) return Response.json({ error: 'Unknown question.' }, { status: 404 })
-      const asked = await askLibrarian(env, parsed.data, question, await guidanceFor(env.DB, parsed.data.question_id))
-      if (!asked.ok) return Response.json({ error: asked.error }, { status: asked.status })
-      if (asked.answer.remember) await (await tracker(env)).remember(parsed.data.question_id, asked.answer.remember)
-      return Response.json(asked.answer)
     }
     if (url.pathname === '/api/editor/archive' && req.method === 'POST') {
       if (!(await isEditorRequest(req, env))) return new Response('unauthorized', { status: 401 })

@@ -88,7 +88,7 @@ describe('modelOutputSchema', () => {
 })
 
 describe('modelPrompt', () => {
-  const context = { question: { id: 'hot', title: 'Hot question?', short_title: 'Hot', description: null, kind: 'position' as const }, subQuestions: [], people: [{ id: 'ann', name: 'Ann Alpha', questions: ['hot'] }], guidance: [] }
+  const context = { question: { id: 'hot', title: 'Hot question?', short_title: 'Hot', description: null, kind: 'position' as const }, subQuestions: [], people: [{ id: 'ann', name: 'Ann Alpha', questions: ['hot'] }] }
   const prompt = modelPrompt(context, { url: 'https://news.example/a', title: 'A', date: null, text: ARTICLE }, '2026-11-19')
 
   it('gives the model the people it may name and the whole article', () => {
@@ -96,12 +96,6 @@ describe('modelPrompt', () => {
     expect(prompt.messages[1].content).toContain(ARTICLE)
   })
 
-  it('gives the model the rules editors kept for the question, and no heading for them when there are none', () => {
-    const rules = ['“Open to it” is a lean, not support.', 'A vote on the rule is a passing signal.']
-    const withRules = modelPrompt({ ...context, guidance: rules }, { url: 'https://news.example/a', title: 'A', date: null, text: ARTICLE }, '2026-11-19')
-    for (const rule of rules) expect(withRules.messages[1].content).toContain(`- ${rule}`)
-    expect(prompt.messages[1].content).not.toContain('Editors')
-  })
 
   // The schema sent to the model and the one its answer is checked against are
   // written separately; an answer the first allows must not fail the second.
@@ -124,7 +118,6 @@ const context: ReadingContext = {
   question: { id: 'hot', title: 'Hot question?', short_title: 'Hot', description: null, kind: 'position' },
   subQuestions: Array.from({ length: 12 }, (_, i) => ({ id: `sub-${i}`, title: `Sub ${i}?`, short_title: `Sub ${i}`, description: null, kind: 'position' as const, is_ask: false })),
   people: [{ id: 'ann', name: 'Ann Alpha', questions: ['hot', ...Array.from({ length: 12 }, (_, i) => `sub-${i}`)] }],
-  guidance: [],
 }
 const answering = (answer: unknown) => ({ AI: { run: async () => ({ choices: [{ message: { content: JSON.stringify(answer) } }] }) }, AI_GATEWAY: 'gw' }) as unknown as Env
 const read = (answer: unknown, text = ARTICLE, readFor = context) => readArticle(answering(answer), readFor, { url: 'https://news.example/a', title: null, date: null, text }, '2026-11-19')

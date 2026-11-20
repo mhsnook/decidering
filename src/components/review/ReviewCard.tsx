@@ -51,7 +51,6 @@ export function ReviewCard({
   behind,
   readOnly,
   leaving,
-  changingKey,
   error,
   onPublish,
   onDismissAll,
@@ -69,8 +68,6 @@ export function ReviewCard({
   behind: number
   readOnly: boolean
   leaving: 'publishing' | 'dismissing' | null
-  // The entry the librarian is working on.
-  changingKey: string | null
   error: string | null
   onPublish: () => void
   onDismissAll: () => void
@@ -221,7 +218,6 @@ export function ReviewCard({
                 context={contexts.find((c) => c.proposal_item_id === d.contextItemId)}
                 notes={itemNotes(d)}
                 roster={roster}
-                changing={changingKey === d.key}
                 readOnly={readOnly}
               />
             ))}

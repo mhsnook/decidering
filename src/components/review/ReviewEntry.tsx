@@ -39,14 +39,12 @@ function DirectionButtons({
   onPick,
   small = false,
   withNone = false,
-  ring = false,
   label,
 }: {
   value: Direction | null
   onPick: (d: Direction | null) => void
   small?: boolean
   withNone?: boolean
-  ring?: boolean
   label: string
 }) {
   const options: (Direction | null)[] = withNone ? [null, ...DIRECTIONS] : [...DIRECTIONS]
@@ -63,9 +61,7 @@ function DirectionButtons({
             onClick={() => onPick(d)}
             className={`flex cursor-pointer flex-col items-center justify-center border-2 border-ink font-bold transition-[transform,background-color,box-shadow] duration-150 ${
               small ? 'min-h-11 gap-[3px] rounded-[10px] px-0.5 py-1 text-xs' : 'min-h-[58px] gap-[5px] rounded-xl px-0.5 py-1.5 text-[13px]'
-            } ${on ? `${d ? PICKED[d] : 'bg-paper'} ${small ? '-translate-y-0.5 shadow-hard-sm' : '-translate-y-[3px] shadow-hard-md'}` : 'bg-surface'} ${
-              on && ring ? 'outline-3 outline-offset-2 outline-accent' : ''
-            }`}
+            } ${on ? `${d ? PICKED[d] : 'bg-paper'} ${small ? '-translate-y-0.5 shadow-hard-sm' : '-translate-y-[3px] shadow-hard-md'}` : 'bg-surface'}`}
           >
             {d && <Token standing={d} className={small ? 'size-[11px]' : 'size-4'} />}
             {d ? DIRECTION_LABEL[d] : 'None'}
@@ -96,7 +92,6 @@ export function ReviewEntry({
   context,
   notes,
   roster,
-  changing,
   readOnly,
 }: {
   entry: EntryDraft
@@ -109,8 +104,6 @@ export function ReviewEntry({
   notes: string[]
   // Who an added entry can be about.
   roster: { id: string; name: string }[]
-  // The librarian is working on this entry.
-  changing: boolean
   readOnly: boolean
 }) {
   const { tracker } = useTracker()
@@ -176,7 +169,6 @@ export function ReviewEntry({
     const value = entry.related[choice.question.id] ?? null
     const picking = looks === 'solid' || value !== null || choice.question.id in entry.related
     const buttons = <DirectionButtons small withNone value={value} onPick={(d) => setRelated(choice.question.id, d)} label={`${choice.question.short_title}: which way it points`} />
-    const addedByLibrarian = entry.librarian?.added.includes(choice.question.id)
     return looks === 'solid' ? (
       <div key={choice.question.id} className="flex flex-col gap-3 rounded-xl border-2 border-ink bg-surface p-[15px] shadow-hard-sm">
         <div className="flex items-start justify-between gap-2">
@@ -186,7 +178,6 @@ export function ReviewEntry({
           </span>
           <span className="tag shrink-0 rounded-full bg-ink px-2 py-0.5 text-[11px] text-paper">{RELATED_BADGE[choice.kind]}</span>
         </div>
-        {addedByLibrarian && <span className="text-xs font-semibold text-accent">Added by the librarian</span>}
         {buttons}
       </div>
     ) : (
@@ -232,7 +223,7 @@ export function ReviewEntry({
   return (
     <section
       aria-label={name}
-      className={`relative -mx-3 rounded border-t-2 border-dashed border-line transition-colors duration-300 ${changing ? 'bg-mint/55 outline-3 -outline-offset-1 outline-accent outline-dashed' : ''}`}
+      className={`relative -mx-3 rounded border-t-2 border-dashed border-line transition-colors duration-300`}
     >
       <Reveal open={entry.dismissed}>
         <div className="flex items-center gap-3 px-3 py-[18px]">
@@ -250,12 +241,7 @@ export function ReviewEntry({
 
       <Reveal open={!entry.dismissed}>
         <div className="flex flex-col gap-[18px] px-3 py-6">
-          {changing && (
-            <span className="tag flex items-center gap-1.5 self-start rounded-full border-2 border-accent bg-surface px-2.5 py-[3px] text-accent">
-              <span className="animate-pulse">●</span> The librarian is changing this
-            </span>
-          )}
-          <div className={`flex items-start gap-3 ${changing ? 'opacity-60' : ''}`}>
+          <div className="flex items-start gap-3">
             <Token standing={then ?? 'unknown'} className={`size-10 transition-colors duration-300 ${then && then !== 'unknown' ? 'shadow-hard-sm' : ''}`} />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1">
@@ -297,7 +283,7 @@ export function ReviewEntry({
           )}
 
           {(entry.passage !== null || (entry.quote && !needsWords)) && (
-            <div className={changing ? 'opacity-60' : ''}>
+            <div>
               <div
                 {...(hasWider ? { role: 'button', tabIndex: 0, onClick: () => toggle('passage'), onKeyDown: (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggle('passage')) } : {})}
                 className={`block rounded-xl border-2 border-line bg-surface px-3.5 py-3 leading-[1.55] text-muted transition-colors duration-200 ${hasWider ? 'cursor-pointer hover:border-ink' : ''}`}
@@ -370,25 +356,14 @@ export function ReviewEntry({
             </Reveal>
           </div>
 
-          <div className={changing ? 'pointer-events-none opacity-60' : ''}>
+          <div>
             <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,250px),1fr))] gap-5">
               <div>
-                <p className="mb-2 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 text-sm">
-                  <span className="font-bold">Which way it points</span>
-                  {entry.librarian && 'wasReading' in entry.librarian && (
-                    <span className="flex items-center gap-1.5 text-xs font-semibold text-accent">
-                      Changed by the librarian · was {entry.librarian.wasReading ? DIRECTION_LABEL[entry.librarian.wasReading] : 'empty'}
-                      <button type="button" className="cursor-pointer text-ink underline" onClick={() => onChange({ reading: entry.librarian!.wasReading ?? null, librarian: { added: entry.librarian!.added } })}>
-                        Undo
-                      </button>
-                    </span>
-                  )}
-                </p>
+                <p className="mb-2 text-sm font-bold">Which way it points</p>
                 <DirectionButtons
                   label="Which way it points"
                   value={entry.reading}
-                  ring={!!entry.librarian && 'wasReading' in entry.librarian}
-                  onPick={(d) => onChange({ reading: d, librarian: entry.librarian ? { added: entry.librarian.added } : null })}
+                  onPick={(d) => onChange({ reading: d })}
                 />
                 {(choices.length > 0 || strays.length > 0) && (
                   <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
@@ -441,7 +416,7 @@ export function ReviewEntry({
           </div>
 
           {!across && (
-            <div className={`flex flex-col gap-1.5 ${changing ? 'opacity-60' : ''}`}>
+            <div className="flex flex-col gap-1.5">
               <ResultLine
                 lead="Then listed as"
                 standing={then}

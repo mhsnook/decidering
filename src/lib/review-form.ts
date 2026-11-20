@@ -35,8 +35,6 @@ export type EntryDraft = {
   setPosition: { position: Position; reason: string } | null
   // What to do about a position editors set, when this entry sits across from it.
   decision: { action: PositionDecision['action']; position: Position | null; reason: string }
-  // What the librarian changed, so the entry can say so and offer to undo it.
-  librarian: { wasReading?: Direction | null; added: string[] } | null
 }
 
 const newDecision = (): EntryDraft['decision'] => ({ action: 'keep', position: null, reason: '' })
@@ -76,7 +74,6 @@ export function draftEntries(items: ProposalItem[], fallbackDate: string): Entry
       copiedFrom: null,
       setPosition: null,
       decision: newDecision(),
-      librarian: null,
     })
   }
   const firstSort = (d: EntryDraft) => Math.min(...d.items.map((i) => i.sort))
@@ -99,7 +96,6 @@ export function addedEntry(first: EntryDraft, copiedFrom: string, newId: () => s
     copiedFrom,
     setPosition: null,
     decision: newDecision(),
-    librarian: null,
   }
 }
 

@@ -32,16 +32,15 @@ const readDraft = (name: string): ProposalDraft => ({
 })
 
 // The tables only an editor's connection is sent.
-const EDITOR_ONLY = ['proposal_notes', 'proposal_contexts', 'proposal_mentions', 'question_guidance']
+const EDITOR_ONLY = ['proposal_notes', 'proposal_contexts', 'proposal_mentions']
 
 beforeAll(async () => {
   await seed()
-  // One proposal with a submitter note, one read from an article and one rule
-  // for a question, so each editor-only table has a row to withhold.
+  // One proposal with a submitter note and one read from an article, so each
+  // editor-only table has a row to withhold.
   const res = await post('/api/proposals', proposal({ submitter_note: 'Only editors should read this.' }))
   expect(await res.json()).toMatchObject({ ok: true, duplicate: false })
   expect(await (await tracker()).propose(readDraft('on-file'), 'model')).toMatchObject({ ok: true, queued: 1 })
-  await (await tracker()).remember('hot', 'A rule only editors should read.')
 })
 
 describe('writes through the party endpoint', () => {
@@ -155,13 +154,12 @@ describe('what a socket is sent', () => {
     socket.close()
   })
 
-  it('sends an editor the proposal notes, contexts, mentions and question rules on connect', async () => {
+  it('sends an editor the proposal notes, contexts and mentions on connect', async () => {
     const editor = await partySocket(EDITOR_TOKEN)
     await until(() => EDITOR_ONLY.every((channel) => editor.channels().has(channel)))
     expect(rowsOn(editor.frames, 'proposal_notes').map((n) => n.body)).toContain('Only editors should read this.')
     expect(rowsOn(editor.frames, 'proposal_contexts').map((c) => [c.before, c.after])).toContainEqual(['Text before the passage, on-file.', 'Text after the passage, on-file.'])
     expect(rowsOn(editor.frames, 'proposal_mentions').map((m) => [m.decider_id, m.words])).toContainEqual(['eve', 'Eve Epsilon was absent, on-file'])
-    expect(rowsOn(editor.frames, 'question_guidance').map((g) => [g.question_id, g.body])).toContainEqual(['hot', 'A rule only editors should read.'])
     editor.close()
   })
 
@@ -222,7 +220,6 @@ describe('what a socket is sent', () => {
     const seen = { reader: reader.frames.length, editor: editor.frames.length }
 
     expect(await (await tracker()).propose(readDraft('live'), 'model')).toMatchObject({ ok: true, queued: 1 })
-    await (await tracker()).remember('hot', 'A second rule only editors should read.')
 
     const marker = { ...body, id: 'after-read', slug: 'after-read' }
     expect((await partyWrite([{ channel: 'bodies', ops: [{ type: 'insert', value: marker }] }], EDITOR_TOKEN)).status).toBe(200)
@@ -231,13 +228,12 @@ describe('what a socket is sent', () => {
     // The reader is sent the item with its passage, and nothing else of what was read.
     expect(rowsOn(reader.frames.slice(seen.reader), 'proposal_items').map((i) => i.passage)).toEqual(['Bob Beta said: I will vote against it, live.'])
     const sent = JSON.stringify(reader.frames)
-    for (const text of [...PRIVATE, 'A second rule only editors should read.']) expect(sent).not.toContain(text)
+    for (const text of PRIVATE) expect(sent).not.toContain(text)
     for (const channel of EDITOR_ONLY) expect(rowsOn(reader.frames, channel)).toEqual([])
 
-    await until(() => ['proposal_contexts', 'proposal_mentions', 'question_guidance'].every((channel) => editor.frames.slice(seen.editor).some((f) => f.channel === channel)))
+    await until(() => ['proposal_contexts', 'proposal_mentions'].every((channel) => editor.frames.slice(seen.editor).some((f) => f.channel === channel)))
     expect(rowsOn(editor.frames.slice(seen.editor), 'proposal_contexts').map((c) => [c.before, c.after])).toEqual([['Text before the passage, live.', 'Text after the passage, live.']])
     expect(rowsOn(editor.frames.slice(seen.editor), 'proposal_mentions').map((m) => [m.decider_id, m.words])).toEqual([['eve', 'Eve Epsilon was absent, live']])
-    expect(rowsOn(editor.frames.slice(seen.editor), 'question_guidance').map((g) => g.body)).toEqual(['A second rule only editors should read.'])
     reader.close()
     editor.close()
   })
