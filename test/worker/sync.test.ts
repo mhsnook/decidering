@@ -3,7 +3,7 @@ import { getServerByName } from 'partyserver'
 import { beforeAll, describe, expect, it } from 'vitest'
 import type { ProposalDraft } from '../../shared/schema.ts'
 import type { Tracker } from '../../worker/tracker.ts'
-import { EDITOR_TOKEN, type Frame, partySocket, partyWrite, post, proposal, rows, seed, until } from './helpers.ts'
+import { EDITOR_TOKEN, type Frame, mailbox, partySocket, partyWrite, post, proposal, rows, seed, signIn, until } from './helpers.ts'
 
 const body = { id: 'new-body', slug: 'new-body', name: 'New Body', jurisdiction: null, description: null, is_demo: false, sort: 9, next_term_on: null, next_term_label: null }
 const rowsOn = (frames: Frame[], channel: string) => frames.filter((f) => f.channel === channel).flatMap((f) => f.ops.map((op) => op.value))
@@ -108,6 +108,61 @@ describe('writes through the party endpoint', () => {
   it('refuses an editor insert to comments, which only allows delete', async () => {
     const comment = { id: 'c2', thread_id: 'hot:ann', author_name: 'x', body: 'y', created_at: '2026-11-19T00:00:00Z' }
     expect((await partyWrite([{ channel: 'comments', ops: [{ type: 'insert', value: comment }] }], EDITOR_TOKEN)).status).toBe(403)
+  })
+})
+
+describe('a signed-in reader in the sync room', () => {
+  const mail = mailbox()
+  let cookie = ''
+  let personId = ''
+  // The raw token Better Auth keeps for the session, which the cookie carries signed.
+  let sessionToken = ''
+
+  beforeAll(async () => {
+    cookie = await signIn(mail, 'room@reader.test')
+    const [row] = await rows<{ id: string; token: string }>(`SELECT u.id, s.token FROM auth_users u JOIN auth_sessions s ON s."userId" = u.id WHERE u.email = 'room@reader.test'`)
+    personId = row.id
+    sessionToken = row.token
+  })
+
+  it('refuses their write to a public collection, with the session cookie or the session token', async () => {
+    const theirs = [{ channel: 'bodies', ops: [{ type: 'insert', value: { ...body, id: 'reader-body', slug: 'reader-body' } }] }]
+    expect((await partyWrite(theirs, undefined, cookie)).status).toBe(401)
+    expect((await partyWrite(theirs, sessionToken)).status).toBe(401)
+    expect(await rows(`SELECT id FROM bodies WHERE id = 'reader-body'`)).toEqual([])
+  })
+
+  it('refuses their write to their own person, so they cannot unmute themselves', async () => {
+    const unmute = [{ channel: 'people', ops: [{ type: 'update', value: { id: personId, muted_at: null, display_name: 'Renamed' } }] }]
+    expect((await partyWrite(unmute, undefined, cookie)).status).toBe(401)
+    expect((await partyWrite(unmute, sessionToken)).status).toBe(401)
+    expect(await rows(`SELECT display_name FROM people WHERE id = ?`, personId)).toEqual([{ display_name: null }])
+  })
+
+  it.each([
+    ['the session cookie', () => [undefined, cookie] as const],
+    ['the session token', () => [sessionToken, undefined] as const],
+  ])('sends a socket opened with %s nothing from the tables only editors read', async (_, credentials) => {
+    const socket = await partySocket(...credentials())
+    await until(() => socket.channels().has('bodies'))
+    const before = socket.frames.length
+    for (const channel of EDITOR_ONLY) socket.send({ subscribe: channel })
+    await until(() => EDITOR_ONLY.every((channel) => socket.frames.slice(before).some((f) => f.channel === channel)))
+    for (const channel of EDITOR_ONLY) expect(rowsOn(socket.frames, channel)).toEqual([])
+    socket.close()
+  })
+
+  it('lets an editor mute and unmute a person, and no one add a person through the room', async () => {
+    const mutedAt = '2026-11-20T12:00:00.000Z'
+    expect((await partyWrite([{ channel: 'people', ops: [{ type: 'update', value: { id: personId, muted_at: mutedAt } }] }], EDITOR_TOKEN)).status).toBe(200)
+    expect(await rows(`SELECT muted_at FROM people WHERE id = ?`, personId)).toEqual([{ muted_at: mutedAt }])
+    expect((await partyWrite([{ channel: 'people', ops: [{ type: 'update', value: { id: personId, muted_at: null } }] }], EDITOR_TOKEN)).status).toBe(200)
+    expect(await rows(`SELECT muted_at FROM people WHERE id = ?`, personId)).toEqual([{ muted_at: null }])
+
+    const added = [{ channel: 'people', ops: [{ type: 'insert', value: { id: 'made-up', display_name: 'Nobody', muted_at: null, created_at: mutedAt } }] }]
+    expect((await partyWrite(added, EDITOR_TOKEN)).status).toBe(403)
+    expect((await partyWrite(added, undefined, cookie)).status).toBe(401)
+    expect(await rows(`SELECT id FROM people WHERE id = 'made-up'`)).toEqual([])
   })
 })
 
