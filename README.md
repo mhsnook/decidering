@@ -144,9 +144,9 @@ Then connect the repo in the Cloudflare dashboard and push to `main`. Secrets pe
 
 Codes are sent with Cloudflare Email Service, which needs the Workers Paid plan and a domain on Cloudflare DNS. A `workers.dev` address cannot send mail.
 
-1. In the dashboard, under Compute > Email Service > Email Sending, onboard the domain, or a subdomain such as `mail.example.org`. The DNS records it needs are added for you.
-2. Set `EMAIL_FROM` in `wrangler.jsonc`, at the top level and in the `previews` block, to an address on that domain. While it is empty, no code is sent and the Worker logs why.
-3. Set `AUTH_HOSTS` to the hosts the site is served on, comma separated, with `*` as a wildcard. It is `sporelight.*.workers.dev` for production and `*-sporelight.*.workers.dev` for Previews. Add the domain if the site moves to one. Sign-in on any other host is refused.
+1. In the dashboard, under Compute > Email Service > Email Sending, onboard the sending domain. Codes are sent from `mail.emju.in`. The DNS records it needs are added for you.
+2. `EMAIL_FROM` in `wrangler.jsonc`, at the top level and in the `previews` block, is the address codes come from, `auth@mail.emju.in`. While it is empty, no code is sent and the Worker logs why.
+3. `AUTH_HOSTS` lists the hosts sign-in answers on, comma separated, with `*` as a wildcard. Production is served on `sporelight.emju.in` and Previews on `*.sporelight.emju.in`, a custom domain set up in the dashboard with Previews enabled. Sign-in on any other host, including the `workers.dev` addresses, is refused.
 4. Store `BETTER_AUTH_SECRET`, which signs the session cookies, for production and Previews. `openssl rand -base64 32` makes one.
 
 Better Auth's tables are the `auth_` tables in `migrations/0014_reader_identity.sql`, written by its migration generator. When an upgrade changes them, add a migration with what it generates for SQLite.
