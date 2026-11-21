@@ -34,9 +34,11 @@ export type QuestionInput = {
   closes_on: string | null
 }
 
-// Where a new question goes: top level in a body, under a question as a measure
-// or an ask, or as a question of its own linked to another as a smaller step or
-// a related issue.
+export type QuestionLinks = { bodies: QuestionBody[]; deciders: QuestionDecider[]; offices: QuestionOffice[] }
+
+// What a question is called in labels: an ask is put to named people or offices, a measure is any other sub-question.
+export const nounOf = (question: Pick<Question, 'parent_id'>, isAsk: boolean) => (isAsk ? 'ask' : question.parent_id ? 'measure' : 'question')
+
 export type Placement =
   | { kind: 'question'; body_id: string }
   | { kind: 'measure' | 'ask'; parent: Question }
@@ -78,7 +80,6 @@ export function readQuestionForm(f: FormData): QuestionInput {
 
 const isDay = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value))
 
-// What is wrong with the input, as sentences to show above the form. Empty when it can be saved.
 export function questionProblems(input: QuestionInput, isAsk: boolean): string[] {
   const problems: string[] = []
   if (!input.title) problems.push('The question needs to be written out.')
@@ -115,8 +116,9 @@ export type QuestionRows = {
   relation: QuestionRelation | null
 }
 
-// The rows already stored that a new question's place and order are worked out from.
 export type Existing = { questions: Question[]; questionRelations: QuestionRelation[] }
+
+export const bodyOf = (place: Placement) => (place.kind === 'question' ? place.body_id : place.kind === 'step' ? place.to.body_id : place.parent.body_id)
 
 const nextSort = (sorts: number[]) => Math.max(-1, ...sorts) + 1
 
@@ -125,7 +127,7 @@ const nextSort = (sorts: number[]) => Math.max(-1, ...sorts) + 1
 export function newQuestionRows(input: QuestionInput, place: Placement, existing: Existing, newId: () => string = () => crypto.randomUUID()): QuestionRows {
   const id = newId()
   const parent = place.kind === 'measure' || place.kind === 'ask' ? place.parent : null
-  const body_id = place.kind === 'question' ? place.body_id : place.kind === 'step' ? place.to.body_id : place.parent.body_id
+  const body_id = bodyOf(place)
   const sort =
     place.kind === 'step'
       ? place.to.sort
@@ -180,8 +182,7 @@ export const questionInserts = (rows: QuestionRows): Write[] => [
   ...(rows.relation ? [{ on: 'question_relations', type: 'insert', row: rows.relation } satisfies Write] : []),
 ]
 
-// A form's starting values for a new question, or for one being edited.
-export function inputOf(question: Question | null, links: { bodies: QuestionBody[]; deciders: QuestionDecider[]; offices: QuestionOffice[] } = { bodies: [], deciders: [], offices: [] }): QuestionInput {
+export function inputOf(question: Question | null, links: QuestionLinks = { bodies: [], deciders: [], offices: [] }): QuestionInput {
   return {
     title: question?.title ?? '',
     short_title: question?.short_title ?? '',
@@ -209,7 +210,7 @@ const EDITABLE = ['title', 'short_title', 'description', 'kind', 'act_label', 't
 export function questionEdits(
   question: Question,
   input: QuestionInput,
-  links: { bodies: QuestionBody[]; deciders: QuestionDecider[]; offices: QuestionOffice[] },
+  links: QuestionLinks,
   newId: () => string = () => crypto.randomUUID(),
 ): Write[] {
   const isAsk = links.deciders.length + links.offices.length > 0
@@ -222,7 +223,8 @@ export function questionEdits(
   const writes: Write[] = Object.keys(changes).length ? [{ on: 'questions', type: 'update', id: question.id, changes }] : []
 
   const bodies = new Set(input.also_body_ids.filter((b) => b !== question.body_id))
-  for (const l of links.bodies) if (!bodies.has(l.body_id)) writes.push({ on: 'question_bodies', type: 'delete', id: l.id })
+  // The form offers no box for the body a question is listed under, so a link to it is left alone.
+  for (const l of links.bodies) if (l.body_id !== question.body_id && !bodies.has(l.body_id)) writes.push({ on: 'question_bodies', type: 'delete', id: l.id })
   for (const body_id of bodies) if (!links.bodies.some((l) => l.body_id === body_id)) writes.push({ on: 'question_bodies', type: 'insert', row: { id: newId(), question_id: question.id, body_id } })
 
   if (!isAsk) return writes

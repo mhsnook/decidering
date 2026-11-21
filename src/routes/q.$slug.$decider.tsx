@@ -108,7 +108,7 @@ function DeciderOnQuestion() {
 
         {(isAsk || question.status !== 'open') && (
           <div className="mt-4 space-y-3">
-            <ClosedNote ask={question} />
+            <ClosedNote question={question} />
             {isAsk && <CloseQuestion question={question} />}
           </div>
         )}

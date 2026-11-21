@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react'
 import type { Question } from '../../shared/schema.ts'
 import { db } from '../lib/db.ts'
 import { isEditor } from '../lib/editor.ts'
+import { nounOf } from '../lib/question-form.ts'
 import { formatDate } from '../lib/position.ts'
 import { today, useTracker, type KeyPerson } from '../lib/tracker.tsx'
 import { CertaintyTag, StandingPill } from './bits.tsx'
@@ -64,7 +65,7 @@ export function CloseQuestion({ question }: { question: Question }) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   if (!isEditor()) return null
-  const noun = tracker.isAsk(question) ? 'ask' : question.parent_id ? 'measure' : 'question'
+  const noun = nounOf(question, tracker.isAsk(question))
 
   const save = (changes: Pick<Question, 'status' | 'closed_on' | 'closed_note'>) => {
     setError(null)
@@ -141,23 +142,23 @@ export function CloseQuestion({ question }: { question: Question }) {
 
 // A question can be known to close on a day still ahead, as a bill dies when its
 // Congress ends. Until then it is open, with the date given.
-export function ClosedNote({ ask }: { ask: Question }) {
+export function ClosedNote({ question }: { question: Question }) {
   const { tracker } = useTracker()
-  if (ask.status === 'open') return null
-  if (tracker.isOpen(ask)) {
+  if (question.status === 'open') return null
+  if (tracker.isOpen(question)) {
     return (
       <p className="rounded-xl border-2 border-dashed border-line bg-paper p-3 text-sm">
-        <span className="font-semibold">Closes {ask.closed_on && formatDate(ask.closed_on)}.</span> {ask.closed_note}
+        <span className="font-semibold">Closes {question.closed_on && formatDate(question.closed_on)}.</span> {question.closed_note}
       </p>
     )
   }
   return (
     <p className="rounded-xl border-2 border-dashed border-line bg-paper p-3 text-sm">
       <span className="font-semibold">
-        {CLOSED_LABEL[ask.status]}
-        {ask.closed_on && ` ${formatDate(ask.closed_on)}`}.
+        {CLOSED_LABEL[question.status]}
+        {question.closed_on && ` ${formatDate(question.closed_on)}`}.
       </span>{' '}
-      {ask.closed_note ?? (ask.status === 'lapsed' ? 'This is no longer being asked.' : '')}
+      {question.closed_note ?? (question.status === 'lapsed' ? 'This is no longer being asked.' : '')}
     </p>
   )
 }

@@ -183,6 +183,11 @@ describe('questionEdits', () => {
     ])
   })
 
+  it('leaves alone a link to the body the question is listed under, which the form has no box for', () => {
+    const own = { bodies: [{ id: 'own', question_id: 'hearing', body_id: ask.body_id }], deciders: links.deciders, offices: [] }
+    expect(questionEdits(ask, { ...inputOf(ask, links), also_body_ids: [] }, own, ids())).toEqual([])
+  })
+
   it('does not put a measure to anyone, and keeps what doing it implies off a top-level question', () => {
     const top = question('pier')
     const input = { ...inputOf(top), implies_on_parent: 'support' as const, deciders: [{ decider_id: 'ann', role_label: null }] }

@@ -9,6 +9,7 @@ import { Hemicycle } from '../components/Hemicycle.tsx'
 import { QuestionHeader } from '../components/QuestionHeader.tsx'
 import { AskStatus, CloseQuestion, ClosedNote, KeyPeople } from '../components/Asks.tsx'
 import { isEditor } from '../lib/editor.ts'
+import { nounOf } from '../lib/question-form.ts'
 
 // How many of a group to list before a reader has to ask for the rest.
 const PREVIEW = 12
@@ -79,7 +80,7 @@ function Board() {
   return (
     <div className="space-y-6">
       <QuestionHeader question={question} />
-      <ClosedNote ask={question} />
+      <ClosedNote question={question} />
       <EditorTools question={question} />
 
       <KeyPeople people={tracker.keyPeople(question, body.id)} />
@@ -230,7 +231,7 @@ function Ask({ question, bodyId }: { question: Question; bodyId: string }) {
   return (
     <div className="space-y-6">
       <QuestionHeader question={question} />
-      <ClosedNote ask={question} />
+      <ClosedNote question={question} />
       {people.length === 0 && <p className="text-muted">Nobody holds the role this is asked of on {formatDate(tracker.asOf)}.</p>}
       <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {people.map(({ key, roleLabel, certainty, contender, seat }) => (
@@ -275,7 +276,7 @@ function EditorTools({ question }: { question: Question }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Link to="/editor/questions/$slug/edit" params={{ slug: question.slug }} className="btn">
-        Edit this {tracker.isAsk(question) ? 'ask' : question.parent_id ? 'measure' : 'question'}
+        Edit this {nounOf(question, tracker.isAsk(question))}
       </Link>
       <CloseQuestion question={question} />
     </div>

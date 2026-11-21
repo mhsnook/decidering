@@ -604,6 +604,9 @@ test('a smaller step made from a question’s edit page is linked to it, and any
 
   await page.goto('/editor/questions/free-ferry/edit')
   await expect(page.getByRole('region', { name: 'Smaller steps and related questions' }).getByRole('listitem').filter({ hasText: shortName })).toContainText('Smaller step')
+  // The fare-free question has readings, so changing what it asks says what that does. Nothing is saved here.
+  await page.getByRole('radio', { name: /Whether someone did a specific thing/ }).check()
+  await expect(page.getByRole('note')).toContainText('on the record here. Changing what it asks changes how they are counted')
 
   await page.goto(`/editor/questions/free-at-night-${stamp}/edit`)
   await page.getByRole('button', { name: 'Close this question' }).click()

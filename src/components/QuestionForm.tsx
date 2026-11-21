@@ -1,15 +1,12 @@
 import { useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { inEffect, type Question, type QuestionBody, type QuestionDecider, type QuestionOffice } from '../../shared/schema.ts'
-import { LIMITS, inputOf, newQuestionRows, questionEdits, questionInserts, questionProblems, readQuestionForm, type Placement, type QuestionInput } from '../lib/question-form.ts'
+import { inEffect, type Question } from '../../shared/schema.ts'
+import { LIMITS, bodyOf, inputOf, nounOf, newQuestionRows, questionEdits, questionInserts, questionProblems, readQuestionForm, type Placement, type QuestionInput, type QuestionLinks } from '../lib/question-form.ts'
 import { commit } from '../lib/review.ts'
 import { today, useTracker } from '../lib/tracker.tsx'
 
-export type Links = { bodies: QuestionBody[]; deciders: QuestionDecider[]; offices: QuestionOffice[] }
-
-// `place` makes a new question there. `editing` changes one that exists.
 export type QuestionFormProps =
   | { place: Placement; editing?: undefined; onSaved: (saved: Question) => void }
-  | { place?: undefined; editing: { question: Question; links: Links }; onSaved?: undefined }
+  | { place?: undefined; editing: { question: Question; links: QuestionLinks }; onSaved?: undefined }
 
 const IMPLIES = [
   ['', 'Nothing'],
@@ -26,20 +23,19 @@ export function QuestionForm(props: QuestionFormProps) {
   const question = editing?.question ?? null
   const parent = place && (place.kind === 'measure' || place.kind === 'ask') ? place.parent : question?.parent_id ? tracker.questionById.get(question.parent_id) : undefined
   const isAsk = place ? place.kind === 'ask' : tracker.isAsk(question!)
-  const isMeasure = place ? place.kind === 'measure' : !!parent && !isAsk
+  const noun = nounOf({ parent_id: parent?.id ?? null }, isAsk)
   const start: QuestionInput = place
     ? {
         ...inputOf(null),
         kind: place.kind === 'measure' ? 'formal_act' : 'position',
         implies_on_parent: place.kind === 'measure' ? 'support' : null,
         chamber: place.kind === 'step' ? place.to.chamber : null,
-        // A step or a sub-question starts out put to the same bodies as the question it is made from.
         also_body_ids: place.kind === 'question' ? [] : tracker.questionBodies.filter((l) => l.question_id === (place.kind === 'step' ? place.to.id : place.parent.id)).map((l) => l.body_id),
         deciders: place.kind === 'ask' ? [{ decider_id: '', role_label: null }] : [],
       }
     : inputOf(question, editing!.links)
 
-  const [bodyId, setBodyId] = useState(place?.kind === 'question' ? place.body_id : place?.kind === 'step' ? place.to.body_id : (parent?.body_id ?? question!.body_id))
+  const [bodyId, setBodyId] = useState(place ? bodyOf(place) : question!.body_id)
   const [kind, setKind] = useState(start.kind)
   const [people, setPeople] = useState(() => start.deciders.map((d) => ({ key: crypto.randomUUID(), ...d })))
   const [problems, setProblems] = useState<string[]>([])
@@ -51,7 +47,10 @@ export function QuestionForm(props: QuestionFormProps) {
   const chambers = [...new Set(tracker.seats.filter((s) => s.body_id === bodyId && s.chamber).map((s) => s.chamber!))].sort()
   const otherBodies = tracker.bodiesInOrder.filter((b) => b.id !== bodyId)
   const root = parent ?? question ?? undefined
-  const roster = root ? tracker.rosterOf(root) : []
+  const seated = root ? tracker.rosterOf(root) : []
+  // Someone already named on the ask stays a choice even without a seat here, or saving would drop them.
+  const roster = [...seated, ...start.deciders.flatMap((d) => (seated.some((x) => x.id === d.decider_id) ? [] : (tracker.deciderById.get(d.decider_id) ?? [])))]
+  const readingsHere = question ? tracker.readings.filter((r) => r.question_id === question.id).length : 0
   const offices = tracker.offices
     .filter((o) => o.body_id === null || (root ? tracker.bodiesOf(root).some((b) => b.id === o.body_id) : o.body_id === bodyId))
     .sort((a, b) => Number(a.body_id === null) - Number(b.body_id === null) || a.sort - b.sort)
@@ -96,7 +95,7 @@ export function QuestionForm(props: QuestionFormProps) {
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate className="space-y-6" aria-label={question ? 'Edit the question' : 'The new question'}>
+    <form onSubmit={onSubmit} onChange={() => setSaved(false)} noValidate className="space-y-6" aria-label={question ? 'Edit the question' : 'The new question'}>
       <div ref={top} className="scroll-mt-4">
         {problems.length > 0 && (
           <div role="alert" className="rounded-xl border-2 border-oppose bg-surface p-4 text-sm">
@@ -171,6 +170,11 @@ export function QuestionForm(props: QuestionFormProps) {
               Whether someone did a specific thing, such as cosponsoring a bill
             </Choice>
           </div>
+          {question && kind !== question.kind && readingsHere > 0 && (
+            <p role="note" className="mt-2 text-sm font-semibold text-oppose">
+              {readingsHere === 1 ? 'One reading is' : `${readingsHere} readings are`} on the record here. Changing what it asks changes how they are counted, and positions set by hand are not shown on a question about doing something.
+            </p>
+          )}
         </fieldset>
         {kind === 'formal_act' && (
           <Field label="What having done it is called" id="q-act-label" optional hint="Shown in place of “Signed on”, such as “Ratified” or “Cosponsored”.">
@@ -305,7 +309,7 @@ export function QuestionForm(props: QuestionFormProps) {
 
       <div className="flex flex-wrap items-center gap-3">
         <button className="btn btn-primary" disabled={saving}>
-          {question ? 'Save changes' : isAsk ? 'Add the ask' : isMeasure ? 'Add the measure' : 'Add the question'}
+          {question ? 'Save changes' : `Add the ${noun}`}
         </button>
         {saved && question && (
           <p role="status" className="text-sm font-semibold">

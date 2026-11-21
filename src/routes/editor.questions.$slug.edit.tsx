@@ -1,5 +1,6 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
 import type { Question } from '../../shared/schema.ts'
+import { nounOf } from '../lib/question-form.ts'
 import { useTracker } from '../lib/tracker.tsx'
 import { NotFound, Syncing } from '../components/bits.tsx'
 import { CloseQuestion, ClosedNote } from '../components/Asks.tsx'
@@ -17,8 +18,7 @@ function EditQuestion() {
   if (!question) return <NotFound what="question" />
 
   const parent = question.parent_id ? tracker.questionById.get(question.parent_id) : undefined
-  const isAsk = tracker.isAsk(question)
-  const noun = isAsk ? 'ask' : parent ? 'measure' : 'question'
+  const noun = nounOf(question, tracker.isAsk(question))
   const links = {
     bodies: tracker.questionBodies.filter((l) => l.question_id === question.id),
     deciders: tracker.questionDeciders.filter((l) => l.question_id === question.id),
@@ -48,7 +48,7 @@ function EditQuestion() {
           Closing
         </h2>
         {question.status === 'open' && <p className="text-sm text-muted">Open.</p>}
-        <ClosedNote ask={question} />
+        <ClosedNote question={question} />
         <CloseQuestion question={question} />
       </section>
 
