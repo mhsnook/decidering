@@ -25,7 +25,7 @@
   // gateway named `default` is created on first use; this one has to exist.
   // AUTH_HOSTS are the hosts sign-in answers on; EMAIL_FROM sends the sign-in
   // codes and must be an address on a domain onboarded to Email Sending.
-  "vars": { "AI_GATEWAY": "sporelight", "AUTH_HOSTS": "sporelight.*.workers.dev", "EMAIL_FROM": "" },
+  "vars": { "AI_GATEWAY": "sporelight", "AUTH_HOSTS": "sporelight.emju.in", "EMAIL_FROM": "auth@mail.emju.in" },
   "send_email": [{ "name": "EMAIL" }],
   "ratelimits": [{ "name": "POST_LIMITER", "namespace_id": "1001", "simple": { "limit": 6, "period": 60 } }],
   // The news search, once a day, and the archiving pass, every six hours.
@@ -45,7 +45,7 @@
       "bindings": [{ "name": "Tracker", "class_name": "Tracker" }]
     },
     "ai": { "binding": "AI" },
-    "vars": { "AI_GATEWAY": "sporelight", "AUTH_HOSTS": "*-sporelight.*.workers.dev", "EMAIL_FROM": "" },
+    "vars": { "AI_GATEWAY": "sporelight", "AUTH_HOSTS": "*.sporelight.emju.in", "EMAIL_FROM": "auth@mail.emju.in" },
     "send_email": [{ "name": "EMAIL" }],
     "ratelimits": [{ "name": "POST_LIMITER", "namespace_id": "1002", "simple": { "limit": 6, "period": 60 } }]
   }
