@@ -57,17 +57,19 @@ export function KeyPeople({ people }: { people: KeyPerson[] }) {
   )
 }
 
-// Editors only. An ask closes when it is met (resolved) or when it stops being
-// what anyone is asking for (lapsed).
-export function CloseAsk({ ask }: { ask: Question }) {
+// Editors only. A question closes when it is met (resolved) or when it stops
+// being what anyone is asking for (lapsed).
+export function CloseQuestion({ question }: { question: Question }) {
+  const { tracker } = useTracker()
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   if (!isEditor()) return null
+  const noun = tracker.isAsk(question) ? 'ask' : question.parent_id ? 'measure' : 'question'
 
   const save = (changes: Pick<Question, 'status' | 'closed_on' | 'closed_note'>) => {
     setError(null)
     db.questions
-      .update(ask.id, (q) => void Object.assign(q, changes))
+      .update(question.id, (q) => void Object.assign(q, changes))
       .isPersisted.promise.then(
         () => setOpen(false),
         (err: unknown) => setError(err instanceof Error ? err.message : String(err)),
@@ -80,11 +82,11 @@ export function CloseAsk({ ask }: { ask: Question }) {
     save({ status: f.get('status') as 'resolved' | 'lapsed', closed_on: f.get('closed_on') as string, closed_note: (f.get('closed_note') as string).trim() || null })
   }
 
-  if (ask.status !== 'open') {
+  if (question.status !== 'open') {
     return (
       <span className="flex items-center gap-2">
         <button type="button" className="btn" onClick={() => save({ status: 'open', closed_on: null, closed_note: null })}>
-          Reopen this ask
+          Reopen this {noun}
         </button>
         {error && <span className="text-sm text-oppose">Not saved: {error}</span>}
       </span>
@@ -94,9 +96,9 @@ export function CloseAsk({ ask }: { ask: Question }) {
   return (
     <>
       <button type="button" className="btn" onClick={() => setOpen(true)}>
-        Close this ask
+        Close this {noun}
       </button>
-      <Modal open={open} onClose={() => setOpen(false)} title="Close this ask" description={ask.title}>
+      <Modal open={open} onClose={() => setOpen(false)} title={`Close this ${noun}`} description={question.title}>
         <form onSubmit={onSubmit} className="space-y-4">
           <fieldset className="space-y-2 text-sm">
             <label className="flex items-start gap-2">
@@ -126,7 +128,7 @@ export function CloseAsk({ ask }: { ask: Question }) {
           </div>
           {error && <p className="text-sm text-oppose">Not saved: {error}</p>}
           <div className="flex gap-2">
-            <button className="btn btn-primary">Close the ask</button>
+            <button className="btn btn-primary">Close the {noun}</button>
             <button type="button" className="btn" onClick={() => setOpen(false)}>
               Cancel
             </button>

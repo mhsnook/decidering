@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { useLiveQuery } from '@tanstack/react-db'
 import { isUnreadLead, type Proposal, type ProposalContext, type ProposalItem, type ProposalMention, type ProposalNote, type Source } from '../../shared/schema.ts'
 import { db } from '../lib/db.ts'
-import { editorFetch, isEditor, signIn, signOut } from '../lib/editor.ts'
+import { editorFetch, signOut } from '../lib/editor.ts'
 import { commit } from '../lib/review.ts'
 import { planReview, type Write } from '../lib/review-plan.ts'
 import { groupBy } from '../lib/build-tracker.ts'
@@ -14,33 +14,7 @@ import { Syncing, Token } from '../components/bits.tsx'
 import { Reveal } from '../components/review/Reveal.tsx'
 import { ReviewCard, people } from '../components/review/ReviewCard.tsx'
 
-export const Route = createFileRoute('/editor')({ component: Editor })
-
-function Editor() {
-  return isEditor() ? <Queue /> : <SignIn />
-}
-
-function SignIn() {
-  const [failed, setFailed] = useState(false)
-  async function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    const token = new FormData(e.currentTarget).get('token') as string
-    setFailed(!(await signIn(token)))
-  }
-  return (
-    <form onSubmit={onSubmit} className="card mx-auto mt-8 max-w-sm space-y-4 p-6">
-      <h1 className="text-[28px] font-black">Editors</h1>
-      <div>
-        <label className="label" htmlFor="token">
-          Editor token
-        </label>
-        <input id="token" name="token" type="password" required autoComplete="current-password" className="field" />
-      </div>
-      {failed && <p className="text-sm text-oppose">That token was not accepted.</p>}
-      <button className="btn btn-primary">Sign in</button>
-    </form>
-  )
-}
+export const Route = createFileRoute('/editor/')({ component: Queue })
 
 // How many proposals one page of the list beside the open card holds.
 const UP_NEXT = 12

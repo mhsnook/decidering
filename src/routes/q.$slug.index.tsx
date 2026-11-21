@@ -7,7 +7,8 @@ import { SPECTRUM, STANDINGS, STANDING_BG, claimTag, formatDate, standingLabel, 
 import { CertaintyTag, FootingTag, NotFound, StandingDot, StandingPill, Syncing, tally } from '../components/bits.tsx'
 import { Hemicycle } from '../components/Hemicycle.tsx'
 import { QuestionHeader } from '../components/QuestionHeader.tsx'
-import { AskStatus, CloseAsk, ClosedNote, KeyPeople } from '../components/Asks.tsx'
+import { AskStatus, CloseQuestion, ClosedNote, KeyPeople } from '../components/Asks.tsx'
+import { isEditor } from '../lib/editor.ts'
 
 // How many of a group to list before a reader has to ask for the rest.
 const PREVIEW = 12
@@ -78,6 +79,8 @@ function Board() {
   return (
     <div className="space-y-6">
       <QuestionHeader question={question} />
+      <ClosedNote ask={question} />
+      <EditorTools question={question} />
 
       <KeyPeople people={tracker.keyPeople(question, body.id)} />
 
@@ -255,13 +258,27 @@ function Ask({ question, bodyId }: { question: Question; bodyId: string }) {
         ))}
       </ul>
       <div className="flex flex-wrap items-center gap-4">
-        <CloseAsk ask={question} />
+        <EditorTools question={question} />
         {parent && (
           <Link to="/q/$slug" params={{ slug: parent.slug }} className="link text-sm">
             ← {parent.title}
           </Link>
         )}
       </div>
+    </div>
+  )
+}
+
+// Editors only: change the question, or close it.
+function EditorTools({ question }: { question: Question }) {
+  const { tracker } = useTracker()
+  if (!isEditor()) return null
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Link to="/editor/questions/$slug/edit" params={{ slug: question.slug }} className="btn">
+        Edit this {tracker.isAsk(question) ? 'ask' : question.parent_id ? 'measure' : 'question'}
+      </Link>
+      <CloseQuestion question={question} />
     </div>
   )
 }
