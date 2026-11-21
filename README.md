@@ -92,11 +92,19 @@ CI runs all of these on every pull request and on pushes to `main` (`.github/wor
 
 `seed/data/us-congress-asks.json` holds the day the next Congress starts, the key offices with who holds them between which dates, and the asks put to those offices. It is written by hand, and an ask starts with nothing on its record.
 
-`seed/data/demo.json` is a fictional city council that shows challengers and every kind of footing, with a second fictional body that shares two of its members, a question put to both, and a role held at large. It is labelled as demo data wherever it appears.
+`seed/data/halifax-ferry-fares.json` holds Halifax Regional Council's mayor and 16 councillors, from the municipality's list of districts and councillors, and one question: whether to waive Alderney ferry fares while the service is reduced. Its records are the council's vote of May 26, 2026, on waiving weekday fares for June, and three statements quoted word for word from the two sources the file names. Each member's vote comes from the account of the councillor who moved the motion, not from the council's minutes, so no act in it is marked as having a primary source. It is written by hand.
+
+Every person and record in the seed is real. The made-up Harbor City council that the end-to-end tests use is in `test/e2e/fixture.json`. `pnpm seed:build` writes it to `seed/out/e2e-fixture.sql`, which is not part of `seed.sql`, and `pnpm test:e2e` loads it into the local database. A body marked `is_demo` is labelled as demo data wherever it appears.
+
+A database seeded before the demo council left the seed still holds it. `seed/remove-demo.sql` deletes every demo body, its questions, the people who sit only in demo bodies, their record, and what readers sent in about them:
+
+```sh
+wrangler d1 execute DB --remote --file seed/remove-demo.sql
+```
 
 Seeding writes rows directly and skips the sync log, so seed before readers are connected.
 
-`pnpm seed:build` also writes one file per data set (`seed/out/us-congress.sql`, `us-congress-asks.sql`, `us-states.sql`, `demo.sql`). Seeding replaces rows, so to add a data set to a database editors have been working in, run only its file:
+`pnpm seed:build` also writes one file per data set (`seed/out/us-congress.sql`, `us-congress-asks.sql`, `us-states.sql`, `halifax.sql`). Seeding replaces rows, so to add a data set to a database editors have been working in, run only its file:
 
 ```sh
 pnpm seed:build && wrangler d1 execute DB --remote --file seed/out/us-states.sql

@@ -3,7 +3,8 @@ import { defineConfig, devices } from '@playwright/test'
 const PORT = 5179
 
 // The flows share one local database, so they run one at a time.
-// `pnpm test:e2e` resets and seeds that database before Playwright starts.
+// `pnpm test:e2e` resets and seeds that database, and adds the made-up council
+// in test/e2e/fixture.json, before Playwright starts.
 export default defineConfig({
   testDir: 'test/e2e',
   fullyParallel: false,

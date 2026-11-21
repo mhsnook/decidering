@@ -1,0 +1,76 @@
+{
+  "as_of": "2026-05-27",
+  "body": {
+    "id": "halifax-regional-council",
+    "name": "Halifax Regional Council",
+    "jurisdiction": "Halifax Regional Municipality, Nova Scotia"
+  },
+  "roster_source": "https://www.halifax.ca/city-hall/districts-councillors",
+  "members": [
+    { "seat": "Mayor", "name": "Andy Fillmore", "sort_name": "Fillmore, Andy" },
+    { "seat": "District 1", "name": "Cathy Deagle Gammon", "sort_name": "Deagle Gammon, Cathy" },
+    { "seat": "District 2", "name": "David Hendsbee", "sort_name": "Hendsbee, David" },
+    { "seat": "District 3", "name": "Becky Kent", "sort_name": "Kent, Becky" },
+    { "seat": "District 4", "name": "Trish Purdy", "sort_name": "Purdy, Trish" },
+    { "seat": "District 5", "name": "Sam Austin", "sort_name": "Austin, Sam" },
+    { "seat": "District 6", "name": "Tony Mancini", "sort_name": "Mancini, Tony" },
+    { "seat": "District 7", "name": "Laura White", "sort_name": "White, Laura" },
+    { "seat": "District 8", "name": "Virginia Hinch", "sort_name": "Hinch, Virginia" },
+    { "seat": "District 9", "name": "Shawn Cleary", "sort_name": "Cleary, Shawn" },
+    { "seat": "District 10", "name": "Kathryn Morse", "sort_name": "Morse, Kathryn" },
+    { "seat": "District 11", "name": "Patty Cuttell", "sort_name": "Cuttell, Patty" },
+    { "seat": "District 12", "name": "Janet Steele", "sort_name": "Steele, Janet" },
+    { "seat": "District 13", "name": "Nancy Hartling", "sort_name": "Hartling, Nancy" },
+    { "seat": "District 14", "name": "John Young", "sort_name": "Young, John" },
+    { "seat": "District 15", "name": "Billy Gillis", "sort_name": "Gillis, Billy" },
+    { "seat": "District 16", "name": "Jean St-Amand", "sort_name": "St-Amand, Jean" }
+  ],
+  "question": {
+    "id": "halifax-ferry-fares",
+    "title": "Should Alderney ferry fares be waived while the service is reduced?",
+    "short_title": "Alderney ferry fares",
+    "description": "The Alderney ferry between Dartmouth and Halifax normally runs every 15 minutes on weekdays. It ran every 30 minutes for most of January to May 2026, after steering failures on two of the five ferries while a third was out for repairs. On May 26, 2026, the council voted 3 to 11 against a motion by Councillor Sam Austin to waive weekday fares for June. Three councillors were absent. A review of the ferry service was due before the council on June 23, 2026."
+  },
+  "sources": {
+    "austin": {
+      "url": "https://samaustin.ca/council-update-ferry-fares-dartmouth-cove-development-charges-affordable-housing/",
+      "title": "Sam Austin: Council Update: Ferry Fares, Dartmouth Cove Development Charges, Affordable Housing",
+      "kind": "article"
+    },
+    "global": {
+      "url": "https://globalnews.ca/news/11864633/halifax-alderney-ferry-fleet-future/",
+      "title": "Global News: Steering issues on another Halifax ferry has councillors pondering future of fleet",
+      "kind": "article"
+    }
+  },
+  "vote": {
+    "on": "2026-05-26",
+    "source": "austin",
+    "for": ["Sam Austin", "Tony Mancini", "Kathryn Morse"],
+    "against": ["Andy Fillmore", "Cathy Deagle Gammon", "David Hendsbee", "Trish Purdy", "Laura White", "Virginia Hinch", "Patty Cuttell", "Janet Steele", "Nancy Hartling", "John Young", "Billy Gillis"],
+    "absent": ["Becky Kent", "Shawn Cleary", "Jean St-Amand"]
+  },
+  "statements": [
+    {
+      "name": "Sam Austin",
+      "position": "support",
+      "on": "2026-05-26",
+      "source": "global",
+      "quote": "You do these things when you need to build some goodwill, when a gesture is required. And to me, this was a moment that called for that"
+    },
+    {
+      "name": "Sam Austin",
+      "position": "support",
+      "on": "2026-05-27",
+      "source": "austin",
+      "quote": "Waiving fares is what HRM could do in the here and now."
+    },
+    {
+      "name": "Patty Cuttell",
+      "position": "oppose",
+      "on": "2026-05-26",
+      "source": "global",
+      "quote": "So when a mom misses her bus home from work because it’s overloaded and it drives by her at the bus stop and she picks her kid up late from daycare and gets charged a fee for that — we are not subsidizing that"
+    }
+  ]
+}
