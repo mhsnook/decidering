@@ -384,7 +384,7 @@ describe('the seed', () => {
 
   describe('seed/remove-demo.sql', () => {
     const removeDemo = readFileSync(new URL('seed/remove-demo.sql', root), 'utf8')
-    const tables = ['bodies', 'seats', 'roles', 'deciders', 'questions', 'stances', 'question_deciders', 'question_bodies', 'question_offices', 'offices', 'office_holders', 'sources', 'acts', 'reports', 'readings', 'proposals', 'proposal_items', 'proposal_notes', 'comments', 'article_reads', 'archive_attempts']
+    const tables = ['bodies', 'seats', 'roles', 'deciders', 'questions', 'set_positions', 'question_relations', 'question_deciders', 'question_bodies', 'question_offices', 'offices', 'office_holders', 'sources', 'acts', 'reports', 'readings', 'proposals', 'proposal_items', 'proposal_notes', 'proposal_contexts', 'proposal_mentions', 'comments', 'article_reads', 'archive_attempts']
     const counts = (db: DatabaseSync) => Object.fromEntries(tables.map((t) => [t, count(db, t)]))
 
     it('takes out a demo council and what readers added to it, and leaves every other row', () => {
@@ -400,6 +400,8 @@ describe('the seed', () => {
         INSERT INTO proposals (id, source_id, origin, created_at) VALUES ('p-demo', 'src-reader', 'reader', '2026-11-01');
         INSERT INTO proposal_items (id, proposal_id, decider_id, question_id, act_id, quote) VALUES ('i-demo', 'p-demo', 'demo-bartholomew-sato', 'free-ferry', 'act-x', 'Words.');
         INSERT INTO proposal_notes (id, proposal_id, proposal_item_id, kind, body, created_at) VALUES ('n-item', 'p-demo', 'i-demo', 'submitter', 'Note.', '2026-11-01'), ('n-whole', 'p-demo', NULL, 'submitter', 'Note.', '2026-11-01');
+        INSERT INTO proposal_contexts (id, proposal_id, proposal_item_id, before, after) VALUES ('x-demo', 'p-demo', 'i-demo', 'Before.', 'After.');
+        INSERT INTO proposal_mentions (id, proposal_id, decider_id, words) VALUES ('m-demo', 'p-demo', 'demo-bartholomew-sato', 'Named.');
         INSERT INTO comments (id, thread_id, author_name, body, created_at) VALUES ('c-demo', 'free-ferry:demo-bartholomew-sato', 'A', 'B', '2026-11-01');
         INSERT INTO article_reads (url, question_id, read_at, outcome) VALUES ('https://example.com/a', 'free-ferry', '2026-11-01', 'no_acts');
         INSERT INTO archive_attempts (source_id, tried_at, outcome) VALUES ((SELECT id FROM sources WHERE url = 'https://example.com/harbor-city/1'), '2026-11-01', 'gave_up');

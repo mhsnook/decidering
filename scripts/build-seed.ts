@@ -403,7 +403,6 @@ question({ ...halifax.question, slug: HFX_Q, body_id: HFX, parent_id: null, kind
   const { vote } = halifax
   const cast = [...vote.for, ...vote.against, ...vote.absent]
   if (cast.length !== halifax.members.length || new Set(cast).size !== cast.length) throw new Error('the Halifax vote does not account for each member once')
-  const month = new Date(vote.on).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
   const sides = [
     { names: vote.for, position: 'support', word: 'for' },
     { names: vote.against, position: 'oppose', word: 'against' },
@@ -422,14 +421,6 @@ question({ ...halifax.question, slug: HFX_Q, body_id: HFX, parent_id: null, kind
         source: halifax.sources[vote.source],
         // The mover's own account of the vote, not the council's minutes.
         primary: false,
-      })
-      insert('stances', {
-        id: `${HFX_Q}:${id}`,
-        question_id: HFX_Q,
-        decider_id: id,
-        position: side.position,
-        summary: `Voted ${side.word} waiving weekday fares for June 2026, on ${month}.`,
-        updated_at: `${halifax.as_of}T00:00:00.000Z`,
       })
     }
   }

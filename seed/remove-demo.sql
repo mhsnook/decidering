@@ -32,10 +32,14 @@ CREATE TABLE removed_sources AS
 DELETE FROM comments WHERE thread_id IN (SELECT q.id || ':' || d.id FROM removed_questions q, deciders d)
    OR thread_id IN (SELECT q.id || ':' || d.id FROM questions q, removed_deciders d);
 
+DELETE FROM proposal_mentions WHERE decider_id IN (SELECT id FROM removed_deciders);
+DELETE FROM proposal_contexts WHERE proposal_item_id IN (SELECT id FROM removed_items);
 DELETE FROM proposal_notes WHERE proposal_item_id IN (SELECT id FROM removed_items);
 DELETE FROM proposal_items WHERE id IN (SELECT id FROM removed_items);
 DELETE FROM proposal_notes WHERE proposal_id IN (SELECT proposal_id FROM removed_items)
   AND NOT EXISTS (SELECT 1 FROM proposal_items i WHERE i.proposal_id = proposal_notes.proposal_id);
+DELETE FROM proposal_mentions WHERE proposal_id IN (SELECT proposal_id FROM removed_items)
+  AND NOT EXISTS (SELECT 1 FROM proposal_items i WHERE i.proposal_id = proposal_mentions.proposal_id);
 DELETE FROM proposals WHERE id IN (SELECT proposal_id FROM removed_items)
   AND NOT EXISTS (SELECT 1 FROM proposal_items i WHERE i.proposal_id = proposals.id);
 
@@ -43,7 +47,8 @@ DELETE FROM readings WHERE act_id IN (SELECT id FROM removed_acts)
    OR question_id IN (SELECT id FROM removed_questions) OR via_question_id IN (SELECT id FROM removed_questions);
 DELETE FROM reports WHERE act_id IN (SELECT id FROM removed_acts);
 DELETE FROM acts WHERE id IN (SELECT id FROM removed_acts);
-DELETE FROM stances WHERE question_id IN (SELECT id FROM removed_questions) OR decider_id IN (SELECT id FROM removed_deciders);
+DELETE FROM set_positions WHERE question_id IN (SELECT id FROM removed_questions) OR decider_id IN (SELECT id FROM removed_deciders);
+DELETE FROM question_relations WHERE question_id IN (SELECT id FROM removed_questions) OR related_id IN (SELECT id FROM removed_questions);
 DELETE FROM question_deciders WHERE question_id IN (SELECT id FROM removed_questions) OR decider_id IN (SELECT id FROM removed_deciders);
 DELETE FROM question_offices WHERE question_id IN (SELECT id FROM removed_questions) OR office_id IN (SELECT id FROM removed_offices);
 DELETE FROM question_bodies WHERE question_id IN (SELECT id FROM removed_questions) OR body_id IN (SELECT id FROM removed_bodies);
