@@ -1,4 +1,4 @@
-import type { Proposal, ProposalDraft, ProposalItem } from '../shared/schema.ts'
+import type { Proposal, ProposalDraft, ProposalItem, UnreadReason } from '../shared/schema.ts'
 
 export type RosterEntry = { id: string; name: string; sort_name: string }
 export type SearchHit = { url: string; title: string; description?: string; lastModifiedDate?: string }
@@ -52,16 +52,18 @@ export const hitDate = (hit: SearchHit): string | null => {
   return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null
 }
 
-// One hit is one proposal, with an item for each person it names. `why` is
-// added to the note, for a lead queued because the article could not be read.
-export function leadFromHit(hit: SearchHit, questionId: string, query: string, match: (text: string) => string[], why?: string): ProposalDraft | null {
+// One hit is one proposal, with an item for each person it names. `notRead`
+// is given for a lead queued because the article could not be read: its `why`
+// is added to the note.
+export function leadFromHit(hit: SearchHit, questionId: string, query: string, match: (text: string) => string[], notRead?: { unread: UnreadReason; why: string }): ProposalDraft | null {
   const people = peopleInHit(hit, match)
   if (people.length === 0) return null
   const quote = (hit.description ?? hit.title).trim().slice(0, 2000)
   const occurred_on = hitDate(hit)
   return {
     source: { url: hit.url, title: hit.title.slice(0, 300) || null },
-    note: `Search excerpt, not a verified quote. Found by searching: ${query}${why ? `\n${why}` : ''}`,
+    note: `Search excerpt, not a verified quote. Found by searching: ${query}${notRead ? `\n${notRead.why}` : ''}`,
+    unread: notRead?.unread,
     items: people.map((decider_id) => ({ question_id: questionId, decider_id, kind: 'says', occurred_on, quote, reading: null })),
   }
 }

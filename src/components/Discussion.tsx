@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useLocation } from '@tanstack/react-router'
 import { eq, useLiveQuery } from '@tanstack/react-db'
-import { stanceId, type Decider, type Question } from '../../shared/schema.ts'
+import { pairId, type Decider, type Question } from '../../shared/schema.ts'
 import { db } from '../lib/db.ts'
 import { isEditor } from '../lib/editor.ts'
 import { saveUsername, savedUsername } from '../lib/username.ts'
@@ -10,7 +10,7 @@ import { Modal } from './Modal.tsx'
 const timeFmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
 export function Discussion({ question, decider }: { question: Question; decider: Decider }) {
-  const threadId = stanceId(question.id, decider.id)
+  const threadId = pairId(question.id, decider.id)
   const hash = useLocation({ select: (l) => l.hash })
   const section = useRef<HTMLElement>(null)
   // The router scrolls to a hash before this page has synced and rendered the section.

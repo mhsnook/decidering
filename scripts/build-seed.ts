@@ -5,6 +5,7 @@
 // from the snapshot).
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { carriesUp, slugOf, usualWeight } from '../shared/schema.ts'
 
 const read = (name: string) => JSON.parse(readFileSync(new URL(`../seed/data/${name}`, import.meta.url), 'utf8'))
 const congress = read('us-congress.json')
@@ -49,7 +50,7 @@ function source(ref: SourceRef, created_at: string) {
 
 const questions = new Map<string, { parent_id: string | null; implies_on_parent: string | null }>()
 function question(row: { id: string; parent_id: string | null; implies_on_parent?: string | null } & Record<string, unknown>) {
-  const full = { threshold: null, act_label: null, status: 'open', closed_on: null, closed_note: null, implies_on_parent: null, ...row }
+  const full = { threshold: null, act_label: null, status: 'open', closed_on: null, closed_note: null, decides_on: null, implies_on_parent: null, ...row }
   questions.set(full.id, full)
   insert('questions', full)
 }
@@ -63,7 +64,8 @@ function act(a: {
   decider_id: string
   kind: 'says' | 'commits' | 'does'
   position: string
-  bearing?: 'direct' | 'indirect'
+  // Left out, words are clear and a commitment or a use of office is concrete.
+  weight?: 'passing' | 'clear' | 'concrete'
   occurred_on: string
   withdrawn_on?: string | null
   body: string
@@ -76,7 +78,7 @@ function act(a: {
     sourcesWritten.add(key)
     source(a.source, created_at)
   }
-  const bearing = a.bearing ?? 'direct'
+  const weight = a.weight ?? usualWeight(a.kind)
   insert('acts', {
     id: a.id,
     decider_id: a.decider_id,
@@ -87,22 +89,17 @@ function act(a: {
     withdrawn_on: a.withdrawn_on ?? null,
     created_at,
   })
-  insert('reports', { id: a.id, source_id: sourceId(a.source.url), act_id: a.id, excerpt: null, created_at })
-  insert('readings', { id: a.id, act_id: a.id, question_id: a.question_id, position: a.position, bearing, via_question_id: null, created_at })
+  insert('reports', { id: a.id, source_id: sourceId(a.source.url), act_id: a.id, excerpt: null, passage: null, created_at })
+  insert('readings', { id: a.id, act_id: a.id, question_id: a.question_id, position: a.position, weight, via_question_id: null, created_at })
   const q = questions.get(a.question_id)!
-  if (q.implies_on_parent && q.parent_id && a.position === 'support' && bearing === 'direct') {
-    insert('readings', { id: `${a.id}:parent`, act_id: a.id, question_id: q.parent_id, position: q.implies_on_parent, bearing: 'direct', via_question_id: a.question_id, created_at })
+  if (q.implies_on_parent && q.parent_id && a.position === 'support' && carriesUp(weight)) {
+    insert('readings', { id: `${a.id}:parent`, act_id: a.id, question_id: q.parent_id, position: q.implies_on_parent, weight, via_question_id: a.question_id, created_at })
   }
 }
 
 const slugs = new Set<string>()
 function slugify(name: string): string {
-  const base = name
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
+  const base = slugOf(name)
   let slug = base
   for (let n = 2; slugs.has(slug); n++) slug = `${base}-${n}`
   slugs.add(slug)
@@ -239,12 +236,11 @@ congress.bills.forEach((bill: any, i: number) => {
     closed_note: 'A bill that has not passed dies when its Congress ends.',
   })
   const signers = [
-    { bioguide: bill.sponsor, on: bill.introduced_on, act: `Introduced ${bill.label}, the ${bill.title}, as its sponsor.`, summary: `Sponsor of ${bill.label}.` },
+    { bioguide: bill.sponsor, on: bill.introduced_on, act: `Introduced ${bill.label}, the ${bill.title}, as its sponsor.` },
     ...bill.cosponsors.map((c: any) => ({
       bioguide: c.bioguide,
       on: c.on,
       act: `Cosponsored ${bill.label}, the ${bill.title}${c.original ? ', as an original cosponsor' : ''}.`,
-      summary: `Cosponsor of ${bill.label}.`,
     })),
   ]
   for (const s of signers) {
@@ -264,9 +260,6 @@ congress.bills.forEach((bill: any, i: number) => {
       source: { url: `${bill.url}/cosponsors`, title: `Congress.gov: ${bill.label} cosponsors`, kind: 'official_record' },
       primary: true,
     })
-    for (const q of [qid, 'm4a']) {
-      insert('stances', { id: `${q}:${s.bioguide}`, question_id: q, decider_id: s.bioguide, position: 'support', summary: s.summary, updated_at: stamp })
-    }
   }
 })
 
@@ -377,16 +370,6 @@ for (const state of era.states) {
   if (state.rescinded_on) {
     record('rescinded', state.rescinded_on, 'oppose', 'Voted to rescind its ratification of the Equal Rights Amendment. The National Archives records this as a purported rescission.')
   }
-  insert('stances', {
-    id: `era:${id}`,
-    question_id: 'era',
-    decider_id: id,
-    position: state.rescinded_on ? 'mixed' : 'support',
-    summary: state.rescinded_on
-      ? `Ratified in ${year(state.ratified_on)} and voted to rescind in ${year(state.rescinded_on)}. Whether a state can take back a ratification is unsettled.`
-      : `Ratified in ${year(state.ratified_on)}${isLate ? `, after the ${year(era.deadline)} deadline` : ''}.`,
-    updated_at: `${era.as_of}T00:00:00.000Z`,
-  })
 }
 
 // ---- Halifax Regional Council: real roster, one real vote on ferry fares ----
@@ -523,6 +506,7 @@ demo.questions.forEach((q: any, i: number) => {
     status: q.status ?? 'open',
     closed_on: q.closed_on ?? null,
     closed_note: q.closed_note ?? null,
+    decides_on: q.decides_on ?? null,
     act_label: q.act_label ?? null,
   })
   for (const bodyId of q.bodies ?? []) insert('question_bodies', { id: `${q.id}:${bodyId}`, question_id: q.id, body_id: bodyId })
@@ -530,8 +514,11 @@ demo.questions.forEach((q: any, i: number) => {
     insert('question_deciders', { id: `${q.id}:${person(name)}`, question_id: q.id, decider_id: person(name), role_label })
   }
 })
-for (const [q, name, position, summary] of demo.stances) {
-  insert('stances', { id: `${q}:${person(name)}`, question_id: q, decider_id: person(name), position, summary, updated_at: '2026-11-01T00:00:00.000Z' })
+demo.relations.forEach(([q, related, kind]: string[], i: number) => {
+  insert('question_relations', { id: `${q}>${related}`, question_id: q, related_id: related, kind, sort: i })
+})
+for (const [q, name, position, reason, on] of demo.set_positions) {
+  insert('set_positions', { id: `${q}:${person(name)}`, question_id: q, decider_id: person(name), position, reason, set_at: `${on}T00:00:00.000Z` })
 }
 // The demo file names each act by where it happened, which decides the kind of
 // its source and, unless the row says otherwise, how much the act binds.
@@ -544,7 +531,7 @@ demo.acts.forEach(([q, name, medium, position, on, body, title, more = {}]: any[
     decider_id: person(name),
     kind: more.kind ?? DEMO_ACT_KIND[medium] ?? 'says',
     position,
-    bearing: more.bearing,
+    weight: more.weight,
     occurred_on: on,
     withdrawn_on: more.withdrawn_on,
     body,

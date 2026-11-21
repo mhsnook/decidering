@@ -1,5 +1,4 @@
-
-
+import type { Direction, Position, Weight } from './schema.ts'
 const DAY = 86_400_000
 export const FRESH_DAYS = 180
 export const STALE_DAYS = 730
@@ -43,3 +42,58 @@ export function footingOf(signals: Signal[], now: Date = new Date()): Footing {
 
 // Footings that tell a reader "this could use another look".
 export const NEEDS_ATTENTION: ReadonlySet<Footing> = new Set(['unknown', 'sparse', 'stale'])
+
+// One reading on someone's record, as the calculation sees it. `inForce` is
+// false only for a commitment that has been taken back.
+export type Read = { position: Direction; weight: Weight; occurred_on: string; inForce: boolean }
+
+const SIDE: Record<Position, -1 | 0 | 1> = { support: 1, lean_support: 1, mixed: 0, lean_oppose: -1, oppose: -1 }
+export const sideOf = (position: Position) => SIDE[position]
+
+const TOWARD_MIDDLE: Record<Position, Position> = { support: 'lean_support', lean_support: 'mixed', mixed: 'mixed', lean_oppose: 'mixed', oppose: 'lean_oppose' }
+
+// What several readings of one weight come to: the position they share, a lean
+// if they share only a side, and mixed if they do not.
+function together(positions: Position[]): Position {
+  const distinct = new Set(positions)
+  if (distinct.size === 1) return positions[0]
+  const sides = new Set(positions.map(sideOf))
+  return sides.size > 1 ? 'mixed' : sides.has(1) ? 'lean_support' : sides.has(-1) ? 'lean_oppose' : 'mixed'
+}
+
+const newestOf = (reads: Read[]) => {
+  const day = reads.reduce((max, r) => (r.occurred_on > max ? r.occurred_on : max), '')
+  return reads.filter((r) => r.occurred_on === day)
+}
+
+// Where a record leaves someone on a position question, or null with nothing
+// that counts. The rules, in order:
+//   1. A commitment taken back does not count.
+//   2. The most recent concrete act decides: a later vote supersedes an
+//      earlier one, and an earlier commitment.
+//   3. A clear statement made after that act, on another side, moves the
+//      result one step toward the middle.
+//   4. With no concrete act, the most recent clear statement is where they stand.
+//   5. Passing remarks count only when there is nothing else, and then only as a lean.
+//   6. What someone else says of them counts only when there is nothing of their own, also as a lean.
+export function calculatePosition(reads: Read[]): Position | null {
+  const counted = reads.filter((r) => r.inForce)
+  const concrete = counted.filter((r) => r.weight === 'concrete')
+  const clear = counted.filter((r) => r.weight === 'clear')
+  if (concrete.length) {
+    const latest = newestOf(concrete)
+    const base = together(latest.map((r) => r.position))
+    const lastConcrete = latest[0].occurred_on
+    const since = newestOf(clear.filter((r) => r.occurred_on > lastConcrete))
+    return since.length && since.some((r) => sideOf(r.position) !== sideOf(base)) ? TOWARD_MIDDLE[base] : base
+  }
+  if (clear.length) return together(newestOf(clear).map((r) => r.position))
+  const passing = counted.filter((r) => r.weight === 'passing')
+  const least = newestOf(passing.length ? passing : counted)
+  if (!least.length) return null
+  const side = together(least.map((r) => r.position))
+  return side === 'support' ? 'lean_support' : side === 'oppose' ? 'lean_oppose' : side
+}
+
+// Whether a reading sits across from a position: a no against a yes.
+export const isAcross = (position: Position, reading: Position) => sideOf(position) * sideOf(reading) === -1

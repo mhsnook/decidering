@@ -224,6 +224,127 @@ describe('0009_one_kind_of_claim', () => {
   })
 })
 
+describe('0012_review_model', () => {
+  const db = database('0012')
+  db.exec(`
+    INSERT INTO bodies (id, slug, name) VALUES ('b', 'b', 'Body');
+    INSERT INTO deciders (id, slug, name, sort_name) VALUES ('ann', 'ann', 'Ann', 'Ann');
+    INSERT INTO questions (id, slug, body_id, parent_id, kind, title, short_title, implies_on_parent) VALUES
+      ('policy', 'policy', 'b', NULL, 'position', 'Policy?', 'Policy', NULL),
+      ('bill', 'bill', 'b', 'policy', 'formal_act', 'Bill?', 'Bill', 'support'),
+      ('letter', 'letter', 'b', 'policy', 'formal_act', 'Letter?', 'Letter', 'lean_oppose');
+    INSERT INTO sources (id, url, created_at) VALUES ('paper', 'https://x.example/1', 't');
+    INSERT INTO acts (id, decider_id, kind, occurred_on, body, created_at) VALUES
+      ('said', 'ann', 'says', '2026-01-01', 'b', 't'), ('signed', 'ann', 'commits', '2026-01-02', 'b', 't'), ('voted', 'ann', 'does', '2026-01-03', 'b', 't'),
+      ('aside', 'ann', 'says', '2026-01-04', 'b', 't'), ('other-vote', 'ann', 'does', '2026-01-05', 'b', 't'),
+      ('hedged', 'ann', 'says', '2026-01-06', 'b', 't'), ('hinted', 'ann', 'says', '2026-01-07', 'b', 't'), ('voted-to-delay', 'ann', 'does', '2026-01-08', 'b', 't');
+    INSERT INTO reports (id, source_id, act_id, excerpt, created_at) VALUES ('rep', 'paper', 'said', 'As printed.', 't');
+    INSERT INTO readings (id, act_id, question_id, position, bearing, via_question_id, created_at) VALUES
+      ('r-said', 'said', 'policy', 'support', 'direct', NULL, 't'),
+      ('r-signed', 'signed', 'bill', 'support', 'direct', NULL, 't'),
+      ('r-signed-parent', 'signed', 'policy', 'support', 'direct', 'bill', 't'),
+      ('r-voted', 'voted', 'policy', 'oppose', 'direct', NULL, 't'),
+      ('r-aside', 'aside', 'policy', 'mixed', 'indirect', NULL, 't'),
+      ('r-other-vote', 'other-vote', 'policy', 'support', 'indirect', NULL, 't'),
+      ('r-hedged', 'hedged', 'policy', 'lean_oppose', 'direct', NULL, 't'),
+      ('r-hinted', 'hinted', 'policy', 'lean_oppose', 'indirect', NULL, 't'),
+      ('r-voted-to-delay', 'voted-to-delay', 'policy', 'lean_oppose', 'direct', NULL, 't');
+    INSERT INTO stances (id, question_id, decider_id, position, summary, updated_at) VALUES ('policy:ann', 'policy', 'ann', 'lean_support', 'Judged by an editor.', 't');
+    INSERT INTO proposals (id, source_id, origin, status, created_at) VALUES ('p', 'paper', 'model', 'reviewed', 't'), ('lead', 'paper', 'news_search', 'pending', 't');
+    INSERT INTO proposal_items (id, proposal_id, decider_id, question_id, act_id, kind, quote, reading, bearing, position, summary) VALUES
+      ('i-says', 'p', 'ann', 'policy', 'a1', 'says', 'q', 'support', 'direct', 'support', 'For it.'),
+      ('i-commits', 'p', 'ann', 'bill', 'a2', 'commits', 'q', 'support', 'direct', NULL, NULL),
+      ('i-does', 'p', 'ann', 'policy', 'a3', 'does', 'q', 'oppose', 'direct', NULL, NULL),
+      ('i-indirect', 'p', 'ann', 'policy', 'a4', 'does', 'q', 'support', 'indirect', NULL, NULL),
+      ('i-lean', 'p', 'ann', 'policy', 'a5', 'says', 'q', 'lean_oppose', 'direct', 'lean_oppose', NULL),
+      ('i-lean-does', 'p', 'ann', 'policy', 'a6', 'does', 'q', 'lean_oppose', 'direct', NULL, NULL),
+      ('i-lead', 'lead', 'ann', 'policy', 'a7', 'says', 'A search excerpt.', NULL, 'direct', NULL, NULL);
+  `)
+  db.exec(migration('0012_review_model.sql'))
+  const columns = (table: string) => all(db, `SELECT name FROM pragma_table_info('${table}')`).map((c) => c.name)
+
+  it('gives each reading a weight in place of its bearing: indirect is passing, a commitment or use of office concrete, words clear', () => {
+    expect(Object.fromEntries(all(db, `SELECT id, weight FROM readings WHERE id IN ('r-said', 'r-signed', 'r-signed-parent', 'r-voted', 'r-aside', 'r-other-vote')`).map((r) => [r.id, r.weight]))).toEqual({
+      'r-said': 'clear',
+      'r-signed': 'concrete',
+      'r-signed-parent': 'concrete',
+      'r-voted': 'concrete',
+      'r-aside': 'passing',
+      'r-other-vote': 'passing',
+    })
+    expect(columns('readings')).not.toContain('bearing')
+  })
+
+  it('turns a reading that leaned against into a passing reading against, and leaves a concrete one concrete', () => {
+    expect(all(db, `SELECT id, position, weight FROM readings WHERE id IN ('r-hedged', 'r-hinted', 'r-voted-to-delay') ORDER BY id`)).toEqual([
+      { id: 'r-hedged', position: 'oppose', weight: 'passing' },
+      { id: 'r-hinted', position: 'oppose', weight: 'passing' },
+      { id: 'r-voted-to-delay', position: 'oppose', weight: 'concrete' },
+    ])
+    expect(all(db, `SELECT position, via_question_id FROM readings WHERE id IN ('r-said', 'r-signed-parent', 'r-aside') ORDER BY id`)).toEqual([
+      { position: 'mixed', via_question_id: null },
+      { position: 'support', via_question_id: null },
+      { position: 'support', via_question_id: 'bill' },
+    ])
+  })
+
+  it('gives every proposal item that claims a reading a weight by the same rule, and a lead none', () => {
+    expect(all(db, `SELECT id, reading, weight FROM proposal_items ORDER BY id`)).toEqual([
+      { id: 'i-commits', reading: 'support', weight: 'concrete' },
+      { id: 'i-does', reading: 'oppose', weight: 'concrete' },
+      { id: 'i-indirect', reading: 'support', weight: 'passing' },
+      { id: 'i-lead', reading: null, weight: null },
+      { id: 'i-lean', reading: 'oppose', weight: 'passing' },
+      { id: 'i-lean-does', reading: 'oppose', weight: 'concrete' },
+      { id: 'i-says', reading: 'support', weight: 'clear' },
+    ])
+  })
+
+  it('drops what a proposal item no longer carries and adds the passage, empty', () => {
+    const names = columns('proposal_items')
+    for (const gone of ['bearing', 'position', 'summary']) expect(names).not.toContain(gone)
+    expect(all(db, `SELECT DISTINCT passage FROM proposal_items`)).toEqual([{ passage: null }])
+  })
+
+  it('leaves no question implying a lean against on its parent, which a reading can no longer be', () => {
+    expect(all(db, `SELECT id, implies_on_parent FROM questions ORDER BY id`)).toEqual([
+      { id: 'bill', implies_on_parent: 'support' },
+      { id: 'letter', implies_on_parent: 'oppose' },
+      { id: 'policy', implies_on_parent: null },
+    ])
+  })
+
+  it('drops stances and carries none over as a position set by hand', () => {
+    expect(all(db, `SELECT name FROM sqlite_master WHERE name = 'stances'`)).toEqual([])
+    expect(count(db, 'set_positions')).toBe(0)
+  })
+
+  it('adds the new columns empty, keeps every row and breaks no reference', () => {
+    expect(all(db, `SELECT excerpt, passage FROM reports`)).toEqual([{ excerpt: 'As printed.', passage: null }])
+    expect(all(db, `SELECT id, unread FROM proposals ORDER BY id`)).toEqual([
+      { id: 'lead', unread: null },
+      { id: 'p', unread: null },
+    ])
+    expect(all(db, `SELECT DISTINCT decides_on FROM questions`)).toEqual([{ decides_on: null }])
+    expect([count(db, 'readings'), count(db, 'proposal_items')]).toEqual([9, 7])
+    expect(all(db, `PRAGMA foreign_key_check`)).toEqual([])
+  })
+
+  it('refuses a weight outside the three, and a second set position for one person on one question', () => {
+    expect(() => db.exec(`INSERT INTO readings (id, act_id, question_id, position, weight, created_at) VALUES ('x', 'said', 'bill', 'support', 'heavy', 't')`)).toThrow(/CHECK/)
+    expect(() => db.exec(`INSERT INTO proposal_items (id, proposal_id, decider_id, question_id, act_id, quote, weight) VALUES ('x', 'p', 'ann', 'policy', 'a', 'q', 'direct')`)).toThrow(/CHECK/)
+    db.exec(`INSERT INTO set_positions (id, question_id, decider_id, position, reason, set_at) VALUES ('policy:ann', 'policy', 'ann', 'lean_oppose', 'Said so.', 't')`)
+    expect(() => db.exec(`INSERT INTO set_positions (id, question_id, decider_id, position, reason, set_at) VALUES ('again', 'policy', 'ann', 'support', 'Said so.', 't')`)).toThrow(/UNIQUE/)
+  })
+
+  it('links two questions once, as a smaller step or as related', () => {
+    db.exec(`INSERT INTO question_relations (id, question_id, related_id, kind) VALUES ('policy>bill', 'policy', 'bill', 'smaller_step')`)
+    expect(() => db.exec(`INSERT INTO question_relations (id, question_id, related_id, kind) VALUES ('again', 'policy', 'bill', 'related')`)).toThrow(/UNIQUE/)
+    expect(() => db.exec(`INSERT INTO question_relations (id, question_id, related_id, kind) VALUES ('x', 'bill', 'policy', 'bigger_step')`)).toThrow(/CHECK/)
+    expect(() => db.exec(`INSERT INTO question_relations (id, question_id, related_id, kind) VALUES ('y', 'policy', 'gone', 'related')`)).toThrow(/FOREIGN KEY/)
+  })
+})
+
 describe('the seed', () => {
   let seed = ''
   beforeAll(() => {
@@ -234,7 +355,7 @@ describe('the seed', () => {
   it('loads into the migrated schema, and loads again without duplicating anything', () => {
     const db = database()
     db.exec(seed)
-    const tables = ['sources', 'acts', 'reports', 'readings', 'stances', 'questions', 'question_deciders', 'offices', 'office_holders', 'question_offices', 'question_bodies', 'bodies', 'seats', 'roles']
+    const tables = ['sources', 'acts', 'reports', 'readings', 'set_positions', 'question_relations', 'questions', 'question_deciders', 'offices', 'office_holders', 'question_offices', 'question_bodies', 'bodies', 'seats', 'roles']
     const first = tables.map((t) => count(db, t))
     expect(count(db, 'acts')).toBeGreaterThan(0)
     expect(count(db, 'reports')).toBe(count(db, 'acts'))
@@ -310,12 +431,12 @@ describe('the seed', () => {
     expect(all(db, `SELECT COUNT(*) AS n FROM reports WHERE source_id = 'held'`)[0].n).toBeGreaterThan(0)
   })
 
-  it('writes a parent reading for every supporting reading on a question that implies it', () => {
+  it('writes a parent reading, at the same weight, for every supporting reading on a question that implies it, unless it is a passing one', () => {
     const db = database()
     db.exec(seed)
     expect(all(db, `SELECT COUNT(*) AS n FROM readings r JOIN questions q ON q.id = r.question_id
-      WHERE q.implies_on_parent IS NOT NULL AND r.position = 'support' AND r.bearing = 'direct'
-        AND NOT EXISTS (SELECT 1 FROM readings p WHERE p.act_id = r.act_id AND p.question_id = q.parent_id AND p.via_question_id = q.id AND p.position = q.implies_on_parent)`)[0].n).toBe(0)
+      WHERE q.implies_on_parent IS NOT NULL AND r.position = 'support' AND r.weight <> 'passing'
+        AND NOT EXISTS (SELECT 1 FROM readings p WHERE p.act_id = r.act_id AND p.question_id = q.parent_id AND p.via_question_id = q.id AND p.position = q.implies_on_parent AND p.weight = r.weight)`)[0].n).toBe(0)
   })
 
   it('seeds an open ask of an office in Congress, with a holder now and one from the next term', () => {
@@ -426,5 +547,32 @@ describe('the seed', () => {
         { name: 'Ron Wyden', certainty: 'likely' },
       ])
     })
+  })
+})
+
+describe('0013_presumed_weight', () => {
+  const db = database('0013')
+  db.exec(`
+    INSERT INTO bodies (id, slug, name) VALUES ('b', 'b', 'Body');
+    INSERT INTO deciders (id, slug, name, sort_name) VALUES ('ann', 'ann', 'Ann', 'Ann');
+    INSERT INTO questions (id, slug, body_id, kind, title, short_title) VALUES ('policy', 'policy', 'b', 'position', 'Policy?', 'Policy');
+    INSERT INTO sources (id, url, created_at) VALUES ('s', 'https://news.example/a', '2026-01-01');
+    INSERT INTO acts (id, decider_id, kind, occurred_on, body, created_at) VALUES ('a', 'ann', 'does', '2026-01-01', 'Voted.', '2026-01-01');
+    INSERT INTO readings (id, act_id, question_id, position, weight, created_at) VALUES ('r', 'a', 'policy', 'support', 'concrete', '2026-01-01');
+    INSERT INTO proposals (id, source_id, origin, created_at) VALUES ('p', 's', 'model', '2026-01-01');
+    INSERT INTO proposal_items (id, proposal_id, decider_id, question_id, act_id, kind, quote, reading, weight) VALUES
+      ('read', 'p', 'ann', 'policy', 'x', 'says', 'Words.', 'support', 'passing'), ('lead', 'p', 'ann', 'policy', 'y', 'says', 'Excerpt.', NULL, NULL);
+  `)
+  db.exec(migration('0013_presumed_weight.sql'))
+
+  it('keeps every weight as it was, a lead still having none', () => {
+    expect(all(db, `SELECT weight FROM readings`)).toEqual([{ weight: 'concrete' }])
+    expect(all(db, `SELECT id, weight FROM proposal_items ORDER BY id`)).toEqual([{ id: 'lead', weight: null }, { id: 'read', weight: 'passing' }])
+  })
+
+  it('takes a presumed weight, and still refuses one that is not a weight', () => {
+    db.exec(`UPDATE readings SET weight = 'presumed'; UPDATE proposal_items SET weight = 'presumed' WHERE id = 'read'`)
+    expect(() => db.exec(`UPDATE readings SET weight = 'heavy'`)).toThrow()
+    expect(() => db.exec(`UPDATE proposal_items SET weight = 'heavy' WHERE id = 'read'`)).toThrow()
   })
 })

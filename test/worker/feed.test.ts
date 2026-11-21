@@ -29,18 +29,18 @@ beforeAll(async () => {
       `INSERT INTO reports (id, source_id, act_id, created_at) VALUES
         ('rep-1', 'src-1', 'act-hot', '2026-11-10T09:00:00.000Z'), ('rep-2', 'src-2', 'act-cold', '2026-11-11T09:00:00.000Z'),
         ('rep-3', 'src-1', 'act-bob', '2026-11-10T09:00:00.000Z')`,
-      `INSERT INTO readings (id, act_id, question_id, position, bearing, via_question_id, created_at) VALUES
-        ('rd-1', 'act-hot', 'hot-bill', 'support', 'direct', NULL, '2026-11-10T09:00:00.000Z'),
-        ('rd-2', 'act-hot', 'hot', 'support', 'direct', 'hot-bill', '2026-11-10T09:00:00.000Z'),
-        ('rd-3', 'act-cold', 'cold', 'oppose', 'direct', NULL, '2026-11-11T09:00:00.000Z'),
-        ('rd-4', 'act-bob', 'hot', 'oppose', 'direct', NULL, '2026-11-10T09:00:00.000Z')`,
+      `INSERT INTO readings (id, act_id, question_id, position, weight, via_question_id, created_at) VALUES
+        ('rd-1', 'act-hot', 'hot-bill', 'support', 'clear', NULL, '2026-11-10T09:00:00.000Z'),
+        ('rd-2', 'act-hot', 'hot', 'support', 'clear', 'hot-bill', '2026-11-10T09:00:00.000Z'),
+        ('rd-3', 'act-cold', 'cold', 'oppose', 'passing', NULL, '2026-11-11T09:00:00.000Z'),
+        ('rd-4', 'act-bob', 'hot', 'oppose', 'clear', NULL, '2026-11-10T09:00:00.000Z')`,
     ].map((sql) => (sql.includes('?1') ? env.DB.prepare(sql).bind(PUBLISHED) : env.DB.prepare(sql))),
   )
   for (const [quote, url] of [
     [WAITING, 'https://news.example/waiting'],
     [REJECTED, 'https://news.example/rejected'],
   ]) {
-    expect(await (await post('/api/proposals', proposal({ quote, source_url: url }))).json()).toEqual({ ok: true, duplicate: false })
+    expect(await (await post('/api/proposals', proposal({ quote, source_url: url }))).json()).toMatchObject({ ok: true, duplicate: false })
   }
   await env.DB.prepare(`UPDATE proposal_items SET status = 'rejected' WHERE quote = ?`).bind(REJECTED).run()
 })
@@ -80,7 +80,13 @@ describe('GET /feed.xml', () => {
   it('says who is in each story and what each act shows on each question', async () => {
     const xml = await (await feed()).text()
     expect(xml).toContain('Bill: Signed on\nHot Topic: Yes (through Bill)\nhttp://sporelight.test/q/hot-bill/ann-alpha')
-    expect(xml).toContain('Bob Beta, statement on 2026-11-08:\n“I will vote against it.”\nHot Topic: No')
+    expect(xml).toContain('Bob Beta, statement on 2026-11-08:\n“I will vote against it.”\nHot Topic: No\n')
+  })
+
+  it('marks a passing reading as a signal', async () => {
+    const xml = await (await feed()).text()
+    expect(xml).toContain('Cold Topic: No (a signal)')
+    expect(xml).not.toContain('Hot Topic: No (a signal)')
   })
 
   it('gives the archived copy beside a source that has one', async () => {
@@ -124,7 +130,7 @@ describe('what a reader socket is sent of proposals', () => {
 
     // A new proposal while connected: its source reaches the reader, the proposal does not.
     const seen = reader.frames.length
-    expect(await (await post('/api/proposals', proposal({ quote: 'Posted while a reader is connected.', source_url: 'https://news.example/live' }))).json()).toEqual({
+    expect(await (await post('/api/proposals', proposal({ quote: 'Posted while a reader is connected.', source_url: 'https://news.example/live' }))).json()).toMatchObject({
       ok: true,
       duplicate: false,
     })

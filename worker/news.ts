@@ -1,7 +1,7 @@
 import { fetchArticle } from './article.ts'
 import { hitDate, leadFromHit, peopleInHit, rosterMatcher, type RosterEntry, type SearchHit } from './leads.ts'
 import { draftFromReading, MODEL, readArticle, readingContext, type Dropped, type ModelAct, type ReadingContext } from './reader.ts'
-import { sourceUrl, type Proposal, type ProposalDraft } from '../shared/schema.ts'
+import { sourceUrl, type Proposal, type ProposalDraft, type UnreadReason } from '../shared/schema.ts'
 import type { SubmitResult } from './tracker.ts'
 
 const PROVIDER = 'exa'
@@ -47,7 +47,7 @@ function roster(db: D1Database, question: { id: string; body_id: string }) {
 export type ArticleOutcome =
   | { outcome: 'acts'; context: ReadingContext; acts: ModelAct[]; dropped: Dropped[]; draft: ProposalDraft }
   | { outcome: 'no_acts'; context: ReadingContext; dropped: Dropped[] }
-  | { outcome: 'not_read'; reason: string; modelCallFailed?: boolean }
+  | { outcome: 'not_read'; reason: string; unread: UnreadReason; modelCallFailed?: boolean }
 
 // Fetches one article and has the model read it for these people on this
 // question. Writes nothing.
@@ -63,15 +63,15 @@ export async function readOneArticle(
   let body = text
   if (body === undefined) {
     const fetched = await fetchArticle(env, article.url)
-    if (!fetched.ok) return { outcome: 'not_read', reason: fetched.reason }
+    if (!fetched.ok) return { outcome: 'not_read', reason: fetched.reason, unread: fetched.unread }
     body = fetched.text
   }
   const context = await readingContext(env.DB, questionId, people, today)
-  if (!context) return { outcome: 'not_read', reason: 'The question no longer exists.' }
+  if (!context) return { outcome: 'not_read', reason: 'The question no longer exists.', unread: 'model_failed' }
   const reading = await readArticle(env, context, { ...article, text: body }, today)
-  if (!reading.ok) return { outcome: 'not_read', reason: reading.reason, modelCallFailed: reading.callFailed }
+  if (!reading.ok) return { outcome: 'not_read', reason: reading.reason, unread: 'model_failed', modelCallFailed: reading.callFailed }
   if (reading.acts.length === 0) return { outcome: 'no_acts', context, dropped: reading.dropped }
-  return { outcome: 'acts', context, acts: reading.acts, dropped: reading.dropped, draft: draftFromReading(article, reading.acts, reading.dropped, query) }
+  return { outcome: 'acts', context, acts: reading.acts, dropped: reading.dropped, draft: draftFromReading(article, reading.acts, reading.dropped, query, reading.mentions) }
 }
 
 // A hit is skipped once its article has been looked at for the question, or
@@ -172,7 +172,7 @@ export async function searchNews(env: Env, tracker: Submitter, now: Date = new D
             modelDown = true
             report.error = `Stopped reading articles: ${result.reason}`
           }
-          draft = leadFromHit(hit, question.id, query, match, `The article was not read: ${result.reason}`)
+          draft = leadFromHit(hit, question.id, query, match, { unread: result.unread, why: `The article was not read: ${result.reason}` })
           origin = 'news_search'
         }
         if (!draft) continue
@@ -204,7 +204,7 @@ export async function dryRunArticle(env: Env, url: string, questionId: string, n
   const question = await env.DB.prepare(`SELECT id, body_id FROM questions WHERE id = ?`).bind(questionId).first<{ id: string; body_id: string }>()
   if (!question) return { error: 'Unknown question.' }
   const fetched = await fetchArticle(env, url)
-  if (!fetched.ok) return { outcome: 'not_read' as const, reason: fetched.reason, model: MODEL }
+  if (!fetched.ok) return { outcome: 'not_read' as const, reason: fetched.reason, unread: fetched.unread, model: MODEL }
   const members = (await roster(env.DB, question)).results
   const match = rosterMatcher(members)
   const byId = new Map(members.map((m) => [m.id, m]))

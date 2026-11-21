@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { ACT_KINDS, BEARINGS, POSITIONS, type ProposalDraft } from '../shared/schema.ts'
+import { ACT_KINDS, DIRECTIONS, OWN_WEIGHTS, type ProposalDraft } from '../shared/schema.ts'
 
 // The model that reads articles. Check the Workers AI catalogue for a planned
 // deprecation date before changing it: an id past that date answers 410.
@@ -15,12 +15,14 @@ type Asked = { id: string; title: string; short_title: string; description: stri
 export type ReadingContext = {
   question: Asked
   subQuestions: (Asked & { is_ask: boolean })[]
+  // Questions linked to this one in the same body: smaller steps toward it and neighbouring questions.
+  relatedQuestions: (Asked & { relation: 'smaller_step' | 'related' })[]
   people: { id: string; name: string; questions: string[] }[]
 }
 
 export async function readingContext(db: D1Database, questionId: string, people: { id: string; name: string }[], day: string): Promise<ReadingContext | null> {
   const ids = JSON.stringify(people.map((p) => p.id))
-  const [question, children, chambers, asked] = await db.batch([
+  const [question, children, chambers, asked, linked] = await db.batch([
     db.prepare(`SELECT id, title, short_title, description, kind FROM questions WHERE id = ?1`).bind(questionId),
     db
       .prepare(
@@ -48,6 +50,14 @@ export async function readingContext(db: D1Database, questionId: string, people:
            AND (h.starts_on IS NULL OR h.starts_on <= ?3) AND (h.ends_on IS NULL OR ?3 < h.ends_on)`,
       )
       .bind(questionId, ids, day),
+    db
+      .prepare(
+        `SELECT q.id, q.title, q.short_title, q.description, q.kind, r.kind AS relation
+         FROM question_relations r JOIN questions q ON q.id = r.related_id JOIN questions main ON main.id = r.question_id
+         WHERE r.question_id = ?1 AND q.body_id = main.body_id AND (q.status = 'open' OR q.closed_on > ?2)
+         ORDER BY r.sort`,
+      )
+      .bind(questionId, day),
   ])
   const root = question.results[0] as Asked | undefined
   if (!root) return null
@@ -56,10 +66,12 @@ export async function readingContext(db: D1Database, questionId: string, people:
   for (const row of chambers.results as { decider_id: string; chamber: string | null }[]) {
     chambersOf.set(row.decider_id, (chambersOf.get(row.decider_id) ?? new Set()).add(row.chamber))
   }
+  const related = linked.results as ReadingContext['relatedQuestions']
   const askedOf = new Set((asked.results as { question_id: string; decider_id: string }[]).map((r) => `${r.question_id} ${r.decider_id}`))
   return {
     question: { id: root.id, title: root.title, short_title: root.short_title, description: root.description, kind: root.kind },
     subQuestions: subs.map(({ chamber: _, ...q }) => q),
+    relatedQuestions: related,
     people: people.map((p) => ({
       id: p.id,
       name: p.name,
@@ -68,6 +80,7 @@ export async function readingContext(db: D1Database, questionId: string, people:
         ...subs
           .filter((q) => (q.is_ask ? askedOf.has(`${q.id} ${p.id}`) : !q.chamber || chambersOf.get(p.id)?.has(q.chamber)))
           .map((q) => q.id),
+        ...related.map((q) => q.id),
       ],
     })),
   }
@@ -89,17 +102,26 @@ export const modelOutputSchema = z.object({
         .string()
         .nullable()
         .transform((d) => (d && isoDate.safeParse(d).success ? d : null)),
-      position: z.enum(POSITIONS),
-      bearing: z.enum(BEARINGS),
-      summary: z.string(),
+      position: z.enum(DIRECTIONS),
+      weight: z.enum(OWN_WEIGHTS),
       reason: z.string(),
     }),
   ),
+  // Left out, it is nobody: an answer with acts is not thrown away for it.
+  named_only: z.array(z.object({ person_id: z.string(), quote: z.string() })).default([]),
 })
-export type ModelAct = z.infer<typeof modelOutputSchema>['acts'][number]
+// An act as the model gave it, with where its words sit in the article.
+export type ModelAct = z.infer<typeof modelOutputSchema>['acts'][number] & { passage: string; context: { before: string; after: string } }
+export type Mention = { person_id: string; words: string }
 
 // The same shape for the model, as JSON Schema.
-const { $schema: _, ...OUTPUT_JSON_SCHEMA } = z.toJSONSchema(z.object({ acts: z.array(modelOutputSchema.shape.acts.element.extend({ occurred_on: z.string().nullable() })) }), { target: 'draft-7' })
+const { $schema: _, ...OUTPUT_JSON_SCHEMA } = z.toJSONSchema(
+  z.object({
+    acts: z.array(modelOutputSchema.shape.acts.element.extend({ occurred_on: z.string().nullable() })),
+    named_only: modelOutputSchema.shape.named_only.unwrap(),
+  }),
+  { target: 'draft-7' },
+)
 
 const SYSTEM = `You read one news article and list what it records named people doing or saying about one question.
 
@@ -112,20 +134,25 @@ For each act give:
 - person_id and question_id, taken only from the lists you are given; a person can only be read on the questions listed for them
 - quote: words copied exactly from the article, character for character, with no ellipsis and no words added. For a statement, the person's own words. For a commitment or a use of office, the article's sentence that reports it
 - occurred_on: the date the act happened as YYYY-MM-DD, or null if the article does not make it clear. This is not the article's date unless the article says the act happened that day
-- position: what the act shows about where the person stands on that question (support, lean_support, mixed, lean_oppose, oppose). On a question that asks whether someone did a specific thing, support means they did it
-- bearing: direct if the act is about the question itself, indirect if it is about something else that tells you about the question
-- summary: one line, under 140 characters, saying where the act leaves the person on the question
+- position: which way the act points on that question. support; lean_support if it probably supports it but the words leave that uncertain or unclear; mixed; oppose. Support for only part of a proposal is not lean_support: read it on the narrower question if one is listed. On a question that asks whether someone did a specific thing, support means they did it
+- weight: how much the act counts on that question. passing for a remark in passing, or an act about something next to the question; clear for words that say where the person stands on this question in plain terms; concrete for a vote, a signature, a pledge or another use of office on this question itself
 - reason: one or two sentences for the editor saying why this act counts
 
-Only list an act the article itself reports. A person merely being mentioned, quoted about something else, or described by someone else's opinion is not an act. Most articles record no act for most people: return an empty list when that is so.`
+Only list an act the article itself reports. A person merely being mentioned, quoted about something else, or described by someone else's opinion is not an act. Most articles record no act for most people: return an empty list when that is so.
+
+A question whose relation_to_main_question is smaller_step is a narrower version of the main question. Support for the smaller step is not support for the main question: list an act on each question it is about, with what it shows there. One sentence can be support on a smaller step and oppose on the main question.
+
+In named_only, list each person from the list whom the article names but records no act for, with the words that name them copied exactly from the article (for example "was absent").`
 
 export function modelPrompt(context: ReadingContext, article: { url: string; title: string | null; date: string | null; text: string }, today: string) {
-  const questions = [context.question, ...context.subQuestions].map((q) => ({
+  const subQuestionIds = new Set(context.subQuestions.map((q) => q.id))
+  const questions = [context.question, ...context.subQuestions, ...context.relatedQuestions].map((q) => ({
     question_id: q.id,
     title: q.title,
     description: q.description,
     asks_whether_they_did_it: q.kind === 'formal_act',
-    is_sub_question_of: q.id === context.question.id ? null : context.question.id,
+    is_sub_question_of: subQuestionIds.has(q.id) ? context.question.id : null,
+    relation_to_main_question: 'relation' in q ? q.relation : null,
   }))
   const user = [
     `Today is ${today}.`,
@@ -180,17 +207,65 @@ function unwrap(needle: string): string {
   return out
 }
 
-// The article's own words for a quote, or null if they are not in it.
-export function findInArticle(quote: string, articleText: string): string | null {
+// Where a quote's words sit in the article, and the article's own words
+// there, or null if they are not in it. `folded` is the article folded once,
+// since an article is searched for every quote. `least` is the fewest
+// characters that count as a quote.
+function locateInArticle(quote: string, articleText: string, { folded, from }: ReturnType<typeof fold>, least = 10): { start: number; end: number; words: string } | null {
   const needle = unwrap(normalise(quote))
-  if (needle.length < 10) return null
-  const { folded, from } = fold(articleText)
+  if (needle.length < least) return null
   const at = folded.indexOf(needle)
   if (at === -1) return null
-  const start = from[at]
   const last = from[at + needle.length - 1]
   const end = last + (articleText.codePointAt(last)! > 0xffff ? 2 : 1)
-  return articleText.slice(start, end).trim()
+  return { start: from[at], end, words: articleText.slice(from[at], end).trim() }
+}
+
+// The article's own words for a quote, or null if they are not in it.
+export const findInArticle = (quote: string, articleText: string): string | null => locateInArticle(quote, articleText, fold(articleText))?.words ?? null
+
+// The most of a passage that is published with a quote, and of the text kept
+// either side of it for the editor.
+export const MAX_PASSAGE_CHARS = 600
+const MAX_CONTEXT_CHARS = 700
+const SENTENCE_END = /[.!?]["'\u2019\u201D)]*\s/g
+
+// The paragraph a quote sits in, and the paragraphs either side of it. A long
+// paragraph is cut back to the sentences around the quote.
+export function passageAround(articleText: string, start: number, end: number): { passage: string; before: string; after: string } {
+  let from = articleText.lastIndexOf('\n', start - 1) + 1
+  let to = articleText.indexOf('\n', end)
+  if (to === -1) to = articleText.length
+  if (to - from > MAX_PASSAGE_CHARS) {
+    const margin = Math.max(0, Math.floor((MAX_PASSAGE_CHARS - (end - start)) / 2))
+    // Where the margin reaches the paragraph's own edge, that edge is kept: it is where a sentence starts or ends.
+    if (start - margin > from) {
+      const left = articleText.slice(start - margin, start)
+      const firstEnd = [...left.matchAll(SENTENCE_END)][0]
+      from = firstEnd ? start - left.length + firstEnd.index + firstEnd[0].length : start
+    }
+    if (end + margin < to) {
+      const right = articleText.slice(end, end + margin)
+      const lastEnd = [...right.matchAll(SENTENCE_END)].at(-1)
+      to = lastEnd ? end + lastEnd.index + lastEnd[0].length : end
+    }
+  }
+  // Whole paragraphs, nearest first, for as long as they fit.
+  const fit = (paragraphs: string[]) => {
+    const kept: string[] = []
+    let size = 0
+    for (const p of paragraphs) {
+      if (!p.trim()) continue
+      if ((size += p.length) > MAX_CONTEXT_CHARS) break
+      kept.push(p.trim())
+    }
+    return kept
+  }
+  return {
+    passage: articleText.slice(from, to).trim(),
+    before: fit(articleText.slice(0, from).split('\n').reverse()).reverse().join('\n'),
+    after: fit(articleText.slice(to).split('\n')).join('\n'),
+  }
 }
 
 export const quoteIsInArticle = (quote: string, articleText: string) => findInArticle(quote, articleText) !== null
@@ -204,7 +279,7 @@ const DROPPED_LISTED = 5
 export type Dropped = { act: Pick<ModelAct, 'person_id' | 'question_id' | 'quote'>; why: string }
 
 export type Reading =
-  | { ok: true; acts: ModelAct[]; dropped: Dropped[] }
+  | { ok: true; acts: ModelAct[]; dropped: Dropped[]; mentions: Mention[] }
   // The model did not answer (`callFailed`), or answered with nothing that
   // fits the schema.
   | { ok: false; reason: string; callFailed: boolean }
@@ -246,9 +321,10 @@ export async function readArticle(
   // later articles: a second act on the same pair is a repeat, or a second
   // reading the editor can add from the review form.
   const taken = new Set<string>()
+  const folded = fold(article.text)
   for (const act of parsed.data.acts) {
     const pair = `${act.person_id} ${act.question_id}`
-    const found = findInArticle(act.quote, article.text)
+    const found = locateInArticle(act.quote, article.text, folded)
     const why = !allowed.has(act.person_id)
       ? 'names someone the article was not read for'
       : !allowed.get(act.person_id)!.has(act.question_id)
@@ -260,24 +336,37 @@ export async function readArticle(
             : acts.length >= MAX_ACTS_PER_ARTICLE
               ? `is past the limit of ${MAX_ACTS_PER_ARTICLE} acts for one article`
               : null
-    if (!why) taken.add(pair)
-    if (why) dropped.push({ act: { person_id: act.person_id, question_id: act.question_id, quote: act.quote }, why })
-    else
-      acts.push({
-        ...act,
-        quote: found!.slice(0, 2000),
-        // A date ahead of today is the date of something promised, not of the act.
-        occurred_on: act.occurred_on && act.occurred_on <= today ? act.occurred_on : null,
-        summary: act.summary.trim().slice(0, 300),
-        reason: act.reason.trim().slice(0, 1000),
-      })
+    if (why || !found) {
+      dropped.push({ act: { person_id: act.person_id, question_id: act.question_id, quote: act.quote }, why: why! })
+      continue
+    }
+    taken.add(pair)
+    const { passage, before, after } = passageAround(article.text, found.start, found.end)
+    acts.push({
+      ...act,
+      quote: found.words.slice(0, 2000),
+      // A date ahead of today is the date of something promised, not of the act.
+      occurred_on: act.occurred_on && act.occurred_on <= today ? act.occurred_on : null,
+      reason: act.reason.trim().slice(0, 1000),
+      passage,
+      context: { before, after },
+    })
   }
-  return { ok: true, acts, dropped }
+  // Someone with an act is not also listed as only named. The words have to be
+  // in the article, like a quote.
+  const acted = new Set(acts.map((a) => a.person_id))
+  const mentions: Mention[] = []
+  for (const m of parsed.data.named_only) {
+    const at = locateInArticle(m.quote, article.text, folded, 3)
+    if (!at || !allowed.has(m.person_id) || acted.has(m.person_id) || mentions.some((x) => x.person_id === m.person_id)) continue
+    mentions.push({ person_id: m.person_id, words: at.words.slice(0, 300) })
+  }
+  return { ok: true, acts, dropped, mentions }
 }
 
 // One proposal for the article, with one item per act. The model's reason for
 // each act goes in that item's note, which only editors read.
-export function draftFromReading(article: { url: string; title: string | null }, acts: ModelAct[], dropped: Dropped[], query: string | null): ProposalDraft {
+export function draftFromReading(article: { url: string; title: string | null }, acts: ModelAct[], dropped: Dropped[], query: string | null, mentions: Mention[] = []): ProposalDraft {
   const lines = [
     `Read by ${MODEL}. Each quote below was found word for word in the text fetched from the article.`,
     dropped.length
@@ -297,10 +386,12 @@ export function draftFromReading(article: { url: string; title: string | null },
       kind: a.kind,
       occurred_on: a.occurred_on,
       quote: a.quote,
+      passage: a.passage,
       reading: a.position,
-      bearing: a.bearing,
-      summary: a.summary || null,
+      weight: a.weight,
       note: `Model's reason: ${a.reason}`,
+      context: a.context,
     })),
+    mentions: mentions.map((m) => ({ decider_id: m.person_id, words: m.words })),
   }
 }

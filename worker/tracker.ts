@@ -2,12 +2,15 @@ import { PartyDbServer, D1Adapter, getTokenFromRequest, type PersistenceAdapter 
 import {
   allCollections,
   sourceUrl,
-  stanceId,
+  pairId,
+  usualWeight,
   type Comment,
   type CommentInput,
   type Proposal,
   type ProposalDraft,
+  type ProposalContext,
   type ProposalItem,
+  type ProposalMention,
   type ProposalNote,
   type Source,
 } from '../shared/schema.ts'
@@ -18,7 +21,7 @@ const MAX_PENDING = 500
 const MAX_NOTE_CHARS = 4000
 
 // `queued` counts the items that were new. Zero means something already proposed from this source stood in the way of every one.
-export type SubmitResult = { ok: true; queued: number } | { ok: false; status: number; error: string }
+export type SubmitResult = { ok: true; queued: number; proposal_id: string | null } | { ok: false; status: number; error: string }
 
 export class Tracker extends PartyDbServer<Env> {
   collections = [...allCollections]
@@ -64,7 +67,7 @@ export class Tracker extends PartyDbServer<Env> {
         .all<Pick<ProposalItem, 'question_id' | 'decider_id' | 'status' | 'quote'>>()
       items = items.filter((i) => !alreadyProposed(seen.results, i, origin))
     }
-    if (items.length === 0) return { ok: true, queued: 0 }
+    if (items.length === 0) return { ok: true, queued: 0, proposal_id: null }
 
     const now = new Date().toISOString()
     const source: Source = {
@@ -78,18 +81,22 @@ export class Tracker extends PartyDbServer<Env> {
       stored_copy: null,
       created_at: now,
     }
-    const proposal: Proposal = { id: crypto.randomUUID(), source_id: source.id, origin, submitted_by: null, status: 'pending', created_at: now, reviewed_at: null }
-    const rows: ProposalItem[] = items.map(({ note: _, ...item }, sort) => ({
+    const proposal: Proposal = { id: crypto.randomUUID(), source_id: source.id, origin, submitted_by: null, status: 'pending', unread: draft.unread ?? null, created_at: now, reviewed_at: null }
+    const rows: ProposalItem[] = items.map(({ note: _, context: __, ...item }, sort) => ({
       ...item,
       id: crypto.randomUUID(),
       proposal_id: proposal.id,
       sort,
       act_id: crypto.randomUUID(),
-      bearing: item.bearing ?? 'direct',
-      position: null,
-      summary: item.summary ?? null,
+      passage: item.passage ?? null,
+      // A lead claims no reading, so it claims no weight.
+      weight: item.reading === null ? null : (item.weight ?? usualWeight(item.kind)),
       status: 'pending',
     }))
+    const contexts: ProposalContext[] = items.flatMap((item, i) =>
+      item.context ? [{ id: rows[i].id, proposal_id: proposal.id, proposal_item_id: rows[i].id, before: item.context.before, after: item.context.after }] : [],
+    )
+    const mentions: ProposalMention[] = (draft.mentions ?? []).map((m) => ({ id: crypto.randomUUID(), proposal_id: proposal.id, decider_id: m.decider_id, words: m.words }))
     const noteRow = (body: string, itemId: string | null): ProposalNote => ({
       id: crypto.randomUUID(),
       proposal_id: proposal.id,
@@ -109,8 +116,10 @@ export class Tracker extends PartyDbServer<Env> {
         { channel: 'proposals', ops: [{ type: 'insert', value: proposal }] },
         { channel: 'proposal_items', ops: rows.map((value) => ({ type: 'insert' as const, value })) },
         ...(notes.length ? [{ channel: 'proposal_notes', ops: notes.map((value) => ({ type: 'insert' as const, value })) }] : []),
+        ...(contexts.length ? [{ channel: 'proposal_contexts', ops: contexts.map((value) => ({ type: 'insert' as const, value })) }] : []),
+        ...(mentions.length ? [{ channel: 'proposal_mentions', ops: mentions.map((value) => ({ type: 'insert' as const, value })) }] : []),
       ])
-      return { ok: true, queued: rows.length }
+      return { ok: true, queued: rows.length, proposal_id: proposal.id }
     } catch (e) {
       const message = String(e)
       // Someone else added this URL between the lookup and the commit. The
@@ -140,7 +149,7 @@ export class Tracker extends PartyDbServer<Env> {
     if (!known) return { ok: false, status: 400, error: 'Unknown question or decider.' }
     const row: Comment = {
       id: crypto.randomUUID(),
-      thread_id: stanceId(input.question_id, input.decider_id),
+      thread_id: pairId(input.question_id, input.decider_id),
       author_name: input.author_name,
       body: input.body,
       created_at: new Date().toISOString(),

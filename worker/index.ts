@@ -48,7 +48,7 @@ async function handleProposal(req: Request, env: Env): Promise<Response> {
   const { source_url, source_title, submitter_note, ...item } = parsed.data
   const result = await (await tracker(env)).propose({ source: { url: source_url, title: source_title }, note: submitter_note, items: [item] }, 'reader')
   return result.ok
-    ? Response.json({ ok: true, duplicate: result.queued === 0 })
+    ? Response.json({ ok: true, duplicate: result.queued === 0, proposal_id: result.proposal_id })
     : Response.json({ error: result.error }, { status: result.status })
 }
 

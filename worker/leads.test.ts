@@ -38,6 +38,19 @@ describe('leadFromHit', () => {
     })
   })
 
+  it('claims no weight and gives no reason for being unread when the article was never fetched', () => {
+    const lead = leadFromHit(hit, 'q', 'query', match)
+    expect(lead?.unread).toBeUndefined()
+    expect(lead?.items[0]).not.toHaveProperty('weight')
+    expect(lead?.note).toBe('Search excerpt, not a verified quote. Found by searching: query')
+  })
+
+  it('carries why the article was not read, as a code and in the note', () => {
+    const lead = leadFromHit(hit, 'q', 'query', match, { unread: 'refused', why: 'The article was not read: The site answered 403.' })
+    expect(lead?.unread).toBe('refused')
+    expect(lead?.note).toBe('Search excerpt, not a verified quote. Found by searching: query\nThe article was not read: The site answered 403.')
+  })
+
   it('makes one proposal with an item for each person the hit names', () => {
     const lead = leadFromHit({ ...hit, description: 'Pramila Jayapal and Alma Adams both spoke.' }, 'q', 'query', match)
     expect(lead?.items.map((i) => i.decider_id)).toEqual(['jayapal', 'adams'])

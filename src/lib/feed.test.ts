@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildStories, buildWaiting, feedPage, mergeFeed, questionFamily } from './feed.ts'
-import { act, data, decider, item, proposal, question, reading, report, role, seat, source, track } from './fixtures.ts'
+import { buildStories, buildWaiting, feedPage, mergeFeed, pageHolding, questionFamily } from './feed.ts'
+import { act, data, decider, item, proposal, question, reading, report, role, seat, setPosition, source, track } from './fixtures.ts'
 
 const at = (day: string, time = '12:00') => `${day}T${time}:00.000Z`
 
@@ -29,7 +29,7 @@ const cosponsor = published('cosponsor', 'ann', 'record', at('2026-11-10'), { ki
 const councilVote = published('council-vote', 'cy', 'minutes', at('2026-11-15'), { kind: 'does' })
 const aside = published('aside', 'ann', 'blog', at('2026-11-14'))
 // A later article reporting an act already on file, with its own excerpt.
-const followUp = report('wire', 'bob-says', { created_at: at('2026-11-16'), excerpt: 'Bob said it again.' })
+const followUp = report('wire', 'bob-says', { created_at: at('2026-11-16'), excerpt: 'Bob said it again.', passage: 'Asked on Monday, Bob said it again. He did not say more.' })
 
 const tracker = track({
   bodies,
@@ -44,8 +44,8 @@ const tracker = track({
     reading('ann-says', 'policy', 'support'),
     reading('bob-says', 'policy', 'oppose'),
     reading('bob-says', 'markup', 'oppose'),
-    reading('cosponsor', 'bill', 'support'),
-    reading('cosponsor', 'policy', 'support', 'bill'),
+    reading('cosponsor', 'bill', 'support', null, 'concrete'),
+    reading('cosponsor', 'policy', 'support', 'bill', 'concrete'),
     reading('aside', 'other', 'mixed'),
     reading('council-vote', 'elsewhere', 'support'),
   ],
@@ -84,6 +84,11 @@ describe('stories', () => {
     const [first] = stories.find((s) => s.source.id === 'paper')!.items
     expect(first.isNew).toBe(true)
     expect(first.words).toBe('ann-says')
+  })
+
+  it('carry the passage a report kept, and none where it kept none', () => {
+    expect(stories.find((s) => s.source.id === 'wire')!.items[0].passage).toBe('Asked on Monday, Bob said it again. He did not say more.')
+    expect(stories.find((s) => s.source.id === 'paper')!.items.map((i) => i.passage)).toEqual([null, null])
   })
 
   it('are marked as demo data when read on a question in a demo body', () => {
@@ -128,6 +133,13 @@ describe('paging', () => {
     const last = feedPage(feed, second.older, 2)
     expect(ids(last.page)).toEqual(['record'])
     expect(last.older).toBeUndefined()
+  })
+
+  it('finds the page that holds one story, with the same way on to older ones, and nothing for a story not in the feed', () => {
+    const second = feedPage(feed, feedPage(feed, undefined, 2).older, 2)
+    expect(pageHolding(feed, second.page[1].story.key, 2)).toEqual(second)
+    expect(pageHolding(feed, feed[0].story.key, 2)?.isFirst).toBe(true)
+    expect(pageHolding(feed, 'proposal:not-in-the-feed', 2)).toBeNull()
   })
 
   it('goes back to the newest when the cursor is not one', () => {
@@ -195,10 +207,28 @@ describe('what is waiting for review', () => {
     const bob = waiting[0].items[0]
     expect(bob.claims.map((c) => [c.question.id, c.before])).toEqual([
       ['bill', 'unknown'],
-      ['policy', 'unknown'],
+      ['policy', 'oppose'],
     ])
     const signed = buildWaiting(tracker, proposals, [item('again', 'from-reader', 'ann', 'bill', { reading: 'support' })])
     expect(signed[0].items[0].claims[0].before).toBe('support')
+  })
+
+  it('names the position editors set when a claim sits across from it, and not otherwise', () => {
+    const set = setPosition('policy', 'ann', 'lean_oppose')
+    const withSet = track({ deciders: [decider('ann'), decider('bob')], questions: [policy, other], setPositions: [set, setPosition('other', 'ann', 'mixed')] })
+    const claims = [
+      item('across', 'from-reader', 'ann', 'policy', { reading: 'lean_support', sort: 0 }),
+      item('same-side', 'from-reader', 'ann', 'policy', { reading: 'oppose', act_id: 'second', sort: 1 }),
+      item('against-mixed', 'from-reader', 'ann', 'other', { reading: 'oppose', act_id: 'third', sort: 2 }),
+      item('nothing-set', 'from-reader', 'bob', 'policy', { reading: 'support', act_id: 'fourth', sort: 3 }),
+    ]
+    const [story] = buildWaiting(withSet, proposals, claims)
+    expect(story.items.flatMap((i) => i.claims.map((c) => [c.item.id, c.before, c.across]))).toEqual([
+      ['across', 'lean_oppose', set],
+      ['same-side', 'lean_oppose', undefined],
+      ['against-mixed', 'mixed', undefined],
+      ['nothing-set', 'unknown', undefined],
+    ])
   })
 
   it('keeps who put it forward and its source', () => {

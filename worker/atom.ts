@@ -37,7 +37,7 @@ function storyText(story: Story, origin: string): string {
       act.kind === 'says' ? `“${item.words}”` : item.words,
       ...item.readings.map(
         ({ reading, question, via }) =>
-          `${question.short_title}: ${standingLabel(reading.position, question)}${via ? ` (through ${via.short_title})` : ''}${reading.bearing === 'indirect' ? ' (indirect)' : ''}`,
+          `${question.short_title}: ${standingLabel(reading.position, question)}${via ? ` (through ${via.short_title})` : ''}${reading.weight === 'passing' ? ' (a signal)' : reading.weight === 'presumed' ? ' (presumed, no quote of their own)' : ''}`,
       ),
       personPage(origin, item),
     ].join('\n')

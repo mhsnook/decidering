@@ -43,7 +43,8 @@
       "title": "Should the harbor ferry be free to ride?",
       "short_title": "Fare-free ferry",
       "description": "Whether the city should drop fares on the cross-harbor ferry and fund it from the general budget.",
-      "is_hot": true
+      "is_hot": true,
+      "decides_on": "2026-12-09"
     },
     {
       "id": "free-ferry-ord-26-114",
@@ -73,22 +74,29 @@
       "short_title": "Cruise money pledge",
       "description": "A pledge to refuse campaign donations from cruise operators. It is about the person, so it is put to the council and the port board alike, and someone who sits on both has one answer.",
       "bodies": ["harbor-port-authority"]
+    },
+    {
+      "id": "free-ferry-card",
+      "kind": "position",
+      "title": "Should the ferry be free for city card holders only?",
+      "short_title": "Free for city card holders",
+      "description": "Amendment 1 to Ordinance 26-114: free rides only with a city-issued card.",
+      "decides_on": "2026-12-02"
+    },
+    {
+      "id": "berth-fee",
+      "kind": "position",
+      "title": "Should the cruise ship berth fee stay?",
+      "short_title": "Cruise ship berth fee",
+      "description": "The fee Ordinance 26-114 would spend on the ferry."
     }
   ],
-  "stances": [
-    ["free-ferry", "Odalys Brennan", "support", "Has campaigned on it since 2025 and sponsors the ordinance."],
-    ["free-ferry-ord-26-114", "Odalys Brennan", "support", "Lead sponsor."],
-    ["free-ferry", "Ikenna Vasquez", "lean_support", "Likes the idea, has not committed to the funding source."],
-    ["free-ferry", "Marguerite Oyelaran", "oppose", "Objects to the berth fee."],
-    ["free-ferry", "Desmond Kowalczyk", "mixed", "Supported a pilot years ago, silent since."],
-    ["free-ferry", "Priyanka Lindqvist", "support", "One remark at a town hall."],
-    ["free-ferry", "Nadezhda Okafor", "support", "Co-signed the ordinance."],
-    ["free-ferry-ord-26-114", "Nadezhda Okafor", "support", "Co-signer."],
-    ["free-ferry", "Suvi Castellanos", "support", "Running against the incumbent on this issue."],
-    ["free-ferry", "Calloway Nduka", "oppose", "Calls it a giveaway to commuters from outside the city."],
-    ["free-ferry-fiscal-note", "Nadezhda Okafor", "support", "Published it a week before the vote."],
-    ["no-cruise-money", "Odalys Brennan", "support", "Signed the pledge at her campaign launch."],
-    ["no-cruise-money", "Ilse Marchetti", "support", "Signed on joining the board."]
+  "relations": [
+    ["free-ferry", "free-ferry-card", "smaller_step"],
+    ["free-ferry", "berth-fee", "related"]
+  ],
+  "set_positions": [
+    ["free-ferry", "Nadezhda Okafor", "support", "Co-signed Ordinance 26-114 at introduction. One hedge in a radio interview does not outweigh the co-signature.", "2026-10-31"]
   ],
   "acts": [
     ["free-ferry", "Odalys Brennan", "statement", "support", "2025-03-18", "The ferry is a bridge we forgot to build. Nobody pays a toll to cross a bridge in this city.", "Harbor Ledger: Brennan opens campaign on the ferry dock"],
@@ -108,7 +116,8 @@
     ["free-ferry-fiscal-note", "Nadezhda Okafor", "formal_act", "support", "2026-10-30", "Published the fiscal note for Ordinance 26-114.", "Council docket: Fiscal note for Ordinance 26-114", { "kind": "does" }],
     ["no-cruise-money", "Odalys Brennan", "formal_act", "support", "2025-03-18", "Signed the pledge to refuse campaign donations from cruise operators.", "Clean Harbor Pledge: Signers"],
     ["no-cruise-money", "Ilse Marchetti", "formal_act", "support", "2026-01-12", "Signed the pledge to refuse campaign donations from cruise operators.", "Clean Harbor Pledge: Signers"],
-    ["free-ferry", "Ikenna Vasquez", "vote", "lean_oppose", "2026-07-14", "Voted to cut the cruise ship berth fee by a third (5 to 2). The ordinance would pay for the free ferry out of that fee.", "Council minutes: July 14 regular session", { "bearing": "indirect" }],
-    ["free-ferry-ord-26-114", "Ikenna Vasquez", "formal_act", "support", "2026-09-20", "Signed on to Ordinance 26-114 as a co-sponsor.", "Council docket: Ordinance 26-114, sponsor changes", { "withdrawn_on": "2026-10-05" }]
+    ["free-ferry", "Ikenna Vasquez", "vote", "oppose", "2026-07-14", "Voted to cut the cruise ship berth fee by a third (5 to 2). The ordinance would pay for the free ferry out of that fee.", "Council minutes: July 14 regular session", { "weight": "passing" }],
+    ["free-ferry-ord-26-114", "Ikenna Vasquez", "formal_act", "support", "2026-09-20", "Signed on to Ordinance 26-114 as a co-sponsor.", "Council docket: Ordinance 26-114, sponsor changes", { "withdrawn_on": "2026-10-05" }],
+    ["free-ferry", "Nadezhda Okafor", "interview", "mixed", "2026-10-20", "I signed it, and I still want to see what the fiscal note says before I promise anything more.", "Tideline Radio: Budget hour"]
   ]
 }

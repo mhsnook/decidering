@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { claimLabel, claimTag } from './position.ts'
-import { act, decider, holder, link, office, question, reading, report, role, seat, source, stance, track } from './fixtures.ts'
+import type { RecordEntry } from './build-tracker.ts'
+import { act, decider, holder, link, office, question, reading, relation, report, role, seat, setPosition, source, track } from './fixtures.ts'
 
 const policy = question('policy')
 const bill = question('bill', { parent_id: 'policy', kind: 'formal_act', implies_on_parent: 'support', sort: 1 })
@@ -55,10 +56,10 @@ describe("a decider's record on a question", () => {
         deciders: [decider('ann')],
         questions: [policy, question('markup', { parent_id: 'policy' })],
         acts: [act('advance', 'ann')],
-        readings: [reading('advance', 'markup', 'support'), reading('advance', 'policy', 'lean_oppose')],
+        readings: [reading('advance', 'markup', 'support'), reading('advance', 'policy', 'oppose')],
       })
     expect(both.recordFor(both.questionById.get('markup')!, 'ann')[0].reading.position).toBe('support')
-    expect(both.recordFor(policy, 'ann')[0].reading.position).toBe('lean_oppose')
+    expect(both.recordFor(policy, 'ann')[0].reading.position).toBe('oppose')
   })
 
   it('takes footing from the acts on the record', () => {
@@ -67,9 +68,8 @@ describe("a decider's record on a question", () => {
         seats: [seat('s1')],
         roles: [role('s1', 'ann')],
         questions: [policy, bill],
-        stances: [stance('bill', 'ann', 'support')],
         acts: [act('signed', 'ann', { kind: 'commits' })],
-        readings: [reading('signed', 'bill', 'support'), reading('signed', 'policy', 'support', 'bill')],
+        readings: [reading('signed', 'bill', 'support', null, 'concrete'), reading('signed', 'policy', 'support', 'bill', 'concrete')],
       })
     const [row] = tracked.board(bill)
     expect(row.incumbent).toMatchObject({ standing: 'support', footing: 'on_record' })
@@ -86,7 +86,8 @@ describe('asks', () => {
       roles: [role('s1', 'ann'), role('s2', 'bob'), role('s3', 'cy', { starts_on: '2027-05-04', certainty: 'possible', contest: 'general' })],
       questions: [policy, bill, markup, hearing],
       questionDeciders: [link('markup', 'bob', 'Chair'), link('hearing', 'ann', 'Vice chair')],
-      stances: [stance('markup', 'bob', 'lean_support')],
+      acts: [act('bob-on-markup', 'bob')],
+      readings: [reading('bob-on-markup', 'markup', 'lean_support')],
     })
 
   it('keeps asks apart from the measures put to everyone', () => {
@@ -121,7 +122,8 @@ describe('viewing a body on a day', () => {
     offices: [office('chair', { label: 'Chair, Finance' })],
     officeHolders: [holder('chair', 'crapo', null, TERM), holder('chair', 'wyden', TERM)],
     questionOffices: [{ id: 'markup:chair', question_id: 'markup', office_id: 'chair' }],
-    stances: [stance('markup', 'crapo', 'oppose'), stance('policy', 'old', 'support'), stance('policy', 'new', 'lean_support')],
+    acts: [act('crapo-refuses', 'crapo'), act('old-backs', 'old'), act('new-hedges', 'new')],
+    readings: [reading('crapo-refuses', 'markup', 'oppose'), reading('old-backs', 'policy', 'support'), reading('new-hedges', 'policy', 'lean_support')],
   }
   const now = track(rows)
   const next = track(rows, '2027-01-31')
@@ -157,7 +159,7 @@ describe('viewing a body on a day', () => {
   })
 
   it('keeps each holder their own position on the ask, and knows when they hold the office', () => {
-    expect(next.stanceById.get('markup:crapo')?.position).toBe('oppose')
+    expect(next.standingFor(markup, 'crapo')).toBe('oppose')
     expect(now.tenuresOn(markup, 'wyden').map((t) => [t.office.label, t.holder.starts_on])).toEqual([['Chair, Finance', TERM]])
     expect(now.tenuresHeldBy('crapo', 'body').map((t) => t.office.id)).toEqual(['chair'])
     expect(next.tenuresHeldBy('crapo', 'body')).toEqual([])
@@ -182,7 +184,8 @@ describe('a question put to more than one body', () => {
     roles: [role('c1', 'ann'), role('c2', 'bob'), role('b1', 'ann'), role('b2', 'cy'), role('e1', 'cy')],
     questions: [pledge, question('council-only', { body_id: 'council' }), question('bill', { body_id: 'council', parent_id: 'pledge', kind: 'formal_act' as const })],
     questionBodies: [{ id: 'pledge:board', question_id: 'pledge', body_id: 'board' }],
-    stances: [stance('pledge', 'ann', 'support')],
+    acts: [act('ann-pledges', 'ann')],
+    readings: [reading('ann-pledges', 'pledge', 'support')],
     offices: [office('fundraiser', { body_id: null, label: 'Fundraiser' }), office('speaker', { body_id: 'council', label: 'Speaker' })],
     officeHolders: [holder('fundraiser', 'ann'), holder('speaker', 'ann')],
   }
@@ -239,25 +242,30 @@ describe('how much an act counts', () => {
     const person = track({ ...base, ...rows }, asOf).board(q)[0].incumbent!
     return [person.standing, person.footing]
   }
-  const cosponsored = { acts: [act('signed', 'ann', { kind: 'commits', occurred_on: '2025-04-29' })], readings: [reading('signed', 'bill', 'support'), reading('signed', 'policy', 'support', 'bill')] }
+  const cosponsored = { acts: [act('signed', 'ann', { kind: 'commits', occurred_on: '2025-04-29' })], readings: [reading('signed', 'bill', 'support', null, 'concrete'), reading('signed', 'policy', 'support', 'bill', 'concrete')] }
 
-  it('puts a use of office and a commitment in force on the record, and words not', () => {
-    expect(on({ acts: [act('a', 'ann', { kind: 'does' })], readings: [reading('a', 'policy', 'support')] }, policy)[1]).toBe('on_record')
-    expect(on({ acts: [act('a', 'ann', { kind: 'commits' })], readings: [reading('a', 'policy', 'support')] }, policy)[1]).toBe('on_record')
+  it('puts a use of office and a commitment in force on the record when they are read as concrete, and words not', () => {
+    expect(on({ acts: [act('a', 'ann', { kind: 'does' })], readings: [reading('a', 'policy', 'support', null, 'concrete')] }, policy)[1]).toBe('on_record')
+    expect(on({ acts: [act('a', 'ann', { kind: 'commits' })], readings: [reading('a', 'policy', 'support', null, 'concrete')] }, policy)[1]).toBe('on_record')
     expect(on({ acts: [act('a', 'ann', { kind: 'says', occurred_on: '2026-11-01' })], readings: [reading('a', 'policy', 'support')] }, policy)[1]).toBe('sparse')
+    expect(on({ acts: [act('a', 'ann', { kind: 'says', occurred_on: '2026-11-01' })], readings: [reading('a', 'policy', 'support', null, 'concrete')] }, policy)[1]).toBe('sparse')
   })
 
   it('counts a vote on something else as a signal here, not as being on the record', () => {
-    const indirect = { ...reading('gift', 'policy', 'lean_oppose'), bearing: 'indirect' as const }
-    const rows = { acts: [act('gift', 'ann', { kind: 'does', occurred_on: '2026-07-14' })], readings: [indirect], stances: [stance('policy', 'ann', 'lean_support')] }
-    expect(on(rows, policy)).toEqual(['lean_support', 'sparse'])
+    const rows = { acts: [act('gift', 'ann', { kind: 'does', occurred_on: '2026-07-14' })], readings: [reading('gift', 'policy', 'oppose', null, 'passing')] }
+    expect(on(rows, policy)).toEqual(['lean_oppose', 'sparse'])
     expect(track({ ...base, ...rows }).recordFor(policy, 'ann')[0].onRecord).toBe(false)
   })
 
-  it('reads where someone stands on a formal-act question off the acts, whatever a stance says', () => {
-    expect(on({ ...cosponsored, stances: [] }, bill)).toEqual(['support', 'on_record'])
-    expect(on({ acts: [act('talk', 'ann')], readings: [reading('talk', 'bill', 'support')], stances: [stance('bill', 'ann', 'support')] }, bill)[0]).toBe('unknown')
-    const both = { acts: [act('yes', 'ann', { kind: 'does' }), act('no', 'ann', { kind: 'does', occurred_on: '2026-02-01' })], readings: [reading('yes', 'bill', 'support'), reading('no', 'bill', 'oppose')] }
+  it('reads where someone stands on a formal-act question off the acts, whatever position is set', () => {
+    expect(on(cosponsored, bill)).toEqual(['support', 'on_record'])
+    const talk = { acts: [act('talk', 'ann')], readings: [reading('talk', 'bill', 'support')], setPositions: [setPosition('bill', 'ann', 'support')] }
+    expect(track({ ...base, ...talk }).listingFor(bill, 'ann')).toEqual({ standing: 'unknown', calculated: 'unknown', set: undefined })
+    expect(on({ setPositions: [setPosition('bill', 'ann', 'oppose')], ...cosponsored }, bill)[0]).toBe('support')
+    const both = {
+      acts: [act('yes', 'ann', { kind: 'does' }), act('no', 'ann', { kind: 'does', occurred_on: '2026-02-01' })],
+      readings: [reading('yes', 'bill', 'support', null, 'concrete'), reading('no', 'bill', 'oppose', null, 'concrete')],
+    }
     expect(on(both, bill)[0]).toBe('mixed')
   })
 
@@ -269,24 +277,21 @@ describe('how much an act counts', () => {
     expect(on(withdrawn, policy)[1]).not.toBe('on_record')
   })
 
-  it('reads a stance that was only implied off the acts behind it, so taking them back takes it back', () => {
-    const implied = { ...cosponsored, stances: [stance('policy', 'ann', 'support', 'Cosponsor of the bill.')] }
-    const withdrawn = { ...implied, acts: [act('signed', 'ann', { kind: 'commits', occurred_on: '2025-04-29', withdrawn_on: '2026-10-05' })] }
-    const person = (rows: Parameters<typeof track>[0], asOf?: string) => track({ ...base, ...rows }, asOf).board(policy)[0].incumbent!
-    expect([person(implied).standing, person(implied).stance?.summary]).toEqual(['support', 'Cosponsor of the bill.'])
-    expect([person(withdrawn, '2026-10-04').standing, person(withdrawn).standing, person(withdrawn).stance]).toEqual(['support', 'unknown', undefined])
-    expect(person({ ...cosponsored, stances: [] }).standing).toBe('support')
-    expect(person(implied, '2027-01-31').standing).toBe('support')
+  it('works out the parent from the acts read there, so taking a commitment back takes it back', () => {
+    const withdrawn = { ...cosponsored, acts: [act('signed', 'ann', { kind: 'commits', occurred_on: '2025-04-29', withdrawn_on: '2026-10-05' })] }
+    const standing = (rows: Parameters<typeof track>[0], asOf?: string) => track({ ...base, ...rows }, asOf).board(policy)[0].incumbent!.standing
+    expect(standing(cosponsored)).toBe('support')
+    expect([standing(withdrawn, '2026-10-04'), standing(withdrawn)]).toEqual(['support', 'unknown'])
+    // The measure closing does not take the commitment back.
+    expect(standing(cosponsored, '2027-01-31')).toBe('support')
   })
 
-  it('keeps a stance an editor judged from an act read on the question itself, whatever is taken back', () => {
-    const judged = {
+  it('falls back on what is left of the record once a commitment is withdrawn', () => {
+    const rows = {
       acts: [act('signed', 'ann', { kind: 'commits', occurred_on: '2025-04-29', withdrawn_on: '2026-10-05' }), act('speech', 'ann', { occurred_on: '2026-10-20' })],
       readings: [...cosponsored.readings, reading('speech', 'policy', 'lean_support')],
-      stances: [stance('policy', 'ann', 'lean_support')],
     }
-    expect(on(judged, policy)[0]).toBe('lean_support')
-    expect(on({ stances: [stance('policy', 'ann', 'oppose')] }, policy)[0]).toBe('oppose')
+    expect(on(rows, policy)[0]).toBe('lean_support')
   })
 
   it('lets a commitment lapse on the parent when its measure closes, and keeps the measure as it stood', () => {
@@ -298,6 +303,105 @@ describe('how much an act counts', () => {
 
   it('treats a question with a closing date ahead as open until the day', () => {
     expect([track(base).isOpen(bill), track(base, '2027-01-03').isOpen(bill)]).toEqual([true, false])
+  })
+})
+
+describe('a position set by editors', () => {
+  const policy = question('policy')
+  const base = { deciders: [decider('ann'), decider('bob')], seats: [seat('s1')], roles: [role('s1', 'ann')], questions: [policy] }
+  const voted = { acts: [act('vote', 'ann', { kind: 'does', occurred_on: '2026-03-01' })], readings: [reading('vote', 'policy', 'support', null, 'concrete')] }
+  const set = setPosition('policy', 'ann', 'lean_oppose', 'Told the caucus she will vote no.')
+
+  it('is shown instead of the calculated one, which still reports the record', () => {
+    const tracker = track({ ...base, ...voted, setPositions: [set] })
+    expect(tracker.listingFor(policy, 'ann')).toEqual({ standing: 'lean_oppose', calculated: 'support', set })
+    expect(tracker.standingFor(policy, 'ann')).toBe('lean_oppose')
+    expect(tracker.board(policy)[0].incumbent).toMatchObject({ standing: 'lean_oppose', calculated: 'support', set, footing: 'on_record' })
+  })
+
+  it('is shown for someone with no record', () => {
+    expect(track({ ...base, setPositions: [set] }).listingFor(policy, 'ann')).toEqual({ standing: 'lean_oppose', calculated: 'unknown', set })
+  })
+
+  it('leaves the calculated position showing when there is none, and for everyone else', () => {
+    expect(track({ ...base, ...voted }).listingFor(policy, 'ann')).toEqual({ standing: 'support', calculated: 'support', set: undefined })
+    expect(track({ ...base, ...voted, setPositions: [set] }).listingFor(policy, 'bob')).toEqual({ standing: 'unknown', calculated: 'unknown', set: undefined })
+  })
+})
+
+describe('where an entry not on file yet would leave someone', () => {
+  const policy = question('policy')
+  const bill = question('bill', { parent_id: 'policy', kind: 'formal_act' })
+  const tracker = track({
+    deciders: [decider('ann')],
+    questions: [policy, bill],
+    acts: [act('speech', 'ann', { occurred_on: '2026-02-01' })],
+    readings: [reading('speech', 'policy', 'support')],
+    setPositions: [setPosition('policy', 'ann', 'mixed')],
+  })
+  const extra = (questionId: string, position: Parameters<typeof reading>[2], weight: Parameters<typeof reading>[4], over: Parameters<typeof act>[2] = {}): RecordEntry => {
+    const added = act('added', 'ann', { occurred_on: '2026-06-01', ...over })
+    return { act: added, reading: reading('added', questionId, position, null, weight), via: undefined, reports: [], lapse: null, onRecord: weight === 'concrete' && added.kind !== 'says' }
+  }
+
+  it('counts the entry with the record in what is calculated', () => {
+    expect(tracker.listingFor(policy, 'ann').calculated).toBe('support')
+    expect(tracker.listingFor(policy, 'ann', [extra('policy', 'oppose', 'clear')]).calculated).toBe('oppose')
+    expect(tracker.listingFor(policy, 'ann', [extra('policy', 'oppose', 'passing')]).calculated).toBe('support')
+    expect(tracker.listingFor(policy, 'ann', [extra('policy', 'oppose', 'concrete', { kind: 'does', occurred_on: '2026-01-01' })]).calculated).toBe('lean_oppose')
+  })
+
+  it('still shows the set position', () => {
+    expect(tracker.listingFor(policy, 'ann', [extra('policy', 'oppose', 'clear')])).toMatchObject({ standing: 'mixed', calculated: 'oppose' })
+  })
+
+  it('reads a formal-act question off the entry when it binds them', () => {
+    expect(tracker.listingFor(bill, 'ann', [extra('bill', 'support', 'concrete', { kind: 'commits' })]).standing).toBe('support')
+    expect(tracker.listingFor(bill, 'ann', [extra('bill', 'support', 'clear')]).standing).toBe('unknown')
+  })
+
+  it('does not put the entry on the record', () => {
+    tracker.listingFor(policy, 'ann', [extra('policy', 'oppose', 'clear')])
+    expect(tracker.recordFor(policy, 'ann').map((e) => e.act.id)).toEqual(['speech'])
+  })
+})
+
+describe('related questions', () => {
+  const full = question('full')
+  const step = question('step')
+  const laterStep = question('later-step')
+  const near = question('near')
+  const tracker = track({
+    questions: [full, step, laterStep, near],
+    questionRelations: [relation('full', 'near', 'related'), relation('full', 'later-step', 'smaller_step', 2), relation('full', 'step', 'smaller_step', 1), relation('full', 'gone', 'smaller_step'), relation('near', 'step', 'related')],
+  })
+  const related = (q: typeof full) => tracker.relatedTo(q).map((r) => [r.question.id, r.kind])
+
+  it('lists the smaller steps of a fuller proposal in their order, then its neighbours', () => {
+    expect(related(full)).toEqual([
+      ['step', 'smaller_step'],
+      ['later-step', 'smaller_step'],
+      ['near', 'related'],
+    ])
+  })
+
+  it('names the fuller proposal from the side of the smaller step', () => {
+    expect(related(laterStep)).toEqual([['full', 'fuller_proposal']])
+    expect(related(step)).toEqual([
+      ['full', 'fuller_proposal'],
+      ['near', 'related'],
+    ])
+  })
+
+  it('reads a related link the same way from either side', () => {
+    expect(related(near)).toEqual([
+      ['step', 'related'],
+      ['full', 'related'],
+    ])
+  })
+
+  it('is empty for a question with no links', () => {
+    expect(tracker.relatedTo(question('alone'))).toEqual([])
   })
 })
 
@@ -364,7 +468,8 @@ describe('one kind of claim on a seat', () => {
       role('won', 'elect', { starts_on: '2027-01-03' }),
     ],
     questions: [policy],
-    stances: [stance('policy', 'running', 'support')],
+    acts: [act('running-says', 'running')],
+    readings: [reading('running-says', 'policy', 'support')],
   }
   const seatOf = (t: ReturnType<typeof track>, id: string) => t.board(policy).find((r) => r.seat.id === id)!
   const now = track(rows)
