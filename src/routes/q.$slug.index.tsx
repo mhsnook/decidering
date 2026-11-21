@@ -269,7 +269,6 @@ function Ask({ question, bodyId }: { question: Question; bodyId: string }) {
   )
 }
 
-// Editors only: change the question, or close it.
 function EditorTools({ question }: { question: Question }) {
   const { tracker } = useTracker()
   if (!isEditor()) return null

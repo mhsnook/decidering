@@ -19,8 +19,7 @@ const IMPLIES = [
   ['oppose', 'Against'],
 ] as const
 
-// The form for making or editing a question. Every field is a plain, labelled
-// native field with a stable name, read on submit by `readQuestionForm`.
+// Fields keep stable `name`s: `readQuestionForm` reads them from the FormData on submit.
 export function QuestionForm(props: QuestionFormProps) {
   const { tracker } = useTracker()
   const { place, editing } = props
