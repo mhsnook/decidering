@@ -1,6 +1,7 @@
 import { getServerByName, routePartykitRequest } from 'partyserver'
 import { ARCHIVE_CRON, archiveNow, archiveSources } from './archive.ts'
-import { commentInputSchema, proposalInputSchema } from '../shared/schema.ts'
+import { commentInputSchema, displayNameSchema, proposalInputSchema } from '../shared/schema.ts'
+import { auth, signedInPerson } from './auth.ts'
 import { isEditorRequest } from './editor.ts'
 import { atomResponse } from './feed.ts'
 import { dryRunArticle, NEWS_CRON, queueIsAttended, searchNews } from './news.ts'
@@ -12,12 +13,12 @@ export const ROOM = 'main'
 
 const tracker = (env: Env) => getServerByName<Env, Tracker>(env.Tracker, ROOM)
 
+const tooMany = () => Response.json({ error: 'That is a lot of posts in a short time. Give it a minute.' }, { status: 429 })
+const overLimit = async (req: Request, env: Env) => !(await env.POST_LIMITER.limit({ key: req.headers.get('cf-connecting-ip') ?? 'unknown' })).success
+
 // Shared front door for anything an anonymous reader can post.
 async function readerPost(req: Request, env: Env): Promise<Record<string, unknown> | Response> {
-  const ip = req.headers.get('cf-connecting-ip') ?? 'unknown'
-  if (!(await env.POST_LIMITER.limit({ key: ip })).success) {
-    return Response.json({ error: 'That is a lot of posts in a short time. Give it a minute.' }, { status: 429 })
-  }
+  if (await overLimit(req, env)) return tooMany()
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null
   if (!body) return Response.json({ error: 'Expected a JSON body.' }, { status: 400 })
   // Honeypot: the form hides this field, so only a bot fills it in. Pretend it worked.
@@ -33,7 +34,7 @@ async function handleComment(req: Request, env: Env): Promise<Response> {
     const first = parsed.error.issues[0]
     return Response.json({ error: `${first.path.join('.')}: ${first.message}` }, { status: 400 })
   }
-  const result = await (await tracker(env)).comment(parsed.data)
+  const result = await (await tracker(env)).comment(parsed.data, await signedInPerson(req, env))
   return result.ok ? Response.json({ ok: true }) : Response.json({ error: result.error }, { status: result.status })
 }
 
@@ -46,15 +47,32 @@ async function handleProposal(req: Request, env: Env): Promise<Response> {
     return Response.json({ error: `${first.path.join('.')}: ${first.message}` }, { status: 400 })
   }
   const { source_url, source_title, submitter_note, ...item } = parsed.data
-  const result = await (await tracker(env)).propose({ source: { url: source_url, title: source_title }, note: submitter_note, items: [item] }, 'reader')
+  const person = await signedInPerson(req, env)
+  const result = await (await tracker(env)).propose({ source: { url: source_url, title: source_title }, note: submitter_note, items: [item] }, 'reader', person?.id ?? null)
   return result.ok
     ? Response.json({ ok: true, duplicate: result.queued === 0, proposal_id: result.proposal_id })
     : Response.json({ error: result.error }, { status: result.status })
 }
 
+async function handleDisplayName(req: Request, env: Env): Promise<Response> {
+  const person = await signedInPerson(req, env)
+  if (!person) return new Response('unauthorized', { status: 401 })
+  const body = (await req.json().catch(() => null)) as { display_name?: unknown } | null
+  const parsed = displayNameSchema.safeParse(body?.display_name)
+  if (!parsed.success) return Response.json({ error: `display_name: ${parsed.error.issues[0].message}` }, { status: 400 })
+  await (await tracker(env)).setDisplayName(person.id, parsed.data)
+  return Response.json({ ok: true })
+}
+
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url)
+    if (url.pathname.startsWith('/api/auth/')) {
+      // Each code sent is an email from our domain, so sending one counts as a post.
+      if (url.pathname === '/api/auth/email-otp/send-verification-otp' && (await overLimit(req, env))) return tooMany()
+      return auth(env).handler(req)
+    }
+    if (url.pathname === '/api/me/name' && req.method === 'POST') return handleDisplayName(req, env)
     if (url.pathname === '/feed.xml' && req.method === 'GET') return atomResponse(req, env, ctx)
     if (url.pathname === '/api/proposals' && req.method === 'POST') return handleProposal(req, env)
     if (url.pathname === '/api/comments' && req.method === 'POST') return handleComment(req, env)

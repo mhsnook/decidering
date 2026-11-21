@@ -6,6 +6,7 @@ import {
   usualWeight,
   type Comment,
   type CommentInput,
+  type Person,
   type Proposal,
   type ProposalDraft,
   type ProposalContext,
@@ -50,7 +51,7 @@ export class Tracker extends PartyDbServer<Env> {
 
   // Unreviewed proposals enter here rather than through CRUD so anonymous
   // readers never need write access to the room.
-  async propose(draft: ProposalDraft, origin: Proposal['origin'], isRetry = false): Promise<SubmitResult> {
+  async propose(draft: ProposalDraft, origin: Proposal['origin'], submittedBy: string | null = null, isRetry = false): Promise<SubmitResult> {
     const db = this.env.DB
     const pending = await db.prepare(`SELECT COUNT(*) AS n FROM proposals WHERE status = 'pending'`).first<{ n: number }>()
     if ((pending?.n ?? 0) >= MAX_PENDING) {
@@ -81,7 +82,7 @@ export class Tracker extends PartyDbServer<Env> {
       stored_copy: null,
       created_at: now,
     }
-    const proposal: Proposal = { id: crypto.randomUUID(), source_id: source.id, origin, submitted_by: null, status: 'pending', unread: draft.unread ?? null, created_at: now, reviewed_at: null }
+    const proposal: Proposal = { id: crypto.randomUUID(), source_id: source.id, origin, submitted_by: submittedBy, status: 'pending', unread: draft.unread ?? null, created_at: now, reviewed_at: null }
     const rows: ProposalItem[] = items.map(({ note: _, context: __, ...item }, sort) => ({
       ...item,
       id: crypto.randomUUID(),
@@ -124,7 +125,7 @@ export class Tracker extends PartyDbServer<Env> {
       const message = String(e)
       // Someone else added this URL between the lookup and the commit. The
       // second pass finds their source.
-      if (message.includes('UNIQUE') && !isRetry) return this.propose(draft, origin, true)
+      if (message.includes('UNIQUE') && !isRetry) return this.propose(draft, origin, submittedBy, true)
       if (message.includes('FOREIGN KEY')) return { ok: false, status: 400, error: 'Unknown question or decider.' }
       throw e
     }
@@ -140,7 +141,18 @@ export class Tracker extends PartyDbServer<Env> {
     return archiveUrl
   }
 
-  async comment(input: CommentInput): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  async addPerson(id: string, createdAt: string) {
+    const person: Person = { id, display_name: null, muted_at: null, created_at: createdAt }
+    await this.commit([{ channel: 'people', ops: [{ type: 'insert', value: person }] }])
+  }
+
+  async setDisplayName(personId: string, displayName: string) {
+    await this.commit([{ channel: 'people', ops: [{ type: 'update', value: { id: personId, display_name: displayName } }] }])
+  }
+
+  // A signed-in person's comment goes under the name they chose, and the first
+  // name they post under becomes that name.
+  async comment(input: CommentInput, person: Person | null = null): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
     const known = await this.env.DB.prepare(
       `SELECT 1 FROM questions q, deciders d WHERE q.id = ? AND d.id = ?`,
     )
@@ -150,11 +162,13 @@ export class Tracker extends PartyDbServer<Env> {
     const row: Comment = {
       id: crypto.randomUUID(),
       thread_id: pairId(input.question_id, input.decider_id),
-      author_name: input.author_name,
+      author_name: person?.display_name ?? input.author_name,
+      person_id: person?.id ?? null,
       body: input.body,
       created_at: new Date().toISOString(),
     }
-    await this.commit([{ channel: 'comments', ops: [{ type: 'insert', value: row }] }])
+    const naming = person && person.display_name === null ? [{ channel: 'people', ops: [{ type: 'update' as const, value: { id: person.id, display_name: input.author_name } }] }] : []
+    await this.commit([...naming, { channel: 'comments', ops: [{ type: 'insert', value: row }] }])
     return { ok: true }
   }
 }

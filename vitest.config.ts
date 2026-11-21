@@ -20,7 +20,7 @@ export default defineConfig(async () => {
               wrangler: { configPath: './wrangler.jsonc' },
               remoteBindings: false,
               miniflare: {
-                bindings: { EDITOR_TOKEN, TEST_MIGRATIONS: migrations },
+                bindings: { EDITOR_TOKEN, TEST_MIGRATIONS: migrations, BETTER_AUTH_SECRET: 'a-secret-only-the-worker-tests-use', AUTH_HOSTS: 'sporelight.test', EMAIL_FROM: 'sign-in@sporelight.test' },
               },
             }),
           ],

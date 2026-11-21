@@ -28,6 +28,8 @@ The first data set is the United States Congress and Medicare for All. Nothing i
 - **Latest.** `/latest` lists what has entered the record as stories, newest first. A story is one source and everyone an editor published from it in one review: each person's act is a reply under the source, with when it happened and what it shows on each question it is read on. Where the passage around the words was kept, the words are shown marked in it. A source that reports an act already on file makes a new story, and the act is marked as already on the record. Replies fold after three, and a row of standing tokens in each story's header shows how it splits. The feed can be narrowed to a question and everything under it (`?question=`), or to a body (`?body=`: anyone with a seat in it, past, present or running for one, on questions put to it), which also narrows the people in each story; each question's page links to its own slice. It shows 20 stories a page, with a link to older ones. What is waiting for review sits in the same feed, by when it was put forward, as a short dashed entry per proposal: the outlet and who put it forward, the headline, and up to two claims, each with where that person stands now. Opened, it shows every claim with its words, and asks the reader to check them against the source and say what is wrong in the discussion on that person's page. A claim that points the other way from a position editors set says that it would change that position, and that the page stays as it is until an editor reviews it. Each waiting entry has an address of its own (`/latest?proposal=…`), which the reader who sent it is given to pass on. It opens the feed on the page that holds the entry, and says so if an editor has since reviewed it. Only pending items that claim a reading show. Rejected items and search leads that only name someone are left out. `?recordOnly=true` shows only the published record and loads no proposals.
 - **Atom feed.** `/feed.xml` is an Atom feed of the newest 20 published stories, served by the Worker from D1, with the same `question` and `body` filters. Each entry lists the people in the story with a link to each one's page. It never carries anything waiting for review.
 - **Discussion.** Each person-and-question page has a comment thread. A reader loads and hears only the threads they have open. Comments post under a username the reader picks the first time they post. Editors can remove comments.
+- **Signing in.** A reader can sign in with a code sent to their email address. Signing in is optional, and everything works signed out as before. The first name a signed-in person posts under becomes the name shown for them, and they can change it. Their email address is kept with their sign-in account and is never sent to a browser or shown on a page. What they send in records who sent it, and their comments are tied to them. A person's roles are stored one per row, each with where it holds, so the same person can later hold different roles for different organisations; nothing reads them yet.
+- **Muting.** An editor can mute someone who has signed in, from any of their comments. While they are muted, their waiting proposals are left out of `/latest` and their comments out of each thread. Editors still see the comments, marked as muted, and can unmute them there. Muting hides what is shown; the rows are still synced like the rest of the public tables. The review queue still lists their proposals.
 
 ## Stack
 
@@ -35,8 +37,9 @@ The first data set is the United States Congress and Medicare for All. Nothing i
 - [party-db](https://github.com/mhsnook/party-db) syncs every public table to the browser over one Durable Object room; pages are live queries over the local copy
 - TanStack Router (file-based routes in `src/routes`), TanStack DB, Tailwind
 - Cloudflare [Web Search API](https://developers.cloudflare.com/web-search/) with Exa, and Workers AI, through AI Gateway, for the news search and reading the articles it finds
+- [Better Auth](https://www.better-auth.com) in the Worker, on D1, with its email one-time code plugin, for reader sign-in, and Cloudflare [Email Service](https://developers.cloudflare.com/email-service/) to send the codes
 
-Editors write through the same collections with optimistic transactions. Readers get read-only access. Unreviewed proposals are public. They are sliced collections, so a browser only loads them when a page queries them: the editor's queue, and `/latest` unless `?recordOnly=true` is set. The notes a submitter or reviewer writes for editors are kept in a separate table that is only sent to editor connections, as are the text either side of a quoted passage and the people an article only names. Readers post proposals and comments through the Worker, which validates them and limits each address to 6 posts a minute.
+Editors write through the same collections with optimistic transactions. Readers get read-only access. Unreviewed proposals are public. They are sliced collections, so a browser only loads them when a page queries them: the editor's queue, and `/latest` unless `?recordOnly=true` is set. The notes a submitter or reviewer writes for editors are kept in a separate table that is only sent to editor connections, as are the text either side of a quoted passage and the people an article only names. Readers post proposals and comments through the Worker, which validates them and limits each address to 6 posts a minute. Asking for a sign-in code counts as a post, and Better Auth adds its own limits, kept in D1: three codes a minute for one address, and three tries at each code. The sync room still verifies only the editor token. A signed-in reader is known to the Worker on the requests they post and is a reader like any other in the room.
 
 ## Reviewing
 
@@ -61,6 +64,8 @@ pnpm dev
 ```
 
 Sign in at `/editor` with the `EDITOR_TOKEN` from `.dev.vars`.
+
+Reader sign-in works locally too. The local email binding does not deliver mail, so read the code from the local database: `pnpm exec wrangler d1 execute DB --local --command "SELECT identifier, value FROM auth_verifications"`. The value is the code, then a colon and the number of tries used.
 
 The news search needs the remote AI binding, which plain `pnpm dev` leaves off. Run `pnpm dev:remote` (after `wrangler login`) to use it locally; searches bill the logged-in account.
 
@@ -129,10 +134,22 @@ wrangler d1 create sporelight          # put the id in wrangler.jsonc
 wrangler d1 migrations apply DB --remote
 pnpm seed:build && wrangler d1 execute DB --remote --file seed/out/seed.sql
 wrangler secret put EDITOR_TOKEN
+wrangler secret put BETTER_AUTH_SECRET  # a long random string; see Reader sign-in
 wrangler secret put ARCHIVE_ORG_KEY   # optional; see Archiving sources
 ```
 
 Then connect the repo in the Cloudflare dashboard and push to `main`. Secrets persist across deploys.
+
+### Reader sign-in
+
+Codes are sent with Cloudflare Email Service, which needs the Workers Paid plan and a domain on Cloudflare DNS. A `workers.dev` address cannot send mail.
+
+1. In the dashboard, under Compute > Email Service > Email Sending, onboard the domain, or a subdomain such as `mail.example.org`. The DNS records it needs are added for you.
+2. Set `EMAIL_FROM` in `wrangler.jsonc`, at the top level and in the `previews` block, to an address on that domain. While it is empty, no code is sent and the Worker logs why.
+3. Set `AUTH_HOSTS` to the hosts the site is served on, comma separated, with `*` as a wildcard. It is `sporelight.*.workers.dev` for production and `*-sporelight.*.workers.dev` for Previews. Add the domain if the site moves to one. Sign-in on any other host is refused.
+4. Store `BETTER_AUTH_SECRET`, which signs the session cookies, for production and Previews. `openssl rand -base64 32` makes one.
+
+Better Auth's tables are the `auth_` tables in `migrations/0014_reader_identity.sql`, written by its migration generator. When an upgrade changes them, add a migration with what it generates for SQLite.
 
 ### Previews
 
@@ -144,9 +161,10 @@ Set the preview database up once. All Previews share it, so a migration on one b
 pnpm db:migrate:preview
 pnpm db:seed:preview
 wrangler preview base-config secret put EDITOR_TOKEN
+wrangler preview base-config secret put BETTER_AUTH_SECRET
 ```
 
-Without the secret a Preview still runs, but nobody can sign in at `/editor`. Cron Triggers only fire in production, so the news search runs on a Preview only when an editor starts it.
+Without the secrets a Preview still runs, but nobody can sign in at `/editor`, and readers cannot sign in. Cron Triggers only fire in production, so the news search runs on a Preview only when an editor starts it.
 
 The news search and the article reader route through the AI Gateway named `sporelight` (the `AI_GATEWAY` var), which has to be created in the dashboard. Searches pay from AI Gateway credits, or from an Exa key stored on that gateway.
 

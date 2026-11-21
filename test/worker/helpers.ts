@@ -1,4 +1,5 @@
 import { env, exports } from 'cloudflare:workers'
+import worker from '../../worker/index.ts'
 import { EDITOR_TOKEN } from './editor-token.ts'
 
 export { EDITOR_TOKEN }
@@ -35,14 +36,64 @@ export async function seed() {
 }
 
 let ip = 0
+export const nextIp = () => `10.0.${Math.floor(++ip / 250)}.${ip % 250}`
+
 // The Worker limits each address to a few posts a minute, so every call comes
-// from a new one unless the test names it.
-export function post(path: string, body: unknown, from = `10.0.${Math.floor(++ip / 250)}.${ip % 250}`, token?: string) {
+// from a new one unless the test names it. `cookie` is a signed-in reader's.
+export function post(path: string, body: unknown, from = nextIp(), token?: string, cookie?: string) {
   return exports.default.fetch(`http://sporelight.test${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'cf-connecting-ip': from, ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    headers: {
+      'content-type': 'application/json',
+      'cf-connecting-ip': from,
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(cookie ? { cookie } : {}),
+    },
     body: typeof body === 'string' ? body : JSON.stringify(body),
   })
+}
+
+export type SentEmail = { from: { email: string; name: string }; to: string; subject: string; text: string }
+
+// The Worker with its email binding replaced, so a test can read the code it
+// sends. Sessions live in D1, so a cookie it hands out also works on `post`.
+export function mailbox() {
+  const sent: SentEmail[] = []
+  const mailEnv = { ...env, EMAIL: { send: async (message: SentEmail) => (sent.push(message), { messageId: `m-${sent.length}` }) } } as unknown as Env
+  const call = (path: string, body: unknown, from: string, cookie?: string) =>
+    worker.fetch(
+      new Request(`https://sporelight.test${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'cf-connecting-ip': from, origin: 'https://sporelight.test', ...(cookie ? { cookie } : {}) },
+        body: JSON.stringify(body),
+      }) as Request<unknown, IncomingRequestCfProperties>,
+      mailEnv,
+      {} as ExecutionContext,
+    )
+  return { sent, call }
+}
+
+export const askForCode = (mail: ReturnType<typeof mailbox>, email: string, from = nextIp()) =>
+  mail.call('/api/auth/email-otp/send-verification-otp', { email, type: 'sign-in' }, from)
+
+export const codeIn = (message: SentEmail) => /\b(\d{6})\b/.exec(message.text)?.[1] ?? ''
+
+export const cookieFrom = (res: Response) =>
+  res.headers
+    .getSetCookie()
+    .map((c) => c.split(';')[0])
+    .join('; ')
+
+// Signs in the way a browser does: ask for a code, read it from the email, send it back.
+export async function signIn(mail: ReturnType<typeof mailbox>, email: string): Promise<string> {
+  const before = mail.sent.length
+  const from = nextIp()
+  const asked = await askForCode(mail, email, from)
+  if (!asked.ok) throw new Error(`no code sent: ${asked.status} ${await asked.text()}`)
+  await until(() => mail.sent.length > before)
+  const res = await mail.call('/api/auth/sign-in/email-otp', { email, otp: codeIn(mail.sent.at(-1)!) }, from)
+  if (!res.ok) throw new Error(`not signed in: ${res.status} ${await res.text()}`)
+  return cookieFrom(res)
 }
 
 export const proposal = (overrides: Record<string, unknown> = {}) => ({
@@ -63,11 +114,12 @@ export const rows = async <T = Record<string, unknown>>(sql: string, ...binds: u
 
 const PARTY = 'http://sporelight.test/parties/tracker/main?proto=party-db'
 
-// What the browser's party-db client sends on a write.
-export function partyWrite(batches: unknown, token?: string) {
+// What the browser's party-db client sends on a write. A signed-in reader's
+// browser also sends their `cookie`.
+export function partyWrite(batches: unknown, token?: string, cookie?: string) {
   return exports.default.fetch(PARTY, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}), ...(cookie ? { cookie } : {}) },
     body: JSON.stringify(batches),
   })
 }
@@ -75,8 +127,8 @@ export function partyWrite(batches: unknown, token?: string) {
 export type Frame = { channel: string; seq: number | string; ops: { type: string; value: Record<string, unknown> }[] }
 
 // A party-db socket as the browser opens one, recording every batch it is sent.
-export async function partySocket(token?: string) {
-  const res = await exports.default.fetch(`${PARTY}${token ? `&token=${token}` : ''}`, { headers: { upgrade: 'websocket' } })
+export async function partySocket(token?: string, cookie?: string) {
+  const res = await exports.default.fetch(`${PARTY}${token ? `&token=${token}` : ''}`, { headers: { upgrade: 'websocket', ...(cookie ? { cookie } : {}) } })
   const ws = res.webSocket
   if (!ws) throw new Error(`no socket: ${res.status} ${await res.text()}`)
   const frames: Frame[] = []
