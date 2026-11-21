@@ -110,7 +110,7 @@ wrangler d1 execute DB --remote --file seed/remove-demo.sql
 
 Seeding writes rows directly and skips the sync log, so seed before readers are connected.
 
-Rows an editor makes on the site get random ids, which the seed never uses, so re-running the seed never overwrites them. An editor's changes to rows the seed made are overwritten when that data set is seeded again.
+Rows an editor makes on the site get random ids, which the seed never uses, so re-running the seed never overwrites them. An editor's changes to rows the seed made are overwritten when that data set is seeded again. What an editor adds to a seeded question, such as another person an ask is put to, is kept.
 
 `pnpm seed:build` also writes one file per data set (`seed/out/us-congress.sql`, `us-congress-asks.sql`, `us-states.sql`, `halifax.sql`). Seeding replaces rows, so to add a data set to a database editors have been working in, run only its file:
 
