@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { inEffect, type Question } from '../../shared/schema.ts'
 import { LIMITS, bodyOf, inputOf, nounOf, newQuestionRows, questionEdits, questionInserts, questionProblems, readQuestionForm, type Placement, type QuestionInput, type QuestionLinks } from '../lib/question-form.ts'
 import { commit } from '../lib/review.ts'
@@ -42,6 +42,14 @@ export function QuestionForm(props: QuestionFormProps) {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const top = useRef<HTMLDivElement>(null)
+  // The write is confirmed by the server, which can be after the editor has gone to another page.
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
   const body = tracker.bodyById.get(bodyId)
   const chambers = [...new Set(tracker.seats.filter((s) => s.body_id === bodyId && s.chamber).map((s) => s.chamber!))].sort()
@@ -84,7 +92,7 @@ export function QuestionForm(props: QuestionFormProps) {
       () => {
         setSaving(false)
         setSaved(true)
-        props.onSaved?.(result)
+        if (mounted.current) props.onSaved?.(result)
       },
       (err: unknown) => {
         setSaving(false)
@@ -240,7 +248,6 @@ export function QuestionForm(props: QuestionFormProps) {
           </fieldset>
         </Section>
       )}
-
 
       <Section title="Details">
         <div className="grid gap-4 sm:grid-cols-2">

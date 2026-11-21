@@ -620,3 +620,27 @@ test('a smaller step made from a question’s edit page is linked to it, and any
   await expect(page.getByRole('button', { name: 'Close this question' })).toBeVisible()
   await expect.poll(() => query(`SELECT status, closed_on FROM questions WHERE short_title = '${shortName}'`)).toEqual([{ status: 'open', closed_on: null }])
 })
+
+test('a question with a closing date still ahead offers to remove the date, not to reopen it', async ({ page }) => {
+  const stamp = Date.now()
+  const shortName = `Night fares ${stamp}`
+  const later = new Date(TODAY.getTime() + 30 * 86_400_000).toISOString().slice(0, 10)
+  await signInAsEditor(page)
+
+  await page.goto('/editor/questions/new?linkTo=free-ferry')
+  await page.getByLabel('The question, as asked').fill('Should night fares be cut?')
+  await page.getByLabel('Short name').fill(shortName)
+  await page.getByRole('button', { name: 'Add the question' }).click()
+  await expect(page.getByRole('heading', { name: 'Edit this question' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Close this question' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('radio', { name: /Lapsed/ }).check()
+  await dialog.getByLabel('Date').fill(later)
+  await dialog.getByRole('button', { name: 'Close the question' }).click()
+  await expect(page.getByText(/^Closes /)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Reopen this question' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Remove the closing date' }).click()
+  await expect(page.getByRole('button', { name: 'Close this question' })).toBeVisible()
+  await expect.poll(() => query(`SELECT status, closed_on FROM questions WHERE short_title = '${shortName}'`)).toEqual([{ status: 'open', closed_on: null }])
+})

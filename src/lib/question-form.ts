@@ -46,35 +46,35 @@ export type Placement =
 
 export const LIMITS = { title: 200, short_title: 60, description: 1000, act_label: 40, role_label: 80 } as const
 
-const text = (f: FormData, name: string) => {
+const textField = (f: FormData, name: string) => {
   const value = f.get(name)
   return typeof value === 'string' ? value.trim() : ''
 }
 const orNull = (value: string) => value || null
-const strings = (f: FormData, name: string) => f.getAll(name).map((v) => (typeof v === 'string' ? v.trim() : ''))
+const allFields = (f: FormData, name: string) => f.getAll(name).map((v) => (typeof v === 'string' ? v.trim() : ''))
 
 // Reads the form's named fields. People an ask is put to are rows of a
 // `decider_id` select and a `role_label` field, paired by their order.
 export function readQuestionForm(f: FormData): QuestionInput {
-  const roleLabels = strings(f, 'role_label')
-  const implies = text(f, 'implies_on_parent')
-  const threshold = text(f, 'threshold')
+  const roleLabels = allFields(f, 'role_label')
+  const implies = textField(f, 'implies_on_parent')
+  const threshold = textField(f, 'threshold')
   return {
-    title: text(f, 'title'),
-    short_title: text(f, 'short_title'),
-    description: orNull(text(f, 'description')),
-    kind: text(f, 'kind') === 'formal_act' ? 'formal_act' : 'position',
-    act_label: orNull(text(f, 'act_label')),
+    title: textField(f, 'title'),
+    short_title: textField(f, 'short_title'),
+    description: orNull(textField(f, 'description')),
+    kind: textField(f, 'kind') === 'formal_act' ? 'formal_act' : 'position',
+    act_label: orNull(textField(f, 'act_label')),
     threshold: threshold === '' ? null : Number(threshold),
     is_hot: f.get('is_hot') !== null,
-    reference_url: orNull(text(f, 'reference_url')),
-    decides_on: orNull(text(f, 'decides_on')),
-    chamber: orNull(text(f, 'chamber')),
+    reference_url: orNull(textField(f, 'reference_url')),
+    decides_on: orNull(textField(f, 'decides_on')),
+    chamber: orNull(textField(f, 'chamber')),
     implies_on_parent: (DIRECTIONS as readonly string[]).includes(implies) ? (implies as Direction) : null,
-    also_body_ids: [...new Set(strings(f, 'also_body_id').filter(Boolean))],
-    deciders: strings(f, 'decider_id').flatMap((decider_id, i) => (decider_id ? [{ decider_id, role_label: orNull(roleLabels[i] ?? '') }] : [])),
-    office_ids: [...new Set(strings(f, 'office_id').filter(Boolean))],
-    closes_on: orNull(text(f, 'closes_on')),
+    also_body_ids: [...new Set(allFields(f, 'also_body_id').filter(Boolean))],
+    deciders: allFields(f, 'decider_id').flatMap((decider_id, i) => (decider_id ? [{ decider_id, role_label: orNull(roleLabels[i] ?? '') }] : [])),
+    office_ids: [...new Set(allFields(f, 'office_id').filter(Boolean))],
+    closes_on: orNull(textField(f, 'closes_on')),
   }
 }
 

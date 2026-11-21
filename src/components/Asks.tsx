@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { useState, type FormEvent } from 'react'
-import type { Question } from '../../shared/schema.ts'
+import { isOpenOn, type Question } from '../../shared/schema.ts'
 import { db } from '../lib/db.ts'
 import { isEditor } from '../lib/editor.ts'
 import { nounOf } from '../lib/question-form.ts'
@@ -87,7 +87,7 @@ export function CloseQuestion({ question }: { question: Question }) {
     return (
       <span className="flex items-center gap-2">
         <button type="button" className="btn" onClick={() => save({ status: 'open', closed_on: null, closed_note: null })}>
-          Reopen this {noun}
+          {isOpenOn(question, today()) ? 'Remove the closing date' : `Reopen this ${noun}`}
         </button>
         {error && <span className="text-sm text-oppose">Not saved: {error}</span>}
       </span>
