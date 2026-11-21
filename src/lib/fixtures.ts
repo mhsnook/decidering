@@ -1,5 +1,5 @@
-import type { Act, Decider, Office, OfficeHolder, Proposal, ProposalItem, Question, QuestionDecider, Reading, Report, Role, Seat, Source, Stance } from '../../shared/schema.ts'
-import { stanceId } from '../../shared/schema.ts'
+import type { Act, Decider, Office, OfficeHolder, Position, Proposal, ProposalItem, Question, QuestionDecider, QuestionRelation, Reading, Report, Role, Seat, SetPosition, Source } from '../../shared/schema.ts'
+import { pairId } from '../../shared/schema.ts'
 import { buildTracker, type TrackerData } from './build-tracker.ts'
 
 // Row builders for tests: each takes the fields a test cares about and fills in the rest.
@@ -22,6 +22,7 @@ export const question = (id: string, over: Partial<Question> = {}): Question => 
   status: 'open',
   closed_on: null,
   closed_note: null,
+  decides_on: null,
   implies_on_parent: null,
   ...over,
 })
@@ -40,12 +41,13 @@ export const holder = (officeId: string, deciderId: string, starts_on: string | 
   certainty,
 })
 export const link = (questionId: string, deciderId: string, role_label: string | null = null): QuestionDecider => ({ id: `${questionId}:${deciderId}`, question_id: questionId, decider_id: deciderId, role_label })
-export const stance = (questionId: string, deciderId: string, position: Stance['position'], summary: string | null = null): Stance => ({ id: stanceId(questionId, deciderId), question_id: questionId, decider_id: deciderId, position, summary, updated_at: '2026-01-01T00:00:00.000Z' })
+export const setPosition = (questionId: string, deciderId: string, position: Position, reason = 'Set in a test.'): SetPosition => ({ id: pairId(questionId, deciderId), question_id: questionId, decider_id: deciderId, position, reason, set_at: '2026-01-01T00:00:00.000Z' })
+export const relation = (questionId: string, relatedId: string, kind: QuestionRelation['kind'] = 'smaller_step', sort = 0): QuestionRelation => ({ id: `${questionId}>${relatedId}`, question_id: questionId, related_id: relatedId, kind, sort })
 export const source = (id: string, over: Partial<Source> = {}): Source => ({ id, url: `https://example.com/${id}`, title: id, publisher: null, published_on: null, kind: null, archive_url: null, stored_copy: null, created_at: '2026-01-01T00:00:00.000Z', ...over })
 export const act = (id: string, deciderId: string, over: Partial<Act> = {}): Act => ({ id, decider_id: deciderId, kind: 'says', occurred_on: '2026-01-01', body: id, primary_source_id: null, withdrawn_on: null, created_at: '2026-01-01T00:00:00.000Z', ...over })
-export const report = (sourceId: string, actId: string, over: Partial<Report> = {}): Report => ({ id: `${sourceId}>${actId}`, source_id: sourceId, act_id: actId, excerpt: null, created_at: '2026-01-01T00:00:00.000Z', ...over })
-export const reading = (actId: string, questionId: string, position: Reading['position'], via: string | null = null): Reading => ({ id: `${actId}@${questionId}`, act_id: actId, question_id: questionId, position, bearing: 'direct', via_question_id: via, created_at: '2026-01-01T00:00:00.000Z' })
-export const proposal = (id: string, sourceId: string, over: Partial<Proposal> = {}): Proposal => ({ id, source_id: sourceId, origin: 'reader', submitted_by: null, status: 'pending', created_at: '2026-01-01T00:00:00.000Z', reviewed_at: null, ...over })
+export const report = (sourceId: string, actId: string, over: Partial<Report> = {}): Report => ({ id: `${sourceId}>${actId}`, source_id: sourceId, act_id: actId, excerpt: null, passage: null, created_at: '2026-01-01T00:00:00.000Z', ...over })
+export const reading = (actId: string, questionId: string, position: Reading['position'], via: string | null = null, weight: Reading['weight'] = 'clear'): Reading => ({ id: `${actId}@${questionId}`, act_id: actId, question_id: questionId, position, weight, via_question_id: via, created_at: '2026-01-01T00:00:00.000Z' })
+export const proposal = (id: string, sourceId: string, over: Partial<Proposal> = {}): Proposal => ({ id, source_id: sourceId, origin: 'reader', submitted_by: null, status: 'pending', unread: null, created_at: '2026-01-01T00:00:00.000Z', reviewed_at: null, ...over })
 export const item = (id: string, proposalId: string, deciderId: string, questionId: string, over: Partial<ProposalItem> = {}): ProposalItem => ({
   id,
   proposal_id: proposalId,
@@ -56,10 +58,9 @@ export const item = (id: string, proposalId: string, deciderId: string, question
   kind: 'says',
   occurred_on: null,
   quote: `words of ${id}`,
+  passage: null,
   reading: null,
-  bearing: 'direct',
-  position: null,
-  summary: null,
+  weight: null,
   status: 'pending',
   ...over,
 })
@@ -75,7 +76,8 @@ export const data = (over: Partial<TrackerData>): TrackerData => ({
   offices: [],
   officeHolders: [],
   questionOffices: [],
-  stances: [],
+  questionRelations: [],
+  setPositions: [],
   sources: [],
   acts: [],
   reports: [],

@@ -1,8 +1,9 @@
 import {
-  stanceId,
+  carriesUp,
+  pairId,
   type Act,
   type ActKind,
-  type Bearing,
+  type Direction,
   type Position,
   type Proposal,
   type ProposalItem,
@@ -10,8 +11,9 @@ import {
   type Question,
   type Reading,
   type Report,
+  type SetPosition,
   type Source,
-  type Stance,
+  type Weight,
 } from '../../shared/schema.ts'
 
 type Rows = {
@@ -19,7 +21,7 @@ type Rows = {
   acts: Act
   reports: Report
   readings: Reading
-  stances: Stance
+  set_positions: SetPosition
   proposals: Proposal
   proposal_items: ProposalItem
   proposal_notes: ProposalNote
@@ -38,44 +40,53 @@ export type Published = {
   acts: Act[]
   reports: Report[]
   readings: Reading[]
-  stances: Stance[]
+  setPositions: SetPosition[]
 }
 
-export type ItemVerdict =
-  | { item: ProposalItem; accept: false; comment: string | null }
+// What an editor decided about the position set by hand for one person on one
+// question, alongside publishing an act. `keep` may reword the reason. A note
+// on lifting is for editors only.
+export type PositionDecision =
+  | { question_id: string; action: 'set'; position: Position; reason: string }
+  | { question_id: string; action: 'keep'; reason: string | null }
+  | { question_id: string; action: 'lift'; note: string | null }
+
+// One act by one person as the editor left it: published with a reading on
+// each question listed, or dismissed. `items` are the proposal's rows for the
+// act. A reading with no item was added in the review form, as is a whole
+// entry with none.
+export type EntryVerdict = { decider_id: string; items: ProposalItem[]; note: string | null } & (
+  | { publish: false }
   | {
-      item: ProposalItem
-      accept: true
-      question_id: string
-      // An act on file, or the id the new act takes. Accepted items of one
-      // proposal that share it publish a single act.
+      publish: true
+      // An act on file, or the id the new act takes.
       act_id: string
       kind: ActKind
       occurred_on: string
       quote: string
-      reading: Position
-      bearing: Bearing
-      position: Position
-      summary: string | null
-      comment: string | null
+      passage: string | null
+      weight: Weight
+      readings: { question_id: string; reading: Direction; item: ProposalItem | null }[]
+      decision: PositionDecision | null
     }
+)
 
 export type Verdict = {
-  source_title: string | null
   review_note: string | null
-  items: ItemVerdict[]
+  entries: EntryVerdict[]
 }
 
 // The store sends a transaction as one batch per table, in the order each table
 // first appears, and every batch may only point at rows an earlier one wrote.
 // Plans list their writes in an order that respects that.
-const APPROVAL_ORDER: (keyof Rows)[] = ['sources', 'acts', 'reports', 'readings', 'stances', 'proposal_items', 'proposal_notes', 'proposals']
+const APPROVAL_ORDER: (keyof Rows)[] = ['sources', 'acts', 'reports', 'readings', 'set_positions', 'proposal_items', 'proposal_notes', 'proposals']
 
 // Everything publishing one reviewed proposal changes, as a list of writes for
 // a single transaction. Every row it writes is stamped with the same `now`:
-// the feed groups reports of one source with one timestamp into one story. Each accepted item publishes its act (unless it is on
-// file), a report of it in the proposal's source, its reading on the item's
-// question, and the stance the editor set. Rejected items only change status.
+// the feed groups reports of one source with one timestamp into one story.
+// Each published entry writes its act (unless it is on file), a report of it
+// in the proposal's source, and a reading on each question it is read on.
+// Dismissed entries only change the status of their items.
 export function planReview(
   published: Published,
   proposal: Proposal,
@@ -87,118 +98,110 @@ export function planReview(
   const writes: Write[] = []
   const questionById = new Map(published.questions.map((q) => [q.id, q]))
   const actIds = new Set(published.acts.map((a) => a.id))
-  const newActIds = new Set<string>()
   const reported = new Set(published.reports.map((r) => `${r.source_id} ${r.act_id}`))
   const readingByPair = new Map(published.readings.map((r) => [`${r.act_id} ${r.question_id}`, r]))
   const newReadings = new Map<string, Reading>()
-  const stanceById = new Map(published.stances.map((s) => [s.id, s]))
-  const newStances = new Map<string, Stance>()
+  const setPositionIds = new Set(published.setPositions.map((s) => s.id))
+  let nextSort = Math.max(-1, ...verdict.entries.flatMap((e) => e.items.map((i) => i.sort))) + 1
 
-  const read = (actId: string, questionId: string, position: Position, bearing: Bearing, via: string | null) => {
+  const read = (actId: string, questionId: string, position: Direction, weight: Weight, via: string | null) => {
     const key = `${actId} ${questionId}`
     const mine = newReadings.get(key)
     const existing = mine ?? readingByPair.get(key)
     if (!existing) {
-      const row: Reading = { id: newId(), act_id: actId, question_id: questionId, position, bearing, via_question_id: via, created_at: now }
+      const row: Reading = { id: newId(), act_id: actId, question_id: questionId, position, weight, via_question_id: via, created_at: now }
       newReadings.set(key, row)
       writes.push({ on: 'readings', type: 'insert', row })
     } else if (via) {
       // A reading implied by a sub-question never replaces one already there.
     } else if (mine) {
-      Object.assign(mine, { position, bearing, via_question_id: null })
-    } else if (existing.position !== position || existing.bearing !== bearing || existing.via_question_id) {
+      Object.assign(mine, { position, weight, via_question_id: null })
+    } else if (existing.position !== position || existing.weight !== weight || existing.via_question_id) {
       // Read directly, it stops being a reading the sub-question implied.
-      writes.push({ on: 'readings', type: 'update', id: existing.id, changes: { position, bearing, via_question_id: null } })
+      writes.push({ on: 'readings', type: 'update', id: existing.id, changes: { position, weight, via_question_id: null } })
     }
   }
 
-  const stand = (questionId: string, deciderId: string, position: Position, summary: string | null, onlyIfMissing = false) => {
-    const id = stanceId(questionId, deciderId)
-    const pending = newStances.get(id)
-    if (pending) {
-      if (!onlyIfMissing) Object.assign(pending, { position, summary })
-    } else if (stanceById.has(id)) {
-      if (!onlyIfMissing) writes.push({ on: 'stances', type: 'update', id, changes: { position, summary, updated_at: now } })
-    } else {
-      const row: Stance = { id, question_id: questionId, decider_id: deciderId, position, summary, updated_at: now }
-      newStances.set(id, row)
-      writes.push({ on: 'stances', type: 'insert', row })
-    }
-  }
+  const note = (body: string, itemId: string | null) =>
+    writes.push({ on: 'proposal_notes', type: 'insert', row: { id: newId(), proposal_id: proposal.id, proposal_item_id: itemId, kind: 'review', body, created_at: now } })
 
-  if (verdict.source_title !== source.title) writes.push({ on: 'sources', type: 'update', id: source.id, changes: { title: verdict.source_title } })
-
-  for (const v of verdict.items) {
-    if (v.comment) {
-      writes.push({
-        on: 'proposal_notes',
-        type: 'insert',
-        row: { id: newId(), proposal_id: proposal.id, proposal_item_id: v.item.id, kind: 'review', body: v.comment, created_at: now },
-      })
-    }
-    if (!v.accept) {
-      writes.push({ on: 'proposal_items', type: 'update', id: v.item.id, changes: { status: 'rejected' } })
+  for (const entry of verdict.entries) {
+    if (!entry.publish) {
+      for (const item of entry.items) writes.push({ on: 'proposal_items', type: 'update', id: item.id, changes: { status: 'rejected' } })
+      if (entry.note && entry.items[0]) note(entry.note, entry.items[0].id)
       continue
     }
-    const question = questionById.get(v.question_id)
-    if (!question) throw new Error(`Unknown question ${v.question_id}`)
-    const deciderId = v.item.decider_id
+    if (entry.readings.length === 0) throw new Error('An entry needs a reading on at least one question to be published.')
 
-    const isNewAct = !actIds.has(v.act_id)
-    if (isNewAct && !newActIds.has(v.act_id)) {
-      newActIds.add(v.act_id)
+    const isNewAct = !actIds.has(entry.act_id)
+    if (isNewAct) {
+      actIds.add(entry.act_id)
       writes.push({
         on: 'acts',
         type: 'insert',
-        row: { id: v.act_id, decider_id: deciderId, kind: v.kind, occurred_on: v.occurred_on, body: v.quote, primary_source_id: null, withdrawn_on: null, created_at: now },
+        row: { id: entry.act_id, decider_id: entry.decider_id, kind: entry.kind, occurred_on: entry.occurred_on, body: entry.quote, primary_source_id: null, withdrawn_on: null, created_at: now },
       })
     }
-    if (!reported.has(`${source.id} ${v.act_id}`)) {
-      reported.add(`${source.id} ${v.act_id}`)
-      // For an act already on file the item's words are this source's wording of it.
+    if (!reported.has(`${source.id} ${entry.act_id}`)) {
+      reported.add(`${source.id} ${entry.act_id}`)
+      // For an act already on file the entry's words are this source's wording of it.
       writes.push({
         on: 'reports',
         type: 'insert',
-        row: { id: newId(), source_id: source.id, act_id: v.act_id, excerpt: isNewAct ? null : v.quote, created_at: now },
+        row: { id: newId(), source_id: source.id, act_id: entry.act_id, excerpt: isNewAct ? null : entry.quote, passage: entry.passage, created_at: now },
       })
     }
 
-    read(v.act_id, question.id, v.reading, v.bearing, null)
-    stand(question.id, deciderId, v.position, v.summary)
-    // Doing the thing a sub-question asks about says something on its parent
-    // too, if the sub-question says what. An indirect reading is too loose to
-    // carry upward.
-    if (question.implies_on_parent && question.parent_id && v.reading === 'support' && v.bearing === 'direct') {
-      read(v.act_id, question.parent_id, question.implies_on_parent, 'direct', question.id)
-      stand(question.parent_id, deciderId, question.implies_on_parent, v.summary, true)
+    const facts = { act_id: entry.act_id, kind: entry.kind, occurred_on: entry.occurred_on, quote: entry.quote, passage: entry.passage, weight: entry.weight }
+    const kept = new Set<string>()
+    let firstItemId: string | null = null
+    for (const r of entry.readings) {
+      const question = questionById.get(r.question_id)
+      if (!question) throw new Error(`Unknown question ${r.question_id}`)
+      read(entry.act_id, question.id, r.reading, entry.weight, null)
+      // Doing the thing a sub-question asks about says something on its parent
+      // too, if the sub-question says what. A passing or presumed reading is too loose
+      // to carry upward.
+      if (question.implies_on_parent && question.parent_id && r.reading === 'support' && carriesUp(entry.weight)) {
+        read(entry.act_id, question.parent_id, question.implies_on_parent, entry.weight, question.id)
+      }
+      if (r.item) {
+        kept.add(r.item.id)
+        firstItemId ??= r.item.id
+        writes.push({ on: 'proposal_items', type: 'update', id: r.item.id, changes: { ...facts, status: 'accepted', question_id: r.question_id, reading: r.reading } })
+      } else {
+        const id = newId()
+        firstItemId ??= id
+        writes.push({
+          on: 'proposal_items',
+          type: 'insert',
+          row: { ...facts, id, proposal_id: proposal.id, sort: nextSort++, decider_id: entry.decider_id, question_id: r.question_id, reading: r.reading, status: 'accepted' },
+        })
+      }
     }
+    // A reading the editor took off the act.
+    for (const item of entry.items) if (!kept.has(item.id)) writes.push({ on: 'proposal_items', type: 'update', id: item.id, changes: { status: 'rejected' } })
+    if (entry.note) note(entry.note, firstItemId)
 
-    writes.push({
-      on: 'proposal_items',
-      type: 'update',
-      id: v.item.id,
-      changes: {
-        status: 'accepted',
-        question_id: v.question_id,
-        act_id: v.act_id,
-        kind: v.kind,
-        occurred_on: v.occurred_on,
-        quote: v.quote,
-        reading: v.reading,
-        bearing: v.bearing,
-        position: v.position,
-        summary: v.summary,
-      },
-    })
+    const decision = entry.decision
+    if (decision) {
+      const id = pairId(decision.question_id, entry.decider_id)
+      const isSet = setPositionIds.has(id)
+      if (decision.action === 'set') {
+        const row: SetPosition = { id, question_id: decision.question_id, decider_id: entry.decider_id, position: decision.position, reason: decision.reason, set_at: now }
+        writes.push(isSet ? { on: 'set_positions', type: 'update', id, changes: { position: row.position, reason: row.reason, set_at: now } } : { on: 'set_positions', type: 'insert', row })
+        setPositionIds.add(id)
+      } else if (decision.action === 'keep') {
+        if (isSet && decision.reason) writes.push({ on: 'set_positions', type: 'update', id, changes: { reason: decision.reason } })
+      } else if (isSet) {
+        writes.push({ on: 'set_positions', type: 'delete', id })
+        setPositionIds.delete(id)
+        note(`Lifted the position set by editors.${decision.note ? ` ${decision.note}` : ''}`, firstItemId)
+      }
+    }
   }
 
-  if (verdict.review_note) {
-    writes.push({
-      on: 'proposal_notes',
-      type: 'insert',
-      row: { id: newId(), proposal_id: proposal.id, proposal_item_id: null, kind: 'review', body: verdict.review_note, created_at: now },
-    })
-  }
+  if (verdict.review_note) note(verdict.review_note, null)
   writes.push({ on: 'proposals', type: 'update', id: proposal.id, changes: { status: 'reviewed', reviewed_at: now } })
 
   return writes.sort((a, b) => APPROVAL_ORDER.indexOf(a.on) - APPROVAL_ORDER.indexOf(b.on))

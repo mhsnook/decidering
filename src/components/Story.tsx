@@ -1,10 +1,10 @@
 import { Link } from '@tanstack/react-router'
-import { useState, type ReactNode } from 'react'
-import type { Bearing, Position, Proposal, Question, Source } from '../../shared/schema.ts'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import type { Decider, Position, Proposal, Question, SetPosition, Source, Weight } from '../../shared/schema.ts'
 import type { Story, StoryItem, WaitingStory } from '../lib/feed.ts'
 import { KIND_LABEL, SPECTRUM, STANDING_COLOR, formatDate, hostOf, sourceLabel, standingLabel } from '../lib/position.ts'
 import { Token } from './bits.tsx'
-import { ActWords, ArchivedCopy, IndirectTag } from './RecordItem.tsx'
+import { ActWords, ArchivedCopy, WeightTag } from './RecordItem.tsx'
 
 // Replies shown before a reader opens the rest of a story.
 const FOLDED = 3
@@ -54,7 +54,7 @@ function PersonLink({ slug, decider, hash, className = 'font-bold hover:underlin
 }
 
 // What one reading, published or claimed, shows on one question. `lead` goes first: a token, or "Claimed:".
-function ReadingLine({ decider, position, question, via, bearing, lead }: { decider: StoryItem['decider']; position: Position; question: Question; via?: Question; bearing: Bearing; lead: ReactNode }) {
+function ReadingLine({ decider, position, question, via, weight, lead }: { decider: StoryItem['decider']; position: Position; question: Question; via?: Question; weight: Weight | null; lead: ReactNode }) {
   return (
     <li className="flex flex-wrap items-center gap-x-1.5">
       {lead}
@@ -64,9 +64,9 @@ function ReadingLine({ decider, position, question, via, bearing, lead }: { deci
         {question.short_title}
       </PersonLink>
       {via && <span className="text-muted">through {via.short_title}</span>}
-      {bearing === 'indirect' && (
+      {(weight === 'passing' || weight === 'presumed') && (
         <span className="text-xs text-muted">
-          <IndirectTag />
+          <WeightTag weight={weight} />
         </span>
       )}
     </li>
@@ -129,7 +129,7 @@ export function StoryCard({ story }: { story: Story }) {
                   {!item.isNew && ' · already on the record'}
                 </span>
               </p>
-              <ActWords kind={item.act.kind} words={item.words} />
+              <ActWords kind={item.act.kind} words={item.words} passage={item.passage} />
               <ul className="space-y-0.5 text-sm">
                 {item.readings.map(({ reading, question, via }) => (
                   <ReadingLine
@@ -138,7 +138,7 @@ export function StoryCard({ story }: { story: Story }) {
                     position={reading.position}
                     question={question}
                     via={via}
-                    bearing={reading.bearing}
+                    weight={reading.weight}
                     lead={<Token standing={reading.position} className="size-3" />}
                   />
                 ))}
@@ -151,12 +151,30 @@ export function StoryCard({ story }: { story: Story }) {
   )
 }
 
+// Says that a report waiting for review sits across from a position editors
+// set. `yours` is for the reader who just sent it.
+export function AcrossNotice({ decider, question, set, yours = false }: { decider: Pick<Decider, 'name'>; question: Question; set: SetPosition; yours?: boolean }) {
+  return (
+    <div className="flex flex-col gap-1.5 rounded-[14px] border-2 border-ink bg-surface px-4 py-3.5 shadow-hard-md">
+      <p className="text-[17px] font-extrabold">This report would change the position we recorded for {decider.name}.</p>
+      <p className="text-[15px] leading-normal text-muted">
+        Their page still shows {standingLabel(set.position, question)}, set by editors on {formatDate(set.set_at)}, until our editors have a chance to review {yours ? 'your report' : 'it'}.
+      </p>
+    </div>
+  )
+}
+
 // Unchecked, so it stays one line until a reader opens it, and then asks them to check it.
-export function WaitingStoryCard({ story }: { story: WaitingStory }) {
-  const [open, setOpen] = useState(false)
+// `linked` is for the proposal a link asked for: it starts open and is scrolled to.
+export function WaitingStoryCard({ story, linked = false }: { story: WaitingStory; linked?: boolean }) {
+  const [open, setOpen] = useState(linked)
+  const card = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (linked) card.current?.scrollIntoView({ block: 'start' })
+  }, [linked])
   const claims = story.items.flatMap(({ decider, claims }) => claims.map((claim) => ({ decider, claim })))
   return (
-    <article className="rounded-lg border-2 border-dashed border-line bg-paper/70 text-sm" aria-label={`Not checked yet: ${story.source ? sourceLabel(story.source) : 'a proposal'}`} data-waiting>
+    <article ref={card} className="scroll-mt-4 rounded-lg border-2 border-dashed border-line bg-paper/70 text-sm" aria-label={`Not checked yet: ${story.source ? sourceLabel(story.source) : 'a proposal'}`} data-waiting>
       <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="block w-full cursor-pointer space-y-0.5 px-3 py-2 text-left text-xs">
         <span className="flex items-baseline gap-x-2">
           <span className="tag shrink-0 text-[11px]">Not checked yet</span>
@@ -195,16 +213,27 @@ export function WaitingStoryCard({ story }: { story: WaitingStory }) {
                       {occurred_on && ` · ${formatDate(occurred_on)}`}
                     </span>
                   </p>
-                  <ActWords kind={kind} words={quote} />
+                  <ActWords kind={kind} words={quote} passage={claims[0].item.passage} />
                   <ul className="space-y-0.5">
                     {claims.map(({ item, question, reading }) => (
-                      <ReadingLine key={item.id} decider={decider} position={reading} question={question} bearing={item.bearing} lead={<span className="text-muted">Claimed:</span>} />
+                      <ReadingLine key={item.id} decider={decider} position={reading} question={question} weight={item.weight} lead={<span className="text-muted">Claimed:</span>} />
                     ))}
                   </ul>
                 </li>
               )
             })}
           </ol>
+          {story.items.flatMap(({ key, decider, claims }) =>
+            claims.flatMap((c) =>
+              c.across
+                ? [
+                    <div key={`${key}:${c.item.id}`} className="px-4 pb-3">
+                      <AcrossNotice decider={decider} question={c.question} set={c.across} />
+                    </div>,
+                  ]
+                : [],
+            ),
+          )}
           <div className="space-y-2 border-t-2 border-dashed border-ink bg-mint/50 px-4 py-3">
             <p className="font-bold">Can you review this?</p>
             <p>

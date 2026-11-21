@@ -1,4 +1,4 @@
-import type { Act, Decider, Proposal, ProposalItem, Question, Reading, Source } from '../../shared/schema.ts'
+import type { Act, Decider, Proposal, ProposalItem, Question, Reading, SetPosition, Source } from '../../shared/schema.ts'
 import { groupBy, type Tracker } from './build-tracker.ts'
 import type { Standing } from './position.ts'
 
@@ -16,6 +16,8 @@ export type StoryItem = {
   // The source's own words for the act. They differ from the act's when an
   // earlier source put the act on file.
   words: string
+  // The passage of the source those words sit in, if it was kept.
+  passage: string | null
   // False when the source reports an act already on the record.
   isNew: boolean
 }
@@ -37,7 +39,8 @@ export type WaitingItem = {
   decider: Decider
   // The first claim's item carries the act's kind, date and words.
   // Where the person stands on the question before this claim, which counts only once an editor checks it.
-  claims: { item: ProposalItem; question: Question; reading: NonNullable<ProposalItem['reading']>; before: Standing }[]
+  // `across` is the position editors set by hand, when the claim sits on the other side of it.
+  claims: { item: ProposalItem; question: Question; reading: NonNullable<ProposalItem['reading']>; before: Standing; across: SetPosition | undefined }[]
 }
 
 // A proposal waiting for review: its source and the acts it claims. Nobody has
@@ -98,7 +101,7 @@ export function buildStories(tracker: Tracker, filter: FeedFilter = {}): Story[]
       })
       .sort((a, b) => Number(b.matches) - Number(a.matches) || Number(a.via !== undefined) - Number(b.via !== undefined) || a.question.sort - b.question.sort)
     if (!readings[0]?.matches) continue
-    const item: StoryItem = { act, decider, readings: readings.map(({ matches: _, ...r }) => r), words: report.excerpt ?? act.body, isNew: act.created_at >= report.created_at }
+    const item: StoryItem = { act, decider, readings: readings.map(({ matches: _, ...r }) => r), words: report.excerpt ?? act.body, passage: report.passage, isNew: act.created_at >= report.created_at }
     const isDemo = readings.some((r) => isDemoQuestion(tracker, r.question))
     const key = `${source.id}@${report.created_at}`
     const story = byKey.get(key)
@@ -131,7 +134,7 @@ export function buildWaiting(tracker: Tracker, proposals: Proposal[], items: Pro
       stories.set(proposal.id, story)
     }
     story.isDemo ||= isDemoQuestion(tracker, question)
-    const claim = { item, question, reading: item.reading, before: tracker.standingFor(question, decider.id) }
+    const claim = { item, question, reading: item.reading, before: tracker.standingFor(question, decider.id), across: tracker.acrossFor(question, decider.id, item.reading) }
     const existing = story.items.find((i) => i.key === item.act_id)
     if (existing) existing.claims.push(claim)
     else story.items.push({ key: item.act_id, decider, claims: [claim] })
@@ -160,9 +163,18 @@ const isAfter = (f: FeedStory, cursor: string) => {
 // `older` is the cursor for the next page.
 export function feedPage(feed: FeedStory[], before: string | undefined, size = STORY_PAGE): { page: FeedStory[]; older: string | undefined; isFirst: boolean } {
   const start = before && before.includes('|') ? feed.findIndex((f) => isAfter(f, before)) : 0
-  const from = start === -1 ? feed.length : start
+  return pageFrom(feed, start === -1 ? feed.length : start, size)
+}
+
+function pageFrom(feed: FeedStory[], from: number, size: number) {
   const page = feed.slice(from, from + size)
   return { page, older: from + size < feed.length ? cursorOf(page[page.length - 1]) : undefined, isFirst: from === 0 }
+}
+
+// The page that holds one story, in the same shape as `feedPage`, or null if the feed does not have it.
+export function pageHolding(feed: FeedStory[], key: string, size = STORY_PAGE): ReturnType<typeof feedPage> | null {
+  const at = feed.findIndex((f) => f.story.key === key)
+  return at === -1 ? null : pageFrom(feed, Math.floor(at / size) * size, size)
 }
 
 // The Atom feed of the same selection. It carries published stories only.

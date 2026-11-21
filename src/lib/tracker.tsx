@@ -5,7 +5,7 @@ import { useLiveQuery } from '@tanstack/react-db'
 import { db } from './db.ts'
 import { buildTracker, type Tracker } from './build-tracker.ts'
 
-export { isHeld, type Contender, type HeldSeat, type KeyPerson, type RecordEntry, type SeatRow, type Tenure, type Tracker } from './build-tracker.ts'
+export { isHeld, type Contender, type Listing, type RelatedQuestion, type HeldSeat, type KeyPerson, type RecordEntry, type SeatRow, type Tenure, type Tracker } from './build-tracker.ts'
 
 export const today = () => new Date().toISOString().slice(0, 10)
 
@@ -25,7 +25,8 @@ export function TrackerProvider({ asOf, children }: { asOf?: string; children: R
   const offices = useLiveQuery((q) => q.from({ row: db.offices }))
   const officeHolders = useLiveQuery((q) => q.from({ row: db.office_holders }))
   const questionOffices = useLiveQuery((q) => q.from({ row: db.question_offices }))
-  const stances = useLiveQuery((q) => q.from({ row: db.stances }))
+  const questionRelations = useLiveQuery((q) => q.from({ row: db.question_relations }))
+  const setPositions = useLiveQuery((q) => q.from({ row: db.set_positions }))
   const sources = useLiveQuery((q) => q.from({ row: db.sources }))
   const acts = useLiveQuery((q) => q.from({ row: db.acts }))
   const reports = useLiveQuery((q) => q.from({ row: db.reports }))
@@ -45,15 +46,16 @@ export function TrackerProvider({ asOf, children }: { asOf?: string; children: R
         offices: offices.data,
         officeHolders: officeHolders.data,
         questionOffices: questionOffices.data,
-        stances: stances.data,
+        questionRelations: questionRelations.data,
+        setPositions: setPositions.data,
         sources: sources.data,
         acts: acts.data,
         reports: reports.data,
         readings: readings.data,
       }, day),
-    [bodies.data, deciders.data, seats.data, roles.data, questions.data, questionBodies.data, questionDeciders.data, offices.data, officeHolders.data, questionOffices.data, stances.data, sources.data, acts.data, reports.data, readings.data, day],
+    [bodies.data, deciders.data, seats.data, roles.data, questions.data, questionBodies.data, questionDeciders.data, offices.data, officeHolders.data, questionOffices.data, questionRelations.data, setPositions.data, sources.data, acts.data, reports.data, readings.data, day],
   )
-  const isReady = [bodies, deciders, seats, roles, questions, questionBodies, questionDeciders, offices, officeHolders, questionOffices, stances, sources, acts, reports, readings].every((q) => q.isReady)
+  const isReady = [bodies, deciders, seats, roles, questions, questionBodies, questionDeciders, offices, officeHolders, questionOffices, questionRelations, setPositions, sources, acts, reports, readings].every((q) => q.isReady)
 
   return <TrackerContext value={{ tracker, isReady }}>{children}</TrackerContext>
 }

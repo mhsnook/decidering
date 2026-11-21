@@ -1,6 +1,6 @@
-import type { Act, Body, Decider, Office, OfficeHolder, Question, QuestionBody, QuestionDecider, QuestionOffice, Reading, Report, Role, Seat, Source, Stance } from '../../shared/schema.ts'
-import { inEffect, isOpenOn, stanceId, type Certainty } from '../../shared/schema.ts'
-import { footingOf, type Footing } from '../../shared/standing.ts'
+import type { Act, Body, Decider, Office, OfficeHolder, Position, Question, QuestionBody, QuestionDecider, QuestionOffice, QuestionRelation, Reading, Report, Role, Seat, SetPosition, Source } from '../../shared/schema.ts'
+import { inEffect, isOpenOn, pairId, type Certainty } from '../../shared/schema.ts'
+import { calculatePosition, footingOf, isAcross, type Footing } from '../../shared/standing.ts'
 import type { Standing } from './position.ts'
 
 export function groupBy<T, K>(items: readonly T[], key: (item: T) => K): Map<K, T[]> {
@@ -31,11 +31,17 @@ export type RecordEntry = {
   onRecord: boolean
 }
 
-export type Contender = {
+// Where someone is listed on a question. `calculated` is what their record
+// works out to; `set` is the position editors set by hand, which is shown
+// instead for as long as it exists.
+export type Listing = { standing: Standing; calculated: Standing; set: SetPosition | undefined }
+
+// Another question an act on this one may also be read on.
+export type RelatedQuestion = { question: Question; kind: 'smaller_step' | 'fuller_proposal' | 'related' }
+
+export type Contender = Listing & {
   decider: Decider
   role: Role
-  stance: Stance | undefined
-  standing: Standing
   record: RecordEntry[]
   footing: Footing
 }
@@ -72,7 +78,8 @@ export type TrackerData = {
   offices: Office[]
   officeHolders: OfficeHolder[]
   questionOffices: QuestionOffice[]
-  stances: Stance[]
+  questionRelations: QuestionRelation[]
+  setPositions: SetPosition[]
   sources: Source[]
   acts: Act[]
   reports: Report[]
@@ -88,7 +95,7 @@ export function buildTracker(c: TrackerData, asOf: string) {
   const questionById = indexBy(c.questions, (q) => q.id)
   const questionBySlug = indexBy(c.questions, (q) => q.slug)
   const seatById = indexBy(c.seats, (s) => s.id)
-  const stanceById = indexBy(c.stances, (s) => s.id)
+  const setPositionById = indexBy(c.setPositions, (s) => s.id)
   const sourceById = indexBy(c.sources, (s) => s.id)
   const actById = indexBy(c.acts, (a) => a.id)
   const seatsByBody = groupBy(c.seats, (s) => s.body_id)
@@ -150,11 +157,8 @@ export function buildTracker(c: TrackerData, asOf: string) {
   // Measures and asks alike: every question directly under this one.
   const subQuestionsOf = (questionId: string): Question[] => [...(measuresOf.get(questionId) ?? []), ...(asksOf.get(questionId) ?? [])]
 
-  const entriesByPair = new Map<string, RecordEntry[]>()
-  for (const reading of c.readings) {
-    const act = actById.get(reading.act_id)
-    if (!act) continue
-    const reports = reportsOf(act)
+  // One act as it bears on one question, by the rules for what lapses and what binds.
+  const entryOf = (act: Act, reading: Reading): RecordEntry => {
     const question = questionById.get(reading.question_id)
     const via = reading.via_question_id ? questionById.get(reading.via_question_id) : undefined
     // A closed question is read as it stood when it closed, so its page keeps
@@ -162,9 +166,16 @@ export function buildTracker(c: TrackerData, asOf: string) {
     const day = question && !isOpen(question) && question.closed_on ? question.closed_on : asOf
     const lapse =
       act.kind !== 'commits' ? null : act.withdrawn_on && act.withdrawn_on <= day ? ('withdrawn' as const) : via && !isOpenOn(via, day) ? ('closed' as const) : null
-    const onRecord = reading.bearing === 'direct' && (act.kind === 'does' || (act.kind === 'commits' && lapse === null))
-    const entry: RecordEntry = { act, reading, via, reports, lapse, onRecord }
-    const key = stanceId(reading.question_id, act.decider_id)
+    const onRecord = reading.weight === 'concrete' && (act.kind === 'does' || (act.kind === 'commits' && lapse === null))
+    return { act, reading, via, reports: reportsOf(act), lapse, onRecord }
+  }
+
+  const entriesByPair = new Map<string, RecordEntry[]>()
+  for (const reading of c.readings) {
+    const act = actById.get(reading.act_id)
+    if (!act) continue
+    const entry = entryOf(act, reading)
+    const key = pairId(reading.question_id, act.decider_id)
     const list = entriesByPair.get(key)
     if (list) list.push(entry)
     else entriesByPair.set(key, [entry])
@@ -173,33 +184,73 @@ export function buildTracker(c: TrackerData, asOf: string) {
 
   // A decider's record on a question is the readings on that question alone. A
   // reading on a sub-question appears here only if it was also written here.
-  const recordFor = (question: Question, deciderId: string): RecordEntry[] => entriesByPair.get(stanceId(question.id, deciderId)) ?? []
+  const recordFor = (question: Question, deciderId: string): RecordEntry[] => entriesByPair.get(pairId(question.id, deciderId)) ?? []
 
   const agreed = (entries: RecordEntry[]): Standing => {
     const positions = new Set(entries.map((e) => e.reading.position))
     return positions.size === 0 ? 'unknown' : positions.size === 1 ? [...positions][0] : 'mixed'
   }
 
-  // Where someone stands, and the stance behind it if one still describes it.
-  // On a formal-act question the standing is read off the record: the acts that
-  // bind them there and still hold. Nobody sets it by hand, so a withdrawn
-  // cosponsorship is "has not" the day it is withdrawn. Anywhere else it is the
-  // position an editor judged from the whole record, with one exception. When
-  // every entry on the record came by way of a sub-question, no editor has read
-  // anything on this question itself and the stance was written by implication,
-  // so the standing is what those acts imply for as long as they are not taken
-  // back. A measure closing does not take them back.
-  function positionOf(question: Question, deciderId: string): { standing: Standing; stance: Stance | undefined } {
-    const record = recordFor(question, deciderId)
-    const stance = stanceById.get(stanceId(question.id, deciderId))
-    if (question.kind === 'formal_act') return { standing: agreed(record.filter((e) => e.onRecord)), stance }
-    const impliedOnly = record.length > 0 && record.every((e) => e.reading.via_question_id)
-    if (!impliedOnly) return { standing: stance?.position ?? 'unknown', stance }
-    const standing = agreed(record.filter((e) => e.lapse !== 'withdrawn'))
-    return { standing, stance: stance?.position === standing ? stance : undefined }
+  // What a record works out to on a position question.
+  const calculate = (record: RecordEntry[]): Standing =>
+    calculatePosition(record.map((e) => ({ position: e.reading.position, weight: e.reading.weight, occurred_on: e.act.occurred_on, inForce: e.lapse !== 'withdrawn' }))) ?? 'unknown'
+
+  // Where someone is listed. On a formal-act question that is read off the
+  // acts that bind them there and still hold, so a withdrawn cosponsorship is
+  // "has not" from the day it is withdrawn, and nobody sets it by hand.
+  // Anywhere else it is what their record works out to, unless editors have
+  // set a position, which is shown instead. `extra` is a record entry not on
+  // file yet, to see where publishing it would leave them.
+  function listingFor(question: Question, deciderId: string, extra: RecordEntry[] = []): Listing {
+    const record = [...recordFor(question, deciderId), ...extra]
+    if (question.kind === 'formal_act') {
+      const standing = agreed(record.filter((e) => e.onRecord))
+      return { standing, calculated: standing, set: undefined }
+    }
+    const calculated = calculate(record)
+    const set = setPositionById.get(pairId(question.id, deciderId))
+    return { standing: set?.position ?? calculated, calculated, set }
   }
-  const standingFor = (question: Question, deciderId: string): Standing => positionOf(question, deciderId).standing
-  const stanceFor = (question: Question, deciderId: string): Stance | undefined => positionOf(question, deciderId).stance
+  const standingFor = (question: Question, deciderId: string): Standing => listingFor(question, deciderId).standing
+
+  // The position editors set for someone, when a reading sits across from it.
+  const acrossFor = (question: Question, deciderId: string, reading: Position): SetPosition | undefined => {
+    const set = listingFor(question, deciderId).set
+    return set && isAcross(set.position, reading) ? set : undefined
+  }
+
+  // The question a sub-question sits under, or the question itself.
+  const rootOf = (question: Question): Question => (question.parent_id && questionById.get(question.parent_id)) || question
+
+  // Everyone with a claim, past or to come, on a seat the question is put to.
+  function rosterOf(question: Question): Decider[] {
+    const bodies = new Set(bodyIdsOf(question))
+    const seated = new Map<string, Decider>()
+    for (const role of c.roles) {
+      const seat = seatById.get(role.seat_id)
+      const decider = deciderById.get(role.decider_id)
+      if (decider && seat && bodies.has(seat.body_id) && (!question.chamber || seat.chamber === question.chamber)) seated.set(decider.id, decider)
+    }
+    return [...seated.values()].sort((a, b) => a.sort_name.localeCompare(b.sort_name))
+  }
+
+  // The questions an act on this one may also be read on: its smaller steps,
+  // the fuller proposal it is a step of, and its neighbours.
+  const relationsFrom = groupBy(c.questionRelations, (r) => r.question_id)
+  const relationsTo = groupBy(c.questionRelations, (r) => r.related_id)
+  function relatedTo(question: Question): RelatedQuestion[] {
+    const out: (RelatedQuestion & { sort: number })[] = []
+    for (const r of relationsFrom.get(question.id) ?? []) {
+      const other = questionById.get(r.related_id)
+      if (other) out.push({ question: other, kind: r.kind, sort: r.sort })
+    }
+    for (const r of relationsTo.get(question.id) ?? []) {
+      const other = questionById.get(r.question_id)
+      if (other) out.push({ question: other, kind: r.kind === 'smaller_step' ? 'fuller_proposal' : 'related', sort: r.sort })
+    }
+    const ORDER = { smaller_step: 0, fuller_proposal: 1, related: 2 }
+    return out.sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || a.sort - b.sort).map(({ sort: _, ...r }) => r)
+  }
 
   function contender(question: Question, role: Role): Contender | undefined {
     const decider = deciderById.get(role.decider_id)
@@ -209,7 +260,7 @@ export function buildTracker(c: TrackerData, asOf: string) {
       record.map((e) => ({ occurred_on: e.act.occurred_on, onRecord: e.onRecord })),
       new Date(asOf),
     )
-    return { decider, role, ...positionOf(question, decider.id), record, footing }
+    return { decider, role, ...listingFor(question, decider.id), record, footing }
   }
 
   // The offices an ask is put to, each with whoever sits in it on the day viewed.
@@ -294,7 +345,7 @@ export function buildTracker(c: TrackerData, asOf: string) {
     questionById,
     questionBySlug,
     seatById,
-    stanceById,
+    setPositionById,
     sourceById,
     actById,
     actsByDecider,
@@ -318,7 +369,12 @@ export function buildTracker(c: TrackerData, asOf: string) {
     upcomingBySeat,
     recordFor,
     standingFor,
-    stanceFor,
+    listingFor,
+    acrossFor,
+    entryOf,
+    rootOf,
+    rosterOf,
+    relatedTo,
     isOpen,
     contender,
     board,
